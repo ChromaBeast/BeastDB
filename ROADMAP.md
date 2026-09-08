@@ -1,6 +1,6 @@
-# CustomDB: 16-Week Custom Database Engine Roadmap
+# BeastDB: 16-Week Custom Database Engine Roadmap
 
-A structured 16-week execution plan bridging systems-level data structures and production engineering while building a custom database engine in Go from scratch.
+A structured 16-week execution plan bridging systems-level data structures and production engineering while building BeastDB in Go from scratch.
 
 ---
 
