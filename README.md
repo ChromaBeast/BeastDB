@@ -38,7 +38,7 @@ Benchmarked on `Intel Core i5-12450HX` (`go test -bench="." -benchmem ./...`):
 | Phase | Milestone | Focus Areas | Status |
 |---|---|---|---|
 | **Phase 1** | [Core DSA & Memory](docs/phase1_dsa.md) | Struct padding, Vector, Ring Buffer, Heap, FNV-1a Open Map | ✅ Completed |
-| **Phase 2** | [Network & Cache](docs/phase2_net_cache.md) | TCP framing, RESP parser, Sharded locks, LRU/TTL Cache | 🔄 In Progress |
+| **Phase 2** | [Network & Cache](docs/phase2_net_cache.md) | TCP framing, RESP parser, Sharded locks, LRU/TTL Cache | ✅ Completed |
 | **Phase 3** | [Storage & Indexing](docs/phase3_storage.md) | WAL (CRC32), 4KB Slotted-Page Disk Manager, On-Disk B+ Tree | 📅 Planned |
 | **Phase 4** | [Scaling & Production](docs/phase4_scaling.md) | gRPC / CDC Streaming, Mobile LSN Delta Sync, Distroless Docker | 📅 Planned |
 
