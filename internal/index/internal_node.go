@@ -130,3 +130,25 @@ func (in *InternalNode) Split(rightData []byte, newPageID uint64) (uint64, *Inte
 
 	return promotedKey, rightNode
 }
+
+// Delete removes a routing key and its child pointer, shifting remaining entries left.
+func (in *InternalNode) Delete(key uint64) bool {
+	h := in.Header()
+	idx := sort.Search(int(h.KeyCount), func(i int) bool {
+		return in.Key(i) >= key
+	})
+
+	if idx >= int(h.KeyCount) || in.Key(idx) != key {
+		return false
+	}
+
+	for i := idx; i < int(h.KeyCount)-1; i++ {
+		in.SetKey(i, in.Key(i+1))
+		in.SetChild(i, in.Child(i+1))
+	}
+
+	h.KeyCount--
+	in.SetHeader(h)
+	return true
+}
+

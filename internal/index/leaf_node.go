@@ -132,3 +132,25 @@ func (l *LeafNode) Split(rightData []byte, newPageID uint64) (uint64, *LeafNode)
 	splitKey := rightNode.Key(0)
 	return splitKey, rightNode
 }
+
+// Delete removes a key and shifts subsequent entries left in O(K) time.
+func (l *LeafNode) Delete(key uint64) bool {
+	h := l.Header()
+	idx := sort.Search(int(h.KeyCount), func(i int) bool {
+		return l.Key(i) >= key
+	})
+
+	if idx >= int(h.KeyCount) || l.Key(idx) != key {
+		return false
+	}
+
+	for i := idx; i < int(h.KeyCount)-1; i++ {
+		l.SetKey(i, l.Key(i+1))
+		l.SetRID(i, l.RID(i+1))
+	}
+
+	h.KeyCount--
+	l.SetHeader(h)
+	return true
+}
+
