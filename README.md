@@ -150,15 +150,26 @@ go test -bench=. -benchmem ./...
 .\demo.ps1
 ```
 
-### 5. Client Integration (Go gRPC)
+### 5. Multi-Language Client Integration (Language-Agnostic)
+BeastDB defines its API contract with [Protocol Buffers](api/proto/beastdb.proto), enabling native clients in **any programming language** without Go runtime dependencies.
+
+**Go:**
 ```go
 conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := beastv1.NewBeastDBServiceClient(conn)
-
-// Write & Read with sub-millisecond latency
 client.Put(ctx, &beastv1.PutRequest{Key: 42, Value: []byte("beast_mode")})
 resp, _ := client.Get(ctx, &beastv1.GetRequest{Key: 42})
 ```
+
+**Python:**
+```python
+channel = grpc.insecure_channel("localhost:50051")
+client = beastdb_pb2_grpc.BeastDBServiceStub(channel)
+client.Put(beastdb_pb2.PutRequest(key=42, value=b"beast_mode"))
+resp = client.Get(beastdb_pb2.GetRequest(key=42))
+```
+
+> 🌐 See [docs/clients.md](docs/clients.md) for Python, Node.js/TypeScript, Rust guides & Protobuf code-gen.
 
 ---
 
