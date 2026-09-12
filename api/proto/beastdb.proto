@@ -4,12 +4,18 @@ package beastdb.v1;
 
 option go_package = "github.com/ChromaBeast/beastdb/api/proto;beastv1";
 
-// BeastDBService exposes the database engine over high-performance gRPC.
+// BeastDBService exposes client database operations over high-performance gRPC.
 service BeastDBService {
   rpc Get (GetRequest) returns (GetResponse);
   rpc Put (PutRequest) returns (PutResponse);
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   rpc Scan (ScanRequest) returns (stream KeyValueResponse);
+}
+
+// ReplicationService handles physical WAL streaming from Leader to Followers.
+service ReplicationService {
+  rpc StreamWAL (StreamWALRequest) returns (stream WALRecordMessage);
+  rpc Ack (ReplicationAck) returns (AckResponse);
 }
 
 message GetRequest {
@@ -47,4 +53,25 @@ message ScanRequest {
 message KeyValueResponse {
   uint64 key = 1;
   bytes value = 2;
+}
+
+message StreamWALRequest {
+  string replica_id = 1;
+  uint64 from_lsn = 2;
+}
+
+message WALRecordMessage {
+  uint64 lsn = 1;
+  uint32 op_type = 2;
+  bytes key = 3;
+  bytes value = 4;
+}
+
+message ReplicationAck {
+  string replica_id = 1;
+  uint64 acknowledged_lsn = 2;
+}
+
+message AckResponse {
+  bool success = 1;
 }

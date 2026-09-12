@@ -413,6 +413,222 @@ func (x *KeyValueResponse) GetValue() []byte {
 	return nil
 }
 
+type StreamWALRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ReplicaId     string                 `protobuf:"bytes,1,opt,name=replica_id,json=replicaId,proto3" json:"replica_id,omitempty"`
+	FromLsn       uint64                 `protobuf:"varint,2,opt,name=from_lsn,json=fromLsn,proto3" json:"from_lsn,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamWALRequest) Reset() {
+	*x = StreamWALRequest{}
+	mi := &file_beastdb_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamWALRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamWALRequest) ProtoMessage() {}
+
+func (x *StreamWALRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamWALRequest.ProtoReflect.Descriptor instead.
+func (*StreamWALRequest) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *StreamWALRequest) GetReplicaId() string {
+	if x != nil {
+		return x.ReplicaId
+	}
+	return ""
+}
+
+func (x *StreamWALRequest) GetFromLsn() uint64 {
+	if x != nil {
+		return x.FromLsn
+	}
+	return 0
+}
+
+type WALRecordMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Lsn           uint64                 `protobuf:"varint,1,opt,name=lsn,proto3" json:"lsn,omitempty"`
+	OpType        uint32                 `protobuf:"varint,2,opt,name=op_type,json=opType,proto3" json:"op_type,omitempty"`
+	Key           []byte                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Value         []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WALRecordMessage) Reset() {
+	*x = WALRecordMessage{}
+	mi := &file_beastdb_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WALRecordMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WALRecordMessage) ProtoMessage() {}
+
+func (x *WALRecordMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WALRecordMessage.ProtoReflect.Descriptor instead.
+func (*WALRecordMessage) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *WALRecordMessage) GetLsn() uint64 {
+	if x != nil {
+		return x.Lsn
+	}
+	return 0
+}
+
+func (x *WALRecordMessage) GetOpType() uint32 {
+	if x != nil {
+		return x.OpType
+	}
+	return 0
+}
+
+func (x *WALRecordMessage) GetKey() []byte {
+	if x != nil {
+		return x.Key
+	}
+	return nil
+}
+
+func (x *WALRecordMessage) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+type ReplicationAck struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ReplicaId       string                 `protobuf:"bytes,1,opt,name=replica_id,json=replicaId,proto3" json:"replica_id,omitempty"`
+	AcknowledgedLsn uint64                 `protobuf:"varint,2,opt,name=acknowledged_lsn,json=acknowledgedLsn,proto3" json:"acknowledged_lsn,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ReplicationAck) Reset() {
+	*x = ReplicationAck{}
+	mi := &file_beastdb_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplicationAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplicationAck) ProtoMessage() {}
+
+func (x *ReplicationAck) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplicationAck.ProtoReflect.Descriptor instead.
+func (*ReplicationAck) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ReplicationAck) GetReplicaId() string {
+	if x != nil {
+		return x.ReplicaId
+	}
+	return ""
+}
+
+func (x *ReplicationAck) GetAcknowledgedLsn() uint64 {
+	if x != nil {
+		return x.AcknowledgedLsn
+	}
+	return 0
+}
+
+type AckResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AckResponse) Reset() {
+	*x = AckResponse{}
+	mi := &file_beastdb_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AckResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AckResponse) ProtoMessage() {}
+
+func (x *AckResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
+func (*AckResponse) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AckResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_beastdb_proto protoreflect.FileDescriptor
 
 const file_beastdb_proto_rawDesc = "" +
@@ -441,12 +657,30 @@ const file_beastdb_proto_rawDesc = "" +
 	"\aend_key\x18\x02 \x01(\x04R\x06endKey\":\n" +
 	"\x10KeyValueResponse\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value2\x82\x02\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"L\n" +
+	"\x10StreamWALRequest\x12\x1d\n" +
+	"\n" +
+	"replica_id\x18\x01 \x01(\tR\treplicaId\x12\x19\n" +
+	"\bfrom_lsn\x18\x02 \x01(\x04R\afromLsn\"e\n" +
+	"\x10WALRecordMessage\x12\x10\n" +
+	"\x03lsn\x18\x01 \x01(\x04R\x03lsn\x12\x17\n" +
+	"\aop_type\x18\x02 \x01(\rR\x06opType\x12\x10\n" +
+	"\x03key\x18\x03 \x01(\fR\x03key\x12\x14\n" +
+	"\x05value\x18\x04 \x01(\fR\x05value\"Z\n" +
+	"\x0eReplicationAck\x12\x1d\n" +
+	"\n" +
+	"replica_id\x18\x01 \x01(\tR\treplicaId\x12)\n" +
+	"\x10acknowledged_lsn\x18\x02 \x01(\x04R\x0facknowledgedLsn\"'\n" +
+	"\vAckResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\x82\x02\n" +
 	"\x0eBeastDBService\x126\n" +
 	"\x03Get\x12\x16.beastdb.v1.GetRequest\x1a\x17.beastdb.v1.GetResponse\x126\n" +
 	"\x03Put\x12\x16.beastdb.v1.PutRequest\x1a\x17.beastdb.v1.PutResponse\x12?\n" +
 	"\x06Delete\x12\x19.beastdb.v1.DeleteRequest\x1a\x1a.beastdb.v1.DeleteResponse\x12?\n" +
-	"\x04Scan\x12\x17.beastdb.v1.ScanRequest\x1a\x1c.beastdb.v1.KeyValueResponse0\x01B2Z0github.com/ChromaBeast/beastdb/api/proto;beastv1b\x06proto3"
+	"\x04Scan\x12\x17.beastdb.v1.ScanRequest\x1a\x1c.beastdb.v1.KeyValueResponse0\x012\x9b\x01\n" +
+	"\x12ReplicationService\x12I\n" +
+	"\tStreamWAL\x12\x1c.beastdb.v1.StreamWALRequest\x1a\x1c.beastdb.v1.WALRecordMessage0\x01\x12:\n" +
+	"\x03Ack\x12\x1a.beastdb.v1.ReplicationAck\x1a\x17.beastdb.v1.AckResponseB2Z0github.com/ChromaBeast/beastdb/api/proto;beastv1b\x06proto3"
 
 var (
 	file_beastdb_proto_rawDescOnce sync.Once
@@ -460,7 +694,7 @@ func file_beastdb_proto_rawDescGZIP() []byte {
 	return file_beastdb_proto_rawDescData
 }
 
-var file_beastdb_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_beastdb_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_beastdb_proto_goTypes = []any{
 	(*GetRequest)(nil),       // 0: beastdb.v1.GetRequest
 	(*GetResponse)(nil),      // 1: beastdb.v1.GetResponse
@@ -470,21 +704,29 @@ var file_beastdb_proto_goTypes = []any{
 	(*DeleteResponse)(nil),   // 5: beastdb.v1.DeleteResponse
 	(*ScanRequest)(nil),      // 6: beastdb.v1.ScanRequest
 	(*KeyValueResponse)(nil), // 7: beastdb.v1.KeyValueResponse
+	(*StreamWALRequest)(nil), // 8: beastdb.v1.StreamWALRequest
+	(*WALRecordMessage)(nil), // 9: beastdb.v1.WALRecordMessage
+	(*ReplicationAck)(nil),   // 10: beastdb.v1.ReplicationAck
+	(*AckResponse)(nil),      // 11: beastdb.v1.AckResponse
 }
 var file_beastdb_proto_depIdxs = []int32{
-	0, // 0: beastdb.v1.BeastDBService.Get:input_type -> beastdb.v1.GetRequest
-	2, // 1: beastdb.v1.BeastDBService.Put:input_type -> beastdb.v1.PutRequest
-	4, // 2: beastdb.v1.BeastDBService.Delete:input_type -> beastdb.v1.DeleteRequest
-	6, // 3: beastdb.v1.BeastDBService.Scan:input_type -> beastdb.v1.ScanRequest
-	1, // 4: beastdb.v1.BeastDBService.Get:output_type -> beastdb.v1.GetResponse
-	3, // 5: beastdb.v1.BeastDBService.Put:output_type -> beastdb.v1.PutResponse
-	5, // 6: beastdb.v1.BeastDBService.Delete:output_type -> beastdb.v1.DeleteResponse
-	7, // 7: beastdb.v1.BeastDBService.Scan:output_type -> beastdb.v1.KeyValueResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	0,  // 0: beastdb.v1.BeastDBService.Get:input_type -> beastdb.v1.GetRequest
+	2,  // 1: beastdb.v1.BeastDBService.Put:input_type -> beastdb.v1.PutRequest
+	4,  // 2: beastdb.v1.BeastDBService.Delete:input_type -> beastdb.v1.DeleteRequest
+	6,  // 3: beastdb.v1.BeastDBService.Scan:input_type -> beastdb.v1.ScanRequest
+	8,  // 4: beastdb.v1.ReplicationService.StreamWAL:input_type -> beastdb.v1.StreamWALRequest
+	10, // 5: beastdb.v1.ReplicationService.Ack:input_type -> beastdb.v1.ReplicationAck
+	1,  // 6: beastdb.v1.BeastDBService.Get:output_type -> beastdb.v1.GetResponse
+	3,  // 7: beastdb.v1.BeastDBService.Put:output_type -> beastdb.v1.PutResponse
+	5,  // 8: beastdb.v1.BeastDBService.Delete:output_type -> beastdb.v1.DeleteResponse
+	7,  // 9: beastdb.v1.BeastDBService.Scan:output_type -> beastdb.v1.KeyValueResponse
+	9,  // 10: beastdb.v1.ReplicationService.StreamWAL:output_type -> beastdb.v1.WALRecordMessage
+	11, // 11: beastdb.v1.ReplicationService.Ack:output_type -> beastdb.v1.AckResponse
+	6,  // [6:12] is the sub-list for method output_type
+	0,  // [0:6] is the sub-list for method input_type
+	0,  // [0:0] is the sub-list for extension type_name
+	0,  // [0:0] is the sub-list for extension extendee
+	0,  // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_beastdb_proto_init() }
@@ -498,9 +740,9 @@ func file_beastdb_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_beastdb_proto_rawDesc), len(file_beastdb_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   12,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_beastdb_proto_goTypes,
 		DependencyIndexes: file_beastdb_proto_depIdxs,

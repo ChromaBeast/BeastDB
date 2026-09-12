@@ -29,7 +29,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// BeastDBService exposes the database engine over high-performance gRPC.
+// BeastDBService exposes client database operations over high-performance gRPC.
 type BeastDBServiceClient interface {
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
 	Put(ctx context.Context, in *PutRequest, opts ...grpc.CallOption) (*PutResponse, error)
@@ -98,7 +98,7 @@ type BeastDBService_ScanClient = grpc.ServerStreamingClient[KeyValueResponse]
 // All implementations must embed UnimplementedBeastDBServiceServer
 // for forward compatibility.
 //
-// BeastDBService exposes the database engine over high-performance gRPC.
+// BeastDBService exposes client database operations over high-performance gRPC.
 type BeastDBServiceServer interface {
 	Get(context.Context, *GetRequest) (*GetResponse, error)
 	Put(context.Context, *PutRequest) (*PutResponse, error)
@@ -236,6 +236,154 @@ var BeastDBService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Scan",
 			Handler:       _BeastDBService_Scan_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "beastdb.proto",
+}
+
+const (
+	ReplicationService_StreamWAL_FullMethodName = "/beastdb.v1.ReplicationService/StreamWAL"
+	ReplicationService_Ack_FullMethodName       = "/beastdb.v1.ReplicationService/Ack"
+)
+
+// ReplicationServiceClient is the client API for ReplicationService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ReplicationService handles physical WAL streaming from Leader to Followers.
+type ReplicationServiceClient interface {
+	StreamWAL(ctx context.Context, in *StreamWALRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WALRecordMessage], error)
+	Ack(ctx context.Context, in *ReplicationAck, opts ...grpc.CallOption) (*AckResponse, error)
+}
+
+type replicationServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewReplicationServiceClient(cc grpc.ClientConnInterface) ReplicationServiceClient {
+	return &replicationServiceClient{cc}
+}
+
+func (c *replicationServiceClient) StreamWAL(ctx context.Context, in *StreamWALRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WALRecordMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ReplicationService_ServiceDesc.Streams[0], ReplicationService_StreamWAL_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[StreamWALRequest, WALRecordMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ReplicationService_StreamWALClient = grpc.ServerStreamingClient[WALRecordMessage]
+
+func (c *replicationServiceClient) Ack(ctx context.Context, in *ReplicationAck, opts ...grpc.CallOption) (*AckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AckResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_Ack_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ReplicationServiceServer is the server API for ReplicationService service.
+// All implementations must embed UnimplementedReplicationServiceServer
+// for forward compatibility.
+//
+// ReplicationService handles physical WAL streaming from Leader to Followers.
+type ReplicationServiceServer interface {
+	StreamWAL(*StreamWALRequest, grpc.ServerStreamingServer[WALRecordMessage]) error
+	Ack(context.Context, *ReplicationAck) (*AckResponse, error)
+	mustEmbedUnimplementedReplicationServiceServer()
+}
+
+// UnimplementedReplicationServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedReplicationServiceServer struct{}
+
+func (UnimplementedReplicationServiceServer) StreamWAL(*StreamWALRequest, grpc.ServerStreamingServer[WALRecordMessage]) error {
+	return status.Error(codes.Unimplemented, "method StreamWAL not implemented")
+}
+func (UnimplementedReplicationServiceServer) Ack(context.Context, *ReplicationAck) (*AckResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Ack not implemented")
+}
+func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
+func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
+
+// UnsafeReplicationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ReplicationServiceServer will
+// result in compilation errors.
+type UnsafeReplicationServiceServer interface {
+	mustEmbedUnimplementedReplicationServiceServer()
+}
+
+func RegisterReplicationServiceServer(s grpc.ServiceRegistrar, srv ReplicationServiceServer) {
+	// If the following call panics, it indicates UnimplementedReplicationServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&ReplicationService_ServiceDesc, srv)
+}
+
+func _ReplicationService_StreamWAL_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(StreamWALRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(ReplicationServiceServer).StreamWAL(m, &grpc.GenericServerStream[StreamWALRequest, WALRecordMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ReplicationService_StreamWALServer = grpc.ServerStreamingServer[WALRecordMessage]
+
+func _ReplicationService_Ack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicationAck)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).Ack(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_Ack_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).Ack(ctx, req.(*ReplicationAck))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var ReplicationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "beastdb.v1.ReplicationService",
+	HandlerType: (*ReplicationServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Ack",
+			Handler:    _ReplicationService_Ack_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "StreamWAL",
+			Handler:       _ReplicationService_StreamWAL_Handler,
 			ServerStreams: true,
 		},
 	},

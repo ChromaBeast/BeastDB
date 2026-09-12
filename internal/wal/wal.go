@@ -80,6 +80,13 @@ func (w *WAL) CurrentLSN() uint64 {
 	return w.currentLSN
 }
 
+// Path returns the physical path of the WAL file.
+func (w *WAL) Path() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.path
+}
+
 // Close flushes buffered writes and closes the log file.
 func (w *WAL) Close() error {
 	w.mu.Lock()
