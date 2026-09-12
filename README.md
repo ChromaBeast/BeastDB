@@ -47,6 +47,8 @@ Benchmarked on **Intel Core i5-12450HX**, **Go 1.26**, Windows/amd64 (`go test -
 | **Network** | TCP Frame Encode | **30.4 ns/op** | ~33M frames/sec | **48 B · 1 alloc** |
 | **API** | gRPC End-to-End Get | **129 µs/op** | ~7.7K req/sec | 9KB · 152 allocs |
 
+> 💡 **Reproduce these numbers yourself:** `go test -bench=. -benchmem ./...`. Numbers will vary by hardware.
+
 ---
 
 ## 🏗️ Architecture
@@ -106,6 +108,7 @@ BeastDB is architected as a **Read-Optimized / Balanced OLTP Engine** (similar t
 | **Phase 2** | [Network & Cache](docs/phase2_net_cache.md) | TCP framing, RESP2 parser, Sharded locks, LRU+TTL Cache | ✅ |
 | **Phase 3** | [Storage & Indexing](docs/phase3_storage.md) | WAL (CRC32), 4KB Slotted Pages, Disk Manager, B+ Tree + Cursor | ✅ |
 | **Phase 4** | [Scaling & Production](docs/phase4_scaling.md) | gRPC/Protobuf, Leader-Follower Replication, Docker Cluster | ✅ |
+| **Phase 5** | Kubernetes-native deployment | Horizontal scaling, StatefulSets, service discovery for leader/follower topology | 📋 Planned |
 
 ---
 
@@ -151,7 +154,7 @@ go test -bench=. -benchmem ./...
 ```
 
 ### 5. Multi-Language Client Integration (Language-Agnostic)
-BeastDB defines its API contract with [Protocol Buffers](api/proto/beastdb.proto), enabling native clients in **any programming language** without Go runtime dependencies.
+BeastDB defines its API contract with [Protocol Buffers](api/proto/beastdb.proto), enabling native clients in **any programming language** without a Go runtime dependency.
 
 **Go:**
 ```go
@@ -175,4 +178,4 @@ resp = client.Get(beastdb_pb2.GetRequest(key=42))
 
 ## 👤 Author
 
-**ChromaBeast** · [GitHub @ChromaBeast](https://github.com/ChromaBeast)
+Sheersh Jaiswal ([@ChromaBeast](https://github.com/ChromaBeast))
