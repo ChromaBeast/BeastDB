@@ -18,3 +18,7 @@ bin/
 # OS specific files
 .DS_Store
 Thumbs.db
+
+# Agent configuration
+GEMINI.md
+

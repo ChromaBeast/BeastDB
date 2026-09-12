@@ -5,7 +5,7 @@ A high-performance, distributed, crash-resilient database engine built from scra
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Zero Allocs](https://img.shields.io/badge/Hot%20Paths-0%20allocs%2Fop-brightgreen)](ROADMAP.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Modularity](https://img.shields.io/badge/Code%20Limit-%3C%20200%20LoC-orange)](GEMINI.md)
+[![Modularity](https://img.shields.io/badge/Code%20Limit-%3C%20200%20LoC-orange)](CONTRIBUTING.md)
 [![Tests](https://img.shields.io/badge/Tests-8%2F8%20packages%20passing-success)](/)
 
 ---
