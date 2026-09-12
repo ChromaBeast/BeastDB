@@ -1,6 +1,6 @@
 # Multi-Stage Dockerfile for BeastDB
 # Stage 1: Build static Linux binary
-FROM golang:1.24-alpine AS builder
+FROM golang:alpine AS builder
 
 WORKDIR /app
 
