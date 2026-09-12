@@ -79,6 +79,25 @@ flowchart TD
 
 ---
 
+## ⚖️ Workload Profile & Trade-offs (B+ Tree vs. LSM-Tree)
+
+BeastDB is architected as a **Read-Optimized / Balanced OLTP Engine** (similar to SQLite, PostgreSQL, and MySQL/InnoDB), prioritizing deterministic sub-microsecond point reads and streaming range scans rather than pure write-ingestion append logs (like RocksDB or Cassandra).
+
+| Architectural Dimension | B+ Tree Engine (BeastDB) | LSM-Tree Engine (e.g., RocksDB) |
+| :--- | :--- | :--- |
+| **Primary Workload** | **Point reads, updates & ordered range scans** | Write-heavy ingestion & append-only time series |
+| **Point Read Latency** | **$O(\log_B N)$ direct jump** (180 ns, 0 allocs) | Multi-level lookup (MemTable + Bloom filters + SSTables) |
+| **Range Scans** | **Sequential leaf traversal** via `NextPageID` (12 ns/key) | Multi-way merge-sort across sorted runs |
+| **Write Amplification** | Higher (in-place page updates & leaf splits) | Lower on initial ingest (sequential MemTable appends) |
+| **Tail Latency** | **Predictable** (no background compactions) | Variable (subject to compaction write stalls) |
+| **Role of WAL** | **Crash durability** (ARIES recovery for in-place pages) | **Primary ingest buffer** (replays into MemTable) |
+
+### Why B+ Tree over LSM-Tree for BeastDB?
+1. **Zero Compaction Debt:** LSM-trees defer work to background compactions, causing I/O spikes and tail-latency variability. BeastDB maintains a balanced on-disk index with consistent latencies.
+2. **Hardware Mechanical Sympathy:** Point queries traverse 4KB slotted pages and memory-pinned frames via the Buffer Pool Manager without scanning Bloom filters or merging duplicate keys across levels.
+
+---
+
 ## 🗺️ 16-Week Roadmap
 
 | Phase | Milestone | Focus Areas | Status |
@@ -87,6 +106,9 @@ flowchart TD
 | **Phase 2** | [Network & Cache](docs/phase2_net_cache.md) | TCP framing, RESP2 parser, Sharded locks, LRU+TTL Cache | ✅ |
 | **Phase 3** | [Storage & Indexing](docs/phase3_storage.md) | WAL (CRC32), 4KB Slotted Pages, Disk Manager, B+ Tree + Cursor | ✅ |
 | **Phase 4** | [Scaling & Production](docs/phase4_scaling.md) | gRPC/Protobuf, Leader-Follower Replication, Docker Cluster | ✅ |
+
+---
+
 ## 🚀 Quickstart
 
 ### 3-Node Cluster with Docker Compose
