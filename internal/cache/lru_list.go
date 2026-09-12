@@ -27,6 +27,11 @@ func (l *LRUList[V]) Len() int {
 	return l.len
 }
 
+// IsHead returns true if the given node is already the Most Recently Used head.
+func (l *LRUList[V]) IsHead(node *LRUNode[V]) bool {
+	return l.head == node
+}
+
 // PushFront inserts a node at the head (Most Recently Used).
 func (l *LRUList[V]) PushFront(node *LRUNode[V]) {
 	node.prev = nil

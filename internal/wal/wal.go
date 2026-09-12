@@ -95,6 +95,38 @@ func (w *WAL) Close() error {
 	return w.file.Close()
 }
 
+// Checkpoint rotates the WAL: syncs the current file, archives it as <path>.bak,
+// then opens a fresh append-only log starting from the next LSN.
+// The caller MUST have flushed all dirty buffer pool pages to disk first so the
+// archived WAL records are no longer needed for recovery.
+func (w *WAL) Checkpoint() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.file.Sync(); err != nil {
+		return err
+	}
+	if err := w.file.Close(); err != nil {
+		return err
+	}
+
+	// Archive the old WAL; keep one generation for safety.
+	archivePath := w.path + ".bak"
+	_ = os.Remove(archivePath)
+	if err := os.Rename(w.path, archivePath); err != nil {
+		return err
+	}
+
+	// Open a fresh log file for subsequent writes.
+	newFile, err := os.OpenFile(w.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	w.file = newFile
+	return nil
+}
+
+
 func findHighestLSN(file *os.File) (uint64, error) {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return 0, err

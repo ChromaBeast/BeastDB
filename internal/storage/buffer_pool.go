@@ -12,13 +12,16 @@ var (
 )
 
 // BufferPoolManager coordinates page caching between memory frames and disk.
+// mu is a RWMutex: cache hits use RLock (no disk I/O, only atomic pin ops).
+// Cache misses and evictions use a full Lock.
 type BufferPoolManager struct {
 	disk      *DiskManager
 	poolSize  int
 	frames    []*Frame
 	pageTable map[uint64]int
 	clockHand int
-	mu        sync.Mutex
+	mu        sync.RWMutex
+	pagePool  sync.Pool // Fix #6: reusable 4KB page buffers
 }
 
 // NewBufferPoolManager creates a pool with a fixed number of in-memory frames.
@@ -27,61 +30,39 @@ func NewBufferPoolManager(disk *DiskManager, poolSize int) *BufferPoolManager {
 	for i := range frames {
 		frames[i] = &Frame{}
 	}
-
 	return &BufferPoolManager{
 		disk:      disk,
 		poolSize:  poolSize,
 		frames:    frames,
 		pageTable: make(map[uint64]int, poolSize),
+		pagePool:  sync.Pool{New: func() any { buf := make([]byte, PageSize); return &buf }},
 	}
 }
 
-// FetchPage retrieves a page from memory or loads it from disk if not present.
+// FetchPage retrieves a page from memory (fast RLock path) or loads from disk (write path).
 func (bpm *BufferPoolManager) FetchPage(pageID uint64) (*SlottedPage, error) {
+	// Fast path: cache hit — only atomic increments under shared lock.
+	bpm.mu.RLock()
+	if idx, exists := bpm.pageTable[pageID]; exists {
+		frame := bpm.frames[idx]
+		frame.Pin()
+		page := frame.Page
+		bpm.mu.RUnlock()
+		return page, nil
+	}
+	bpm.mu.RUnlock()
+
+	// Slow path: cache miss — need exclusive lock to evict + load.
 	bpm.mu.Lock()
 	defer bpm.mu.Unlock()
 
+	// Double-check: another goroutine may have loaded the page while we waited.
 	if idx, exists := bpm.pageTable[pageID]; exists {
-		frame := bpm.frames[idx]
-		frame.PinCount++
-		frame.RefBit = true
-		return frame.Page, nil
+		bpm.frames[idx].Pin()
+		return bpm.frames[idx].Page, nil
 	}
 
-	victimIdx, err := bpm.findVictim()
-	if err != nil {
-		return nil, err
-	}
-
-	victim := bpm.frames[victimIdx]
-	if victim.Page != nil {
-		if victim.IsDirty {
-			if err := bpm.disk.WritePage(victim.PageID, victim.Page.Data()); err != nil {
-				return nil, err
-			}
-			victim.IsDirty = false
-		}
-		delete(bpm.pageTable, victim.PageID)
-	}
-
-	pageData := make([]byte, PageSize)
-	if err := bpm.disk.ReadPage(pageID, pageData); err != nil {
-		return nil, err
-	}
-
-	page, err := WrapPage(pageData)
-	if err != nil {
-		return nil, err
-	}
-
-	victim.PageID = pageID
-	victim.PinCount = 1
-	victim.IsDirty = false
-	victim.RefBit = true
-	victim.Page = page
-
-	bpm.pageTable[pageID] = victimIdx
-	return page, nil
+	return bpm.loadPage(pageID)
 }
 
 // NewPage allocates a new physical page on disk and loads it into a frame.
@@ -93,28 +74,20 @@ func (bpm *BufferPoolManager) NewPage() (*SlottedPage, uint64, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	if err := bpm.evictFrame(victimIdx); err != nil {
+		return nil, 0, err
+	}
 
 	newPageID, err := bpm.disk.AllocatePage()
 	if err != nil {
 		return nil, 0, err
 	}
 
-	victim := bpm.frames[victimIdx]
-	if victim.Page != nil {
-		if victim.IsDirty {
-			if err := bpm.disk.WritePage(victim.PageID, victim.Page.Data()); err != nil {
-				return nil, 0, err
-			}
-			victim.IsDirty = false
-		}
-		delete(bpm.pageTable, victim.PageID)
-	}
-
 	page := NewSlottedPage(newPageID)
+	victim := bpm.frames[victimIdx]
 	victim.PageID = newPageID
-	victim.PinCount = 1
+	victim.Pin()
 	victim.IsDirty = true
-	victim.RefBit = true
 	victim.Page = page
 
 	bpm.pageTable[newPageID] = victimIdx
@@ -132,14 +105,13 @@ func (bpm *BufferPoolManager) UnpinPage(pageID uint64, isDirty bool) error {
 	}
 
 	frame := bpm.frames[idx]
-	if frame.PinCount <= 0 {
+	if frame.PinCount() <= 0 {
 		return ErrPageNotPinned
 	}
-
 	if isDirty {
 		frame.IsDirty = true
 	}
-	frame.PinCount--
+	frame.Unpin()
 	return nil
 }
 
@@ -179,26 +151,4 @@ func (bpm *BufferPoolManager) FlushAll() error {
 	return bpm.disk.Sync()
 }
 
-// findVictim runs the Clock-Sweep eviction algorithm to select an unpinned frame.
-func (bpm *BufferPoolManager) findVictim() (int, error) {
-	for step := 0; step < 2*bpm.poolSize; step++ {
-		idx := bpm.clockHand
-		bpm.clockHand = (bpm.clockHand + 1) % bpm.poolSize
 
-		frame := bpm.frames[idx]
-		if frame.Page == nil {
-			return idx, nil
-		}
-
-		if !frame.CanEvict() {
-			continue
-		}
-
-		if frame.RefBit {
-			frame.RefBit = false
-		} else {
-			return idx, nil
-		}
-	}
-	return -1, ErrPoolExhausted
-}

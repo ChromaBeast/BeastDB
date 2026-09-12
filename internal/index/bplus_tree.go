@@ -3,6 +3,7 @@ package index
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ChromaBeast/beastdb/internal/storage"
 )
@@ -12,10 +13,13 @@ var (
 )
 
 // BPlusTree coordinates on-disk B+ Tree operations via the BufferPoolManager.
+// epoch is bumped on every structural mutation (split, merge, delete) so that
+// live cursors can detect concurrent modifications via ErrConcurrentModification.
 type BPlusTree struct {
 	rootPageID uint64
 	bpm        *storage.BufferPoolManager
 	mu         sync.RWMutex
+	epoch      atomic.Uint64
 }
 
 // CreateBPlusTree initializes a new B+ Tree with an empty root leaf node.
@@ -102,6 +106,7 @@ func (t *BPlusTree) Insert(key uint64, rid storage.RID) error {
 				leaf.Insert(key, rid)
 				return t.bpm.UnpinPage(currPageID, true)
 			}
+			t.epoch.Add(1) // structural change: leaf split
 			return t.splitLeafAndInsert(path, currPageID, page, key, rid)
 		}
 

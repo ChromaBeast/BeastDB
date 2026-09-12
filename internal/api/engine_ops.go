@@ -103,8 +103,17 @@ func (e *Engine) Delete(key uint64) error {
 }
 
 // Scan returns a streaming cursor iterator over the requested key range.
+// The engine's read lock is held for the cursor's entire lifetime and released
+// in cursor.Close() — this prevents concurrent writes from splitting a leaf
+// that an active cursor is currently traversing.
 func (e *Engine) Scan(startKey, endKey uint64) (*index.Cursor, error) {
-	return e.tree.Scan(startKey, endKey)
+	e.mu.RLock()
+	cursor, err := e.tree.ScanWithRelease(startKey, endKey, e.mu.RUnlock)
+	if err != nil {
+		// ScanWithRelease calls release on error internally; nothing to do here.
+		return nil, err
+	}
+	return cursor, nil
 }
 
 // ReadTuple retrieves tuple bytes directly for a given RID.

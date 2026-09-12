@@ -4,10 +4,16 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"google.golang.org/grpc"
+)
+
+const (
+	ackBatchSize     = 100              // send ACK every N records
+	ackBatchInterval = 100 * time.Millisecond // or every 100 ms, whichever first
 )
 
 // FollowerClient connects to the Leader node and replicates WAL records into local state.
@@ -30,6 +36,8 @@ func NewFollowerClient(replicaID string, engine *api.Engine, conn *grpc.ClientCo
 }
 
 // SyncLoop continuously streams and applies WAL records from the Leader until context cancels.
+// Fix #4: ACKs are batched — sent every ackBatchSize records OR every ackBatchInterval ms,
+// whichever comes first. This reduces ACK round-trips from O(writes/sec) to O(writes/100).
 func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 	f.mu.Lock()
 	fromLSN := f.lastAppliedLSN + 1
@@ -43,16 +51,19 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 		return err
 	}
 
+	var count int
+	lastAck := time.Now()
+
 	for {
 		msg, err := stream.Recv()
 		if err != nil {
 			if err == io.EOF || ctx.Err() != nil {
+				f.sendAck(ctx) // flush final ACK on clean shutdown
 				return nil
 			}
 			return err
 		}
 
-		// Apply record locally into follower's storage engine and B+ Tree
 		if err := f.engine.ApplyReplicatedRecord(byte(msg.OpType), msg.Key, msg.Value); err != nil {
 			return err
 		}
@@ -61,15 +72,26 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 		if msg.Lsn > f.lastAppliedLSN {
 			f.lastAppliedLSN = msg.Lsn
 		}
-		currentAck := f.lastAppliedLSN
 		f.mu.Unlock()
 
-		// Acknowledge progress back to leader
-		_, _ = f.client.Ack(ctx, &beastv1.ReplicationAck{
-			ReplicaId:       f.replicaID,
-			AcknowledgedLsn: currentAck,
-		})
+		count++
+		if count >= ackBatchSize || time.Since(lastAck) >= ackBatchInterval {
+			f.sendAck(ctx)
+			count = 0
+			lastAck = time.Now()
+		}
 	}
+}
+
+// sendAck fires a single ACK for the current lastAppliedLSN.
+func (f *FollowerClient) sendAck(ctx context.Context) {
+	f.mu.RLock()
+	lsn := f.lastAppliedLSN
+	f.mu.RUnlock()
+	_, _ = f.client.Ack(ctx, &beastv1.ReplicationAck{
+		ReplicaId:       f.replicaID,
+		AcknowledgedLsn: lsn,
+	})
 }
 
 // LastAppliedLSN returns the latest Log Sequence Number applied by this replica.

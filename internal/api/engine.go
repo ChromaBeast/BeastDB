@@ -103,3 +103,17 @@ func (e *Engine) Close() error {
 	_ = e.wal.Close()
 	return e.disk.Close()
 }
+
+// Checkpoint flushes all dirty pages to disk, then rotates the WAL file.
+// After a checkpoint, crash recovery only needs to scan the new (empty) WAL.
+// Safe to call periodically (e.g., every N writes or on a timer).
+func (e *Engine) Checkpoint() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if err := e.bpm.FlushAll(); err != nil {
+		return err
+	}
+	return e.wal.Checkpoint()
+}
+

@@ -1,4 +1,4 @@
-# CustomDB Architecture Specification
+# BeastDB Architecture Specification
 
 A modular, zero-allocation database architecture built from first principles in Go.
 
