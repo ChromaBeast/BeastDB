@@ -43,6 +43,11 @@ func (s *GRPCServer) Stop() {
 	s.grpcServer.Stop()
 }
 
+// RawServer returns the underlying grpc.Server instance for registering additional services.
+func (s *GRPCServer) RawServer() *grpc.Server {
+	return s.grpcServer
+}
+
 // Get handles unary key lookup requests.
 func (s *GRPCServer) Get(ctx context.Context, req *beastv1.GetRequest) (*beastv1.GetResponse, error) {
 	val, found, err := s.engine.Get(req.Key)

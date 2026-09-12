@@ -1,32 +1,97 @@
 package main
 
 import (
+	"context"
+	"flag"
 	"fmt"
+	"log"
+	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
+
+	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/replication"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-const (
-	// Version is the current release tag of BeastDB.
-	Version = "0.1.0-alpha"
-	// DefaultPort is the standard listener port.
-	DefaultPort = 6379
-)
+const Version = "0.1.0-release"
 
 func main() {
-	fmt.Printf("Starting BeastDB v%s on port :%d...\n", Version, DefaultPort)
+	role := flag.String("role", "leader", "Node cluster role: leader or follower")
+	port := flag.Int("port", 50051, "Port for gRPC service")
+	leaderAddr := flag.String("leader-addr", "127.0.0.1:50051", "Leader node address for replication")
+	dataDir := flag.String("data-dir", "./data", "Directory to store data and WAL files")
+	poolSize := flag.Int("pool-size", 128, "Buffer pool frame capacity (4KB blocks)")
+	replicaID := flag.String("replica-id", "replica-1", "Unique identifier for this replica node")
+	flag.Parse()
+
+	log.Printf("Starting BeastDB v%s [Role: %s] on port :%d...", Version, *role, *port)
+
+	if err := os.MkdirAll(*dataDir, 0755); err != nil {
+		log.Fatalf("Failed to create data directory: %v", err)
+	}
+
+	dbPath := filepath.Join(*dataDir, "beast.bin")
+	walPath := filepath.Join(*dataDir, "beast.wal")
+
+	engine, err := api.NewEngine(dbPath, walPath, *poolSize)
+	if err != nil {
+		log.Fatalf("Failed to initialize database engine: %v", err)
+	}
+
+	grpcServer := api.NewGRPCServer(engine)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if *role == "leader" {
+		repServer := replication.NewLeaderServer(engine.WALPath())
+		repServer.RegisterService(grpcServer.RawServer())
+		log.Printf("Leader node initialized with replication service.")
+	} else {
+		log.Printf("Follower node connecting to leader at %s...", *leaderAddr)
+		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatalf("Failed to dial leader node: %v", err)
+		}
+		defer conn.Close()
+
+		followerClient := replication.NewFollowerClient(*replicaID, engine, conn)
+		go func() {
+			if err := followerClient.SyncLoop(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("Follower sync loop error: %v", err)
+			}
+		}()
+	}
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	if err != nil {
+		log.Fatalf("Failed to listen on port %d: %v", *port, err)
+	}
+
+	go func() {
+		log.Printf("BeastDB gRPC server listening on %s", lis.Addr().String())
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Printf("gRPC server terminated: %v", err)
+		}
+	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// Graceful shutdown listener
-	go func() {
-		sig := <-sigChan
-		fmt.Printf("\nReceived signal %s. Flushing WAL and shutting down BeastDB...\n", sig)
-		os.Exit(0)
-	}()
+	sig := <-sigChan
+	log.Printf("Received signal %s. Initiating graceful shutdown...", sig)
 
-	fmt.Println("BeastDB ready for connections.")
-	select {}
+	cancel()
+	grpcServer.GracefulStop()
+
+	if err := engine.Close(); err != nil {
+		log.Printf("Error flushing engine to disk: %v", err)
+	} else {
+		log.Printf("Buffer pool and WAL flushed successfully to %s", *dataDir)
+	}
+
+	log.Println("BeastDB stopped cleanly. Goodbye!")
 }

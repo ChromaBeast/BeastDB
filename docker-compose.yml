@@ -1,0 +1,55 @@
+services:
+  beastdb-primary:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beastdb-primary
+    command: ["-role", "leader", "-port", "50051", "-data-dir", "/data", "-pool-size", "256"]
+    ports:
+      - "50051:50051"
+    volumes:
+      - primary_data:/data
+    networks:
+      - beastnet
+    restart: unless-stopped
+
+  beastdb-replica-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beastdb-replica-1
+    command: ["-role", "follower", "-port", "50051", "-leader-addr", "beastdb-primary:50051", "-replica-id", "replica-1", "-data-dir", "/data", "-pool-size", "256"]
+    ports:
+      - "50052:50051"
+    volumes:
+      - replica1_data:/data
+    networks:
+      - beastnet
+    depends_on:
+      - beastdb-primary
+    restart: unless-stopped
+
+  beastdb-replica-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: beastdb-replica-2
+    command: ["-role", "follower", "-port", "50051", "-leader-addr", "beastdb-primary:50051", "-replica-id", "replica-2", "-data-dir", "/data", "-pool-size", "256"]
+    ports:
+      - "50053:50051"
+    volumes:
+      - replica2_data:/data
+    networks:
+      - beastnet
+    depends_on:
+      - beastdb-primary
+    restart: unless-stopped
+
+volumes:
+  primary_data:
+  replica1_data:
+  replica2_data:
+
+networks:
+  beastnet:
+    driver: bridge
