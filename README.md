@@ -109,29 +109,55 @@ BeastDB is architected as a **Read-Optimized / Balanced OLTP Engine** (similar t
 
 ---
 
-## 🚀 Quickstart
+## 🛠️ Developer Setup & Quickstart
 
-### 3-Node Cluster with Docker Compose
+### Prerequisites
+- **Go 1.26+**
+- **Git**
+- **Docker & Docker Compose** *(optional, for containerized clusters)*
+
+### 1. Clone & Dependencies
 ```bash
 git clone https://github.com/ChromaBeast/BeastDB.git
 cd BeastDB
-
-# Launch 1 Primary (port 50051) + 2 Replicas (50052, 50053)
-docker compose up -d
+go mod download
 ```
 
-### Run Tests & Chaos Validation
+### 2. Run Engine Locally (Leader & Replicas)
 ```bash
-# All unit + chaos tests (torn-write injection, 20-goroutine stress)
+# Launch Primary Leader (gRPC port 50051)
+go run ./cmd/server -role leader -port 50051 -data-dir ./tmp/primary
+
+# Launch Follower (streams live WAL replication from leader)
+go run ./cmd/server -role follower -port 50052 -leader-addr localhost:50051 -replica-id replica-1 -data-dir ./tmp/replica1
+```
+
+### 3. Docker Compose 3-Node Cluster
+```bash
+# Spins up 1 Leader (50051) + 2 Followers (50052, 50053) with persistent volumes
+docker compose up -d --build
+```
+
+### 4. Tests, Benchmarks & Validation
+```bash
+# Run unit & chaos test suite (torn-write injection, CRC32 WAL recovery)
 go test -v ./...
 
-# Performance benchmarks with memory profiles
+# Run zero-allocation micro-benchmarks with memory profiling
 go test -bench=. -benchmem ./...
+
+# Automated interactive presentation demo (PowerShell)
+.\demo.ps1
 ```
 
-### Build Static Binary
-```bash
-CGO_ENABLED=0 GOOS=linux go build -o beastdb ./cmd/server
+### 5. Client Integration (Go gRPC)
+```go
+conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+client := beastv1.NewBeastDBServiceClient(conn)
+
+// Write & Read with sub-millisecond latency
+client.Put(ctx, &beastv1.PutRequest{Key: 42, Value: []byte("beast_mode")})
+resp, _ := client.Get(ctx, &beastv1.GetRequest{Key: 42})
 ```
 
 ---
