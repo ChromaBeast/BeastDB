@@ -1,135 +1,133 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Header } from "../components/Header";
 import { StatsGrid } from "../components/StatsGrid";
+import { TypeDistributionBar } from "../components/TypeDistributionBar";
+import { RecordsToolbar } from "../components/RecordsToolbar";
 import { RecordsTable } from "../components/RecordsTable";
-import { RecordDrawer } from "../components/RecordDrawer";
-import { NewRecordModal } from "../components/NewRecordModal";
-import { DbRecord, TelemetryStats, CategoryFilter } from "../types";
-import { enhanceRecord } from "../utils/format";
+import { RecordsGrid } from "../components/RecordsGrid";
+import { RecordDrawer } from "../components/drawers/RecordDrawer";
+import { NewRecordModal } from "../components/modals/NewRecordModal";
+import { KeyCalculatorModal } from "../components/modals/KeyCalculatorModal";
+import { UniversalRecord, ViewMode, PayloadFormat } from "../types";
+import { useStudioData } from "../hooks/useStudioData";
 
 export default function StudioDashboard() {
-  const [stats, setStats] = useState<TelemetryStats | null>(null);
-  const [records, setRecords] = useState<DbRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [filter, setFilter] = useState<CategoryFilter>("all");
+  const {
+    stats,
+    records,
+    isLoading,
+    isLoadingMore,
+    hasMore,
+    handleRefresh,
+    handleLoadMore,
+    handleSaveRecord,
+    handleDeleteRecord,
+  } = useStudioData();
+
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [activePrefixFilter, setActivePrefixFilter] = useState<number | null>(null);
+  const [formatFilter, setFormatFilter] = useState<PayloadFormat | "all">("all");
   const [search, setSearch] = useState("");
-  const [activeRecord, setActiveRecord] = useState<DbRecord | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeRecord, setActiveRecord] = useState<UniversalRecord | null>(null);
+  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [isKeyCalcOpen, setIsKeyCalcOpen] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const res = await fetch("/api/stats");
-      if (res.ok) setStats(await res.json());
-    } catch (e) {
-      console.error("Telemetry fetch error:", e);
-    }
-  }, []);
-
-  const fetchRecords = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch("/api/records?limit=150");
-      if (res.ok) {
-        const data = await res.json();
-        const rawList: { key: number; value: string }[] = data.records || [];
-        setRecords(rawList.map(enhanceRecord));
-      }
-    } catch (e) {
-      console.error("Records fetch error:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    fetchStats();
-    fetchRecords();
-  }, [fetchStats, fetchRecords]);
-
-  useEffect(() => {
-    handleRefresh();
-    const interval = setInterval(fetchStats, 10000);
-    return () => clearInterval(interval);
-  }, [handleRefresh, fetchStats]);
-
-  const handleSaveRecord = async (key: number, value: string): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value }),
-      });
-      if (res.ok) {
-        handleRefresh();
-        return true;
-      }
-      alert("Failed to insert record. Ensure key is valid.");
-      return false;
-    } catch {
-      alert("Network error connecting to BeastDB engine.");
-      return false;
-    }
+  const handleCopyKey = (keyStr: string) => {
+    navigator.clipboard.writeText(keyStr);
+    setCopiedKey(keyStr);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handleDeleteRecord = async (key: number) => {
-    try {
-      const res = await fetch(`/api/key?k=${key}`, { method: "DELETE" });
-      if (res.ok) {
-        handleRefresh();
-        if (activeRecord?.key === key) setActiveRecord(null);
-      } else {
-        alert("Failed to delete record.");
-      }
-    } catch {
-      alert("Error deleting record.");
+  const onDeleteRecord = async (key: number) => {
+    const success = await handleDeleteRecord(key);
+    if (success && activeRecord?.key === key) {
+      setActiveRecord(null);
     }
   };
 
   const filteredRecords = useMemo(() => {
     return records.filter((rec) => {
-      const recType = rec.parsed?.type?.toLowerCase() || (rec.value.startsWith("_sys") ? "system" : "custom");
-      if (filter !== "all" && recType !== filter) return false;
+      if (activePrefixFilter !== null && rec.prefix !== activePrefixFilter) return false;
+      if (formatFilter !== "all" && rec.format !== formatFilter) return false;
       if (!search.trim()) return true;
 
       const q = search.toLowerCase();
-      const keyStr = String(rec.key);
-      const title = (rec.parsed?.title || rec.parsed?.name || "").toLowerCase();
-      const valStr = rec.value.toLowerCase();
-      return keyStr.includes(q) || title.includes(q) || valStr.includes(q);
+      return (
+        rec.keyStr.includes(q) ||
+        rec.primaryLabel.toLowerCase().includes(q) ||
+        (rec.secondaryLabel && rec.secondaryLabel.toLowerCase().includes(q)) ||
+        rec.raw.toLowerCase().includes(q)
+      );
     });
-  }, [records, filter, search]);
+  }, [records, activePrefixFilter, formatFilter, search]);
 
   return (
     <div className="min-h-screen bg-[#080B11] text-slate-100 selection:bg-purple-500/30 selection:text-purple-200">
-      <Header stats={stats} onRefresh={handleRefresh} isLoading={isLoading} />
+      <Header
+        stats={stats}
+        onRefresh={handleRefresh}
+        onOpenKeyCalculator={() => setIsKeyCalcOpen(true)}
+        isLoading={isLoading}
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 space-y-6">
         <StatsGrid stats={stats} recordCount={records.length} />
 
-        <RecordsTable
-          records={filteredRecords}
-          filter={filter}
-          setFilter={setFilter}
+        <TypeDistributionBar
+          records={records}
+          activePrefixFilter={activePrefixFilter}
+          onSelectPrefix={setActivePrefixFilter}
+        />
+
+        <RecordsToolbar
           search={search}
           setSearch={setSearch}
-          onSelect={setActiveRecord}
-          onDelete={handleDeleteRecord}
-          onOpenNew={() => setIsModalOpen(true)}
+          formatFilter={formatFilter}
+          setFormatFilter={setFormatFilter}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          onOpenNew={() => setIsNewModalOpen(true)}
+          hasMore={hasMore}
+          onLoadMore={handleLoadMore}
+          isLoadingMore={isLoadingMore}
         />
+
+        {viewMode === "table" ? (
+          <RecordsTable
+            records={filteredRecords}
+            onSelect={setActiveRecord}
+            onDelete={onDeleteRecord}
+            onCopyKey={handleCopyKey}
+            copiedKey={copiedKey}
+          />
+        ) : (
+          <RecordsGrid
+            records={filteredRecords}
+            onSelect={setActiveRecord}
+            onCopyKey={handleCopyKey}
+            copiedKey={copiedKey}
+          />
+        )}
       </main>
 
       <RecordDrawer
         record={activeRecord}
         onClose={() => setActiveRecord(null)}
-        onDelete={handleDeleteRecord}
+        onDelete={onDeleteRecord}
       />
 
       <NewRecordModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isNewModalOpen}
+        onClose={() => setIsNewModalOpen(false)}
         onSave={handleSaveRecord}
+      />
+
+      <KeyCalculatorModal
+        isOpen={isKeyCalcOpen}
+        onClose={() => setIsKeyCalcOpen(false)}
       />
     </div>
   );

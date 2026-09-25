@@ -16,6 +16,7 @@ type EngineReader interface {
 	Delete(key uint64) error
 	CurrentLSN() uint64
 	ScanRecords(startKey uint64, limit int) ([]api.RecordItem, error)
+	ScanRecordsPaginated(startKey uint64, limit int) ([]api.RecordItem, uint64, bool, error)
 }
 
 // APIHandler handles data access routes under /api/.
@@ -66,7 +67,7 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	records, err := h.engine.ScanRecords(startKey, limit)
+	records, nextKey, hasMore, err := h.engine.ScanRecordsPaginated(startKey, limit)
 	if err != nil {
 		http.Error(w, "Engine scan error", http.StatusInternalServerError)
 		return
@@ -75,6 +76,8 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"records": records,
 		"count":   len(records),
+		"nextKey": nextKey,
+		"hasMore": hasMore,
 	})
 }
 
