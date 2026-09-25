@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BeastDB — Admin Console</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f1117; color: #e2e8f0; font-family: 'SF Mono','Fira Code',monospace; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem; background: #1a1d2e; border-bottom: 1px solid #2d3150;
+    }
+    .logo { font-size: 1.25rem; font-weight: 700; color: #7c3aed; }
+    .logout-btn {
+      padding: 0.4rem 1rem; background: transparent; border: 1px solid #2d3150;
+      border-radius: 6px; color: #94a3b8; font-family: inherit; font-size: 0.8rem;
+      cursor: pointer; transition: border-color 0.2s;
+    }
+    .logout-btn:hover { border-color: #f87171; color: #f87171; }
+    main { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
+    h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;
+         color: #64748b; margin-bottom: 1rem; }
+    .panel {
+      background: #1a1d2e; border: 1px solid #2d3150; border-radius: 10px;
+      padding: 1.5rem; margin-bottom: 1.5rem;
+    }
+    .row { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; }
+    input[type=text], input[type=number] {
+      flex: 1; padding: 0.55rem 0.8rem; background: #0f1117;
+      border: 1px solid #2d3150; border-radius: 6px; color: #e2e8f0;
+      font-family: inherit; font-size: 0.85rem;
+    }
+    input:focus { outline: none; border-color: #7c3aed; }
+    .btn {
+      padding: 0.55rem 1.1rem; border: none; border-radius: 6px;
+      font-family: inherit; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .btn-primary { background: #7c3aed; color: #fff; }
+    .btn-primary:hover { background: #6d28d9; }
+    .btn-danger { background: #991b1b; color: #fff; }
+    .btn-danger:hover { background: #7f1d1d; }
+    .result {
+      background: #0f1117; border: 1px solid #2d3150; border-radius: 6px;
+      padding: 0.75rem 1rem; font-size: 0.8rem; color: #a5f3fc;
+      min-height: 2.5rem; white-space: pre-wrap; word-break: break-all;
+    }
+    .tag-ok  { color: #4ade80; }
+    .tag-err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="logo">⚡ BeastDB Admin Console</span>
+    <form method="POST" action="/logout" style="display:inline">
+      <button class="logout-btn" type="submit">Sign Out</button>
+    </form>
+  </header>
+  <main>
+    <!-- GET Key -->
+    <h2>Lookup Key</h2>
+    <div class="panel">
+      <div class="row">
+        <input type="number" id="getKey" placeholder="Key (uint64)" min="0">
+        <button class="btn btn-primary" onclick="getKey()">Get</button>
+      </div>
+      <div class="result" id="getResult">—</div>
+    </div>
+
+    <!-- PUT Key -->
+    <h2>Insert / Update Key</h2>
+    <div class="panel">
+      <div class="row">
+        <input type="number" id="putKey" placeholder="Key (uint64)" min="0">
+        <input type="text"   id="putVal" placeholder="Value">
+        <button class="btn btn-primary" onclick="putKey()">Put</button>
+      </div>
+      <div class="result" id="putResult">—</div>
+    </div>
+
+    <!-- DELETE Key -->
+    <h2>Delete Key</h2>
+    <div class="panel">
+      <div class="row">
+        <input type="number" id="delKey" placeholder="Key (uint64)" min="0">
+        <button class="btn btn-danger" onclick="deleteKey()">Delete</button>
+      </div>
+      <div class="result" id="delResult">—</div>
+    </div>
+  </main>
+  <script>
+    async function getKey() {
+      const k = document.getElementById('getKey').value;
+      const el = document.getElementById('getResult');
+      try {
+        const r = await fetch(`/api/key?k=${k}`);
+        const body = await r.text();
+        el.innerHTML = r.ok
+          ? `<span class="tag-ok">OK</span>  ${body}`
+          : `<span class="tag-err">ERR ${r.status}</span>  ${body}`;
+      } catch(e) { el.innerHTML = `<span class="tag-err">Network error</span>`; }
+    }
+
+    async function putKey() {
+      const k = document.getElementById('putKey').value;
+      const v = document.getElementById('putVal').value;
+      const el = document.getElementById('putResult');
+      try {
+        const r = await fetch('/api/key', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({key: Number(k), value: v})
+        });
+        el.innerHTML = r.ok
+          ? `<span class="tag-ok">OK</span>  Inserted key ${k}`
+          : `<span class="tag-err">ERR ${r.status}</span>  ${await r.text()}`;
+      } catch(e) { el.innerHTML = `<span class="tag-err">Network error</span>`; }
+    }
+
+    async function deleteKey() {
+      const k = document.getElementById('delKey').value;
+      const el = document.getElementById('delResult');
+      try {
+        const r = await fetch(`/api/key?k=${k}`, {method: 'DELETE'});
+        el.innerHTML = r.ok
+          ? `<span class="tag-ok">OK</span>  Deleted key ${k}`
+          : `<span class="tag-err">ERR ${r.status}</span>  ${await r.text()}`;
+      } catch(e) { el.innerHTML = `<span class="tag-err">Network error</span>`; }
+    }
+  </script>
+</body>
+</html>
