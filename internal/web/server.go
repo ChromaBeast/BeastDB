@@ -10,7 +10,7 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 )
 
-//go:embed static
+//go:embed all:static
 var staticFiles embed.FS
 
 // Server is the embedded HTTP admin server running alongside the gRPC server.
@@ -41,9 +41,10 @@ func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error
 
 	mux := http.NewServeMux()
 
-	// Public static assets (CSS, JS)
+	// Public static assets (CSS, JS, Next.js artifacts)
 	mux.Handle("/css/", http.FileServer(http.FS(staticFS)))
 	mux.Handle("/js/", http.FileServer(http.FS(staticFS)))
+	mux.Handle("/_next/", http.FileServer(http.FS(staticFS)))
 
 	// Public auth routes
 	mux.HandleFunc("/login", handler.LoginHandler(deps))
@@ -53,8 +54,9 @@ func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error
 	dashboardFS := http.FileServer(http.FS(staticFS))
 	mux.Handle("/", handler.AuthMiddleware(sessions, dashboardFS))
 
-	// Protected telemetry route
+	// Protected telemetry and record exploration routes
 	mux.Handle("/api/stats", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetStats)))
+	mux.Handle("/api/records", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetRecords)))
 
 	// Protected key-value CRUD routes
 	mux.Handle("/api/key", handler.AuthMiddleware(sessions, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
