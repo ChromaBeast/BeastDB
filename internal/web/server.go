@@ -27,7 +27,7 @@ type EngineBackend interface {
 // NewServer constructs and wires all HTTP routes.
 // secret is the 32-byte HMAC key for session signing.
 // Call Serve() to start accepting connections.
-func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error) {
+func NewServer(addr string, engine EngineBackend, secret []byte, role, version string) (*Server, error) {
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error
 
 	sessions := auth.NewSessionManager(secret)
 	users := auth.NewUserStore(engine)
-	apiH := handler.NewAPIHandler(engine, sessions)
+	apiH := handler.NewAPIHandler(engine, sessions, role, version)
 
 	deps := &handler.Deps{Users: users, Sessions: sessions, StaticFS: staticFS}
 
@@ -56,6 +56,7 @@ func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error
 
 	// Protected telemetry and record exploration routes
 	mux.Handle("/api/stats", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetStats)))
+	mux.Handle("/api/me", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetMe)))
 	mux.Handle("/api/records", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetRecords)))
 
 	// Protected key-value CRUD routes

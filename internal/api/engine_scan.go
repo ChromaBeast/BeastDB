@@ -2,12 +2,14 @@ package api
 
 import (
 	"math"
+	"strconv"
 )
 
 // RecordItem represents a key-value record returned by scan queries.
 type RecordItem struct {
-	Key   uint64 `json:"key"`
-	Value string `json:"value"`
+	Key     uint64 `json:"key"`
+	KeyText string `json:"keyText"`
+	Value   string `json:"value"`
 }
 
 // ScanRecords retrieves up to limit records starting from startKey in ascending key order.
@@ -51,8 +53,9 @@ func (e *Engine) ScanRecordsPaginated(startKey uint64, limit int) ([]RecordItem,
 		}
 
 		items = append(items, RecordItem{
-			Key:   key,
-			Value: string(valBytes),
+			Key:     key,
+			KeyText: strconv.FormatUint(key, 10),
+			Value:   string(valBytes),
 		})
 	}
 

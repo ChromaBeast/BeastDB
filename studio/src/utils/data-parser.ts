@@ -36,8 +36,8 @@ function findImage(obj: any): string | undefined {
   return undefined;
 }
 
-export function parseUniversalRecord(rawItem: { key: number; value: string }): UniversalRecord {
-  const decoded = decodeKey(rawItem.key);
+export function parseUniversalRecord(rawItem: { keyText: string; value: string }): UniversalRecord {
+  const decoded = decodeKey(rawItem.keyText);
   const rawStr = rawItem.value ?? "";
   const byteSize = new Blob([rawStr]).size;
   const trimmed = rawStr.trim();
@@ -113,7 +113,6 @@ export function parseUniversalRecord(rawItem: { key: number; value: string }): U
   }
 
   return {
-    key: rawItem.key,
     keyStr: decoded.raw,
     keyHex: decoded.hex,
     prefix: decoded.prefix,

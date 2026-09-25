@@ -1,134 +1,148 @@
 "use client";
-
-import React, { useState, useMemo } from "react";
-import { Header } from "../components/Header";
-import { StatsGrid } from "../components/StatsGrid";
-import { TypeDistributionBar } from "../components/TypeDistributionBar";
-import { RecordsToolbar } from "../components/RecordsToolbar";
-import { RecordsTable } from "../components/RecordsTable";
-import { RecordsGrid } from "../components/RecordsGrid";
-import { RecordDrawer } from "../components/drawers/RecordDrawer";
-import { NewRecordModal } from "../components/modals/NewRecordModal";
-import { KeyCalculatorModal } from "../components/modals/KeyCalculatorModal";
-import { UniversalRecord, ViewMode, PayloadFormat } from "../types";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
+import { StudioHeader } from "../components/StudioHeader";
+import { RecordsView } from "../components/RecordsView";
+import { OverviewView } from "../components/OverviewView";
+import { RecordSheet } from "../components/RecordSheet";
+import { NewRecordDialog } from "../components/NewRecordDialog";
+import { KeyAnalyzerDialog } from "../components/KeyAnalyzerDialog";
+import { Button } from "../components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
+import { UniversalRecord } from "../types";
 import { useStudioData } from "../hooks/useStudioData";
 
 export default function StudioDashboard() {
-  const {
-    stats,
-    records,
-    isLoading,
-    isLoadingMore,
-    hasMore,
-    handleRefresh,
-    handleLoadMore,
-    handleSaveRecord,
-    handleDeleteRecord,
-  } = useStudioData();
-
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [activePrefixFilter, setActivePrefixFilter] = useState<number | null>(null);
-  const [formatFilter, setFormatFilter] = useState<PayloadFormat | "all">("all");
-  const [search, setSearch] = useState("");
-  const [activeRecord, setActiveRecord] = useState<UniversalRecord | null>(null);
-  const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [isKeyCalcOpen, setIsKeyCalcOpen] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  const handleCopyKey = (keyStr: string) => {
-    navigator.clipboard.writeText(keyStr);
-    setCopiedKey(keyStr);
-    setTimeout(() => setCopiedKey(null), 2000);
-  };
-
-  const onDeleteRecord = async (key: number) => {
-    const success = await handleDeleteRecord(key);
-    if (success && activeRecord?.key === key) {
-      setActiveRecord(null);
+  const data = useStudioData();
+  const [view, setView] = useState<"records" | "overview">("records");
+  const [selected, setSelected] = useState<UniversalRecord | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [analyzerOpen, setAnalyzerOpen] = useState(false);
+  const [deleteKey, setDeleteKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{
+    message: string;
+    error: boolean;
+  } | null>(null);
+  const showNotice = (message: string, error = false) =>
+    setNotice({ message, error });
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+  const remove = async () => {
+    if (!deleteKey) return;
+    try {
+      await data.remove(deleteKey);
+      setSelected(null);
+      showNotice("Record deleted.");
+    } catch (e) {
+      showNotice((e as Error).message, true);
+    } finally {
+      setDeleteKey(null);
     }
   };
-
-  const filteredRecords = useMemo(() => {
-    return records.filter((rec) => {
-      if (activePrefixFilter !== null && rec.prefix !== activePrefixFilter) return false;
-      if (formatFilter !== "all" && rec.format !== formatFilter) return false;
-      if (!search.trim()) return true;
-
-      const q = search.toLowerCase();
-      return (
-        rec.keyStr.includes(q) ||
-        rec.primaryLabel.toLowerCase().includes(q) ||
-        (rec.secondaryLabel && rec.secondaryLabel.toLowerCase().includes(q)) ||
-        rec.raw.toLowerCase().includes(q)
-      );
-    });
-  }, [records, activePrefixFilter, formatFilter, search]);
-
   return (
-    <div className="min-h-screen bg-[#080B11] text-slate-100 selection:bg-purple-500/30 selection:text-purple-200">
-      <Header
-        stats={stats}
-        onRefresh={handleRefresh}
-        onOpenKeyCalculator={() => setIsKeyCalcOpen(true)}
-        isLoading={isLoading}
+    <div className="min-h-screen bg-background text-foreground">
+      <StudioHeader
+        view={view}
+        setView={setView}
+        user={data.user}
+        busy={data.loading}
+        onRefresh={() => void data.refresh()}
       />
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 space-y-6">
-        <StatsGrid stats={stats} recordCount={records.length} />
-
-        <TypeDistributionBar
-          records={records}
-          activePrefixFilter={activePrefixFilter}
-          onSelectPrefix={setActivePrefixFilter}
-        />
-
-        <RecordsToolbar
-          search={search}
-          setSearch={setSearch}
-          formatFilter={formatFilter}
-          setFormatFilter={setFormatFilter}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          onOpenNew={() => setIsNewModalOpen(true)}
-          hasMore={hasMore}
-          onLoadMore={handleLoadMore}
-          isLoadingMore={isLoadingMore}
-        />
-
-        {viewMode === "table" ? (
-          <RecordsTable
-            records={filteredRecords}
-            onSelect={setActiveRecord}
-            onDelete={onDeleteRecord}
-            onCopyKey={handleCopyKey}
-            copiedKey={copiedKey}
+      <main className="mx-auto max-w-[1440px] px-4 py-8 md:px-8 md:py-10">
+        {view === "records" ? (
+          <RecordsView
+            records={data.records}
+            loading={data.loading}
+            loadingMore={data.loadingMore}
+            hasMore={data.hasMore}
+            error={data.error}
+            canWrite={data.user?.role === "admin"}
+            onRetry={() => void data.refresh()}
+            onLoadMore={() => void data.loadMore()}
+            onSelect={setSelected}
+            onNew={() => setNewOpen(true)}
+            onLookup={data.lookup}
+            onNotice={showNotice}
           />
         ) : (
-          <RecordsGrid
-            records={filteredRecords}
-            onSelect={setActiveRecord}
-            onCopyKey={handleCopyKey}
-            copiedKey={copiedKey}
+          <OverviewView
+            stats={data.stats}
+            statsError={data.statsError}
+            recordsError={data.error}
+            user={data.user}
+            loaded={data.records.length}
+            hasMore={data.hasMore}
+            updatedAt={data.updatedAt}
+            onRetry={() => void data.refresh()}
+            onAnalyze={() => setAnalyzerOpen(true)}
           />
         )}
       </main>
-
-      <RecordDrawer
-        record={activeRecord}
-        onClose={() => setActiveRecord(null)}
-        onDelete={onDeleteRecord}
+      <RecordSheet
+        record={selected}
+        canWrite={data.user?.role === "admin"}
+        onClose={() => setSelected(null)}
+        onDelete={setDeleteKey}
+        onNotice={showNotice}
       />
-
-      <NewRecordModal
-        isOpen={isNewModalOpen}
-        onClose={() => setIsNewModalOpen(false)}
-        onSave={handleSaveRecord}
+      <NewRecordDialog
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        onSave={data.save}
+        onLookup={data.lookup}
+        onNotice={showNotice}
       />
-
-      <KeyCalculatorModal
-        isOpen={isKeyCalcOpen}
-        onClose={() => setIsKeyCalcOpen(false)}
+      <KeyAnalyzerDialog
+        open={analyzerOpen}
+        onClose={() => setAnalyzerOpen(false)}
       />
+      <AlertDialog
+        open={deleteKey !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteKey(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle className="text-lg font-semibold">
+            Delete this record?
+          </AlertDialogTitle>
+          <AlertDialogDescription className="mt-2 text-sm text-muted-foreground">
+            Key <span className="font-mono">{deleteKey}</span> and its value
+            will be permanently removed.
+          </AlertDialogDescription>
+          <div className="mt-6 flex justify-end gap-2">
+            <AlertDialogCancel asChild>
+              <Button variant="outline">Cancel</Button>
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button variant="destructive" onClick={() => void remove()}>
+                Delete record
+              </Button>
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+      {notice && (
+        <div
+          role={notice.error ? "alert" : "status"}
+          className={`fixed bottom-5 right-5 z-[70] flex max-w-sm items-center gap-3 rounded-lg border bg-card px-4 py-3 text-sm shadow-lg ${notice.error ? "border-destructive text-destructive" : ""}`}
+        >
+          <span>{notice.message}</span>
+          <button aria-label="Dismiss message" onClick={() => setNotice(null)}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

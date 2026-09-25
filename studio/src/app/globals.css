@@ -3,31 +3,68 @@
 @tailwind utilities;
 
 :root {
-  --background: #080b11;
-  --foreground: #f8fafc;
+  color-scheme: light;
+  --background: 0 0% 98%;
+  --foreground: 222 20% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 20% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 20% 14%;
+  --primary: 222 35% 18%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 14% 95%;
+  --secondary-foreground: 222 20% 18%;
+  --muted: 220 14% 95%;
+  --muted-foreground: 220 9% 43%;
+  --accent: 220 14% 95%;
+  --accent-foreground: 222 20% 18%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 13% 88%;
+  --input: 220 13% 88%;
+  --ring: 222 35% 18%;
+  --radius: 0.625rem;
 }
-
+.dark {
+  color-scheme: dark;
+  --background: 225 15% 9%;
+  --foreground: 220 14% 93%;
+  --card: 225 13% 12%;
+  --card-foreground: 220 14% 93%;
+  --popover: 225 13% 12%;
+  --popover-foreground: 220 14% 93%;
+  --primary: 220 14% 93%;
+  --primary-foreground: 225 15% 9%;
+  --secondary: 225 11% 18%;
+  --secondary-foreground: 220 14% 93%;
+  --muted: 225 11% 18%;
+  --muted-foreground: 220 9% 67%;
+  --accent: 225 11% 20%;
+  --accent-foreground: 220 14% 93%;
+  --destructive: 0 62% 53%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 225 10% 24%;
+  --input: 225 10% 24%;
+  --ring: 220 14% 85%;
+}
+* {
+  border-color: hsl(var(--border));
+}
 body {
-  color: var(--foreground);
-  background: var(--background);
-  background-image: 
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(139, 92, 246, 0.12), transparent),
-    radial-gradient(circle at 100% 100%, rgba(6, 182, 212, 0.06), transparent 40%);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
   min-height: 100vh;
 }
-
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
-::-webkit-scrollbar-track {
-  background: #080b11;
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
 }
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 92, 246, 0.4);
+::selection {
+  background: hsl(var(--foreground) / 0.14);
 }

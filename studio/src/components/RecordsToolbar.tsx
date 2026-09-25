@@ -1,118 +1,109 @@
 "use client";
+import { ArrowRight, Grid2X2, List, Search } from "lucide-react";
+import { UniversalRecord } from "../types";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
-import React from "react";
-import { Search, LayoutGrid, Table, Plus, ChevronRight, Filter } from "lucide-react";
-import { ViewMode, PayloadFormat } from "../types";
-
-interface RecordsToolbarProps {
-  search: string;
-  setSearch: (s: string) => void;
-  formatFilter: PayloadFormat | "all";
-  setFormatFilter: (f: PayloadFormat | "all") => void;
-  viewMode: ViewMode;
-  setViewMode: (v: ViewMode) => void;
-  onOpenNew: () => void;
+interface Props {
+  records: UniversalRecord[];
   hasMore: boolean;
-  onLoadMore: () => void;
-  isLoadingMore: boolean;
+  search: string;
+  setSearch: (v: string) => void;
+  prefix: string;
+  setPrefix: (v: string) => void;
+  format: string;
+  setFormat: (v: string) => void;
+  view: "table" | "grid";
+  setView: (v: "table" | "grid") => void;
+  looking: boolean;
+  onLookup: () => void;
 }
-
-export const RecordsToolbar: React.FC<RecordsToolbarProps> = ({
-  search,
-  setSearch,
-  formatFilter,
-  setFormatFilter,
-  viewMode,
-  setViewMode,
-  onOpenNew,
-  hasMore,
-  onLoadMore,
-  isLoadingMore,
-}) => {
-  const formats: { id: PayloadFormat | "all"; label: string }[] = [
-    { id: "all", label: "All Formats" },
-    { id: "json_object", label: "JSON Docs" },
-    { id: "string", label: "Strings / Indices" },
-    { id: "token", label: "Tokens" },
-    { id: "json_array", label: "Arrays" },
-  ];
-
+export function RecordsToolbar(p: Props) {
+  const partitions = Array.from(
+    new Map(p.records.map((r) => [r.prefix, r.prefixLabel])).entries(),
+  );
+  const formats = Array.from(new Set(p.records.map((r) => r.format)));
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between">
-      {/* Search Input & Format Filter */}
-      <div className="flex flex-1 flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[200px] sm:max-w-xs">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search any key, field, or text..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-black/40 py-1.5 pl-9 pr-3 text-xs text-white placeholder-slate-500 outline-none transition focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50"
+    <div className="rounded-lg border bg-card p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search
+            size={16}
+            className="absolute left-3 top-2.5 text-muted-foreground"
+          />
+          <Input
+            aria-label="Search loaded records"
+            value={p.search}
+            onChange={(e) => p.setSearch(e.target.value)}
+            placeholder="Search loaded records or enter an exact key"
+            className="pl-9"
           />
         </div>
-
-        {/* Format Filter Dropdown / Pills */}
-        <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/30 p-1">
-          {formats.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setFormatFilter(f.id)}
-              className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${
-                formatFilter === f.id
-                  ? "bg-purple-600/30 text-purple-300"
-                  : "text-slate-400 hover:text-white"
-              }`}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={p.onLookup}
+            disabled={!p.search.trim() || p.looking}
+            title="Look up the exact decimal key across the database"
+          >
+            <ArrowRight size={15} />
+            {p.looking ? "Looking up" : "Find exact key"}
+          </Button>
+          <select
+            aria-label="Filter by partition"
+            className="h-9 max-w-44 rounded-md border bg-card px-3 text-sm"
+            value={p.prefix}
+            onChange={(e) => p.setPrefix(e.target.value)}
+          >
+            <option value="all">All partitions</option>
+            {partitions.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label} · 0x{id.toString(16).padStart(2, "0").toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter by format"
+            className="h-9 rounded-md border bg-card px-3 text-sm"
+            value={p.format}
+            onChange={(e) => p.setFormat(e.target.value)}
+          >
+            <option value="all">All formats</option>
+            {formats.map((f) => (
+              <option key={f} value={f}>
+                {f.replace("_", " ")}
+              </option>
+            ))}
+          </select>
+          <div className="flex rounded-md border p-0.5">
+            <Button
+              size="icon"
+              variant={p.view === "table" ? "secondary" : "ghost"}
+              onClick={() => p.setView("table")}
+              aria-label="Table view"
+              aria-pressed={p.view === "table"}
+              className="h-8 w-8"
             >
-              {f.label}
-            </button>
-          ))}
+              <List size={16} />
+            </Button>
+            <Button
+              size="icon"
+              variant={p.view === "grid" ? "secondary" : "ghost"}
+              onClick={() => p.setView("grid")}
+              aria-label="Card view"
+              aria-pressed={p.view === "grid"}
+              className="h-8 w-8"
+            >
+              <Grid2X2 size={16} />
+            </Button>
+          </div>
         </div>
       </div>
-
-      {/* View Switcher, Load More & New Record Button */}
-      <div className="flex items-center gap-2 justify-end">
-        {hasMore && (
-          <button
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-            className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-purple-300 hover:bg-white/[0.08] disabled:opacity-50"
-          >
-            <span>{isLoadingMore ? "Loading..." : "Load More"}</span>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        )}
-
-        {/* View Mode Toggle */}
-        <div className="flex items-center rounded-xl border border-white/10 bg-black/40 p-1">
-          <button
-            onClick={() => setViewMode("table")}
-            className={`rounded-lg p-1.5 transition ${
-              viewMode === "table" ? "bg-purple-600/30 text-purple-300" : "text-slate-400 hover:text-white"
-            }`}
-            title="Data Table View"
-          >
-            <Table className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setViewMode("grid")}
-            className={`rounded-lg p-1.5 transition ${
-              viewMode === "grid" ? "bg-purple-600/30 text-purple-300" : "text-slate-400 hover:text-white"
-            }`}
-            title="Card Gallery View"
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </button>
-        </div>
-
-        <button
-          onClick={onOpenNew}
-          className="flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg shadow-purple-600/30 transition hover:bg-purple-500"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          <span>New Record</span>
-        </button>
-      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Text search and filters cover {p.records.length} loaded records
+        {p.hasMore ? "; more records are available" : ""}. Exact key lookup
+        searches the database.
+      </p>
     </div>
   );
-};
+}

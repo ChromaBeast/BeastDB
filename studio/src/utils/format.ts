@@ -32,7 +32,7 @@ export function formatDateFull(dateStr?: string): string {
   }
 }
 
-export function fnv1a64(str: string): number {
+export function fnv1a64(str: string): string {
   let hash = BigInt("0xcbf29ce484222325");
   const prime = BigInt("0x100000001b3");
   const mask = BigInt("0xffffffffffffffff");
@@ -41,7 +41,7 @@ export function fnv1a64(str: string): number {
     hash ^= BigInt(str.charCodeAt(i));
     hash = (hash * prime) & mask;
   }
-  return Number(hash & BigInt("0x7fffffffffffffff"));
+  return (hash & BigInt("0x7fffffffffffffff")).toString();
 }
 
 export function formatKey(key: number | string): string {
