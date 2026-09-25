@@ -20,7 +20,7 @@ RUN apk --no-cache add ca-certificates tzdata && mkdir -p /data
 
 COPY --from=builder /beastdb /usr/local/bin/beastdb
 
-EXPOSE 50051
+EXPOSE 50051 8080 8088
 VOLUME ["/data"]
 
 ENTRYPOINT ["/usr/local/bin/beastdb"]
