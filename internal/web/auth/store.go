@@ -65,6 +65,29 @@ func (s *UserStore) CreateUser(username, password string, role Role) error {
 	return s.engine.Put(key, data)
 }
 
+// SetUserPassword updates the password for a user or creates the user if not existing.
+func (s *UserStore) SetUserPassword(username, password string, role Role) error {
+	key := sysUserKey(username)
+	hash, err := HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hashing password: %w", err)
+	}
+
+	u := &User{
+		Username:     username,
+		PasswordHash: hash,
+		Role:         role,
+		CreatedAt:    time.Now().UTC(),
+	}
+
+	data, err := u.Marshal()
+	if err != nil {
+		return fmt.Errorf("marshalling user: %w", err)
+	}
+
+	return s.engine.Put(key, data)
+}
+
 // Authenticate verifies credentials and returns the User on success.
 func (s *UserStore) Authenticate(username, password string) (*User, error) {
 	data, exists, err := s.engine.Get(sysUserKey(username))

@@ -82,12 +82,20 @@ func main() {
 			log.Fatalf("Failed to create web server: %v", webErr)
 		}
 
-		// Seed the default admin user on first run (no-op if already exists).
+		// Seed default admin on first run, or synchronize if custom password provided.
 		store := auth.NewUserStore(engine)
-		if seedErr := store.CreateUser("admin", *adminPassword, auth.RoleAdmin); seedErr != nil {
-			log.Printf("Admin user already exists (skipping seed): %v", seedErr)
+		if *adminPassword != "changeme" {
+			if err := store.SetUserPassword("admin", *adminPassword, auth.RoleAdmin); err != nil {
+				log.Printf("Failed to sync admin password: %v", err)
+			} else {
+				log.Printf("Admin password synchronized with configured runtime flag.")
+			}
 		} else {
-			log.Printf("Admin user created. Change the default password immediately!")
+			if seedErr := store.CreateUser("admin", "changeme", auth.RoleAdmin); seedErr != nil {
+				log.Printf("Admin user already exists (skipping seed): %v", seedErr)
+			} else {
+				log.Printf("Default admin user created. Change the password immediately!")
+			}
 		}
 
 		go webSrv.Serve()
