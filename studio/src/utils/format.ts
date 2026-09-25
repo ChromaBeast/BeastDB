@@ -1,47 +1,35 @@
-import { DbRecord } from "../types";
-
-export function parseRecordValue(raw: string): Record<string, any> | null {
-  const trimmed = raw.trim();
-  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return null;
-    }
-  }
-  return null;
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export function enhanceRecord(rec: { key: number; value: string }): DbRecord {
-  const parsed = parseRecordValue(rec.value);
-  if (!parsed) {
-    return { key: rec.key, value: rec.value };
+export function formatDateRelative(dateStr?: string): string {
+  if (!dateStr) return "N/A";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+    if (diff < 60) return "Just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+    return d.toLocaleDateString();
+  } catch {
+    return dateStr;
   }
+}
 
-  const inner = parsed.game || parsed.movie || parsed.tv || parsed.book || parsed.user || {};
-  const extractedType =
-    parsed.type || (parsed.game ? "game" : parsed.movie ? "movie" : parsed.tv ? "tv" : parsed.book ? "book" : parsed.username ? "user" : undefined);
-  const extractedTitle =
-    parsed.title || inner.title || parsed.name || inner.name || parsed.username;
-  const extractedRating =
-    parsed.rating ?? inner.rating ?? parsed.userRating;
-  const extractedCover =
-    parsed.coverUrl || inner.coverUrl || parsed.posterUrl || inner.posterUrl;
-  const extractedStatus =
-    parsed.status || inner.status;
-
-  return {
-    key: rec.key,
-    value: rec.value,
-    parsed: {
-      ...parsed,
-      ...(extractedType ? { type: extractedType } : {}),
-      ...(extractedTitle ? { title: extractedTitle } : {}),
-      ...(extractedRating !== undefined ? { rating: extractedRating } : {}),
-      ...(extractedCover ? { coverUrl: extractedCover } : {}),
-      ...(extractedStatus ? { status: extractedStatus } : {}),
-    },
-  };
+export function formatDateFull(dateStr?: string): string {
+  if (!dateStr) return "N/A";
+  try {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? dateStr : d.toUTCString();
+  } catch {
+    return dateStr;
+  }
 }
 
 export function fnv1a64(str: string): number {
@@ -58,8 +46,8 @@ export function fnv1a64(str: string): number {
 
 export function formatKey(key: number | string): string {
   const str = String(key);
-  if (str.length > 12) {
-    return str.slice(0, 4) + "..." + str.slice(-4);
+  if (str.length > 14) {
+    return str.slice(0, 5) + "..." + str.slice(-4);
   }
   return str;
 }

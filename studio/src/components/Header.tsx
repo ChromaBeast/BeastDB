@@ -1,16 +1,22 @@
 "use client";
 
 import React from "react";
-import { Zap, ShieldCheck, Database, LogOut, RefreshCw } from "lucide-react";
+import { Zap, Database, LogOut, RefreshCw, Binary } from "lucide-react";
 import { TelemetryStats } from "../types";
 
 interface HeaderProps {
   stats: TelemetryStats | null;
   onRefresh: () => void;
+  onOpenKeyCalculator: () => void;
   isLoading: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ stats, onRefresh, isLoading }) => {
+export const Header: React.FC<HeaderProps> = ({
+  stats,
+  onRefresh,
+  onOpenKeyCalculator,
+  isLoading,
+}) => {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/[0.08] bg-[#090D16]/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
@@ -40,7 +46,16 @@ export const Header: React.FC<HeaderProps> = ({ stats, onRefresh, isLoading }) =
         </div>
 
         {/* Actions & User */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={onOpenKeyCalculator}
+            className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+            title="Inspect 64-bit key architecture"
+          >
+            <Binary className="h-3.5 w-3.5 text-purple-400" />
+            <span className="hidden sm:inline">Key Analyzer</span>
+          </button>
+
           <button
             onClick={onRefresh}
             disabled={isLoading}
