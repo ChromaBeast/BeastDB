@@ -35,7 +35,14 @@
       var error = document.getElementById('error');
       button.disabled = true; button.textContent = 'Signing in…'; error.hidden = true;
       try {
-        var response = await fetch('/login', { method: 'POST', body: new FormData(event.currentTarget), credentials: 'same-origin' });
+        var form = event.currentTarget;
+        var data = { username: form.username.value, password: form.password.value };
+        var response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          credentials: 'same-origin'
+        });
         if (!response.ok) throw new Error('Sign in failed');
         window.location.assign('/');
       } catch (e) { error.hidden = false; button.disabled = false; button.textContent = 'Sign in'; }

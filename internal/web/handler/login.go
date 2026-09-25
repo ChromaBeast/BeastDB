@@ -57,11 +57,9 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request, d *Deps) {
 			return
 		}
 	} else {
-		// Support HTML form submission
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "Bad Request", http.StatusBadRequest)
-			return
-		}
+		// Support HTML form and FormData submission
+		_ = r.ParseMultipartForm(32 << 20)
+		_ = r.ParseForm()
 		req.Username = r.FormValue("username")
 		req.Password = r.FormValue("password")
 	}
