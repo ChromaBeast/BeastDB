@@ -26,7 +26,7 @@ const PREFIX_META: Record<number, { label: string; color: string }> = {
   0x51: { label: "System Auth / User", color: "fuchsia" },
 };
 
-export function decodeKey(key: number | string): KeyDecoded {
+export function decodeKey(key: string): KeyDecoded {
   try {
     const bKey = BigInt(key);
     const prefix = Number((bKey >> 56n) & 0xffn);
@@ -66,7 +66,7 @@ export function decodeKey(key: number | string): KeyDecoded {
   }
 }
 
-export function formatKeyCompact(key: number | string): string {
+export function formatKeyCompact(key: string): string {
   const str = String(key);
   if (str.length > 14) {
     return str.slice(0, 5) + "..." + str.slice(-4);

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -13,6 +14,7 @@ import (
 type EngineReader interface {
 	Get(key uint64) ([]byte, bool, error)
 	Put(key uint64, value []byte) error
+	PutIfAbsent(key uint64, value []byte) error
 	Delete(key uint64) error
 	CurrentLSN() uint64
 	ScanRecords(startKey uint64, limit int) ([]api.RecordItem, error)
@@ -23,27 +25,13 @@ type EngineReader interface {
 type APIHandler struct {
 	engine   EngineReader
 	sessions *auth.SessionManager
+	role     string
+	version  string
 }
 
 // NewAPIHandler creates an APIHandler with engine and session dependencies.
-func NewAPIHandler(e EngineReader, s *auth.SessionManager) *APIHandler {
-	return &APIHandler{engine: e, sessions: s}
-}
-
-// GetStats returns live engine telemetry (LSN, role, engine mode).
-func (h *APIHandler) GetStats(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	writeJSON(w, map[string]any{
-		"lsn":     h.engine.CurrentLSN(),
-		"role":    "Leader",
-		"mode":    "B+ Tree (4KB)",
-		"status":  "healthy",
-		"version": "0.1.0-release",
-	})
+func NewAPIHandler(e EngineReader, s *auth.SessionManager, role, version string) *APIHandler {
+	return &APIHandler{engine: e, sessions: s, role: role, version: version}
 }
 
 // GetRecords handles GET /api/records?start=<uint64>&limit=<int>.
@@ -74,10 +62,11 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]any{
-		"records": records,
-		"count":   len(records),
-		"nextKey": nextKey,
-		"hasMore": hasMore,
+		"records":     records,
+		"count":       len(records),
+		"nextKey":     nextKey,
+		"nextKeyText": strconv.FormatUint(nextKey, 10),
+		"hasMore":     hasMore,
 	})
 }
 
@@ -104,7 +93,7 @@ func (h *APIHandler) GetKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, map[string]any{"key": key, "value": string(val)})
+	writeJSON(w, map[string]any{"key": key, "keyText": strconv.FormatUint(key, 10), "value": string(val)})
 }
 
 // PutKey handles POST /api/key — inserts or updates a key-value pair.
@@ -122,15 +111,38 @@ func (h *APIHandler) PutKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		Key   uint64 `json:"key"`
-		Value string `json:"value"`
+		Key        json.RawMessage `json:"key"`
+		Value      string          `json:"value"`
+		CreateOnly bool            `json:"createOnly"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 		return
 	}
 
-	if err := h.engine.Put(body.Key, []byte(body.Value)); err != nil {
+	keyText := string(body.Key)
+	if len(keyText) > 1 && keyText[0] == '"' {
+		if err := json.Unmarshal(body.Key, &keyText); err != nil {
+			http.Error(w, "Invalid key", http.StatusBadRequest)
+			return
+		}
+	}
+	key, err := strconv.ParseUint(keyText, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid key", http.StatusBadRequest)
+		return
+	}
+	var writeErr error
+	if body.CreateOnly {
+		writeErr = h.engine.PutIfAbsent(key, []byte(body.Value))
+	} else {
+		writeErr = h.engine.Put(key, []byte(body.Value))
+	}
+	if errors.Is(writeErr, api.ErrRecordExists) {
+		http.Error(w, "Record already exists", http.StatusConflict)
+		return
+	}
+	if writeErr != nil {
 		http.Error(w, "Engine error", http.StatusInternalServerError)
 		return
 	}

@@ -2,16 +2,37 @@ package api
 
 import (
 	"encoding/binary"
+	"errors"
 
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
+var ErrRecordExists = errors.New("record already exists")
+
 // Put logs mutation to WAL, stores tuple in slotted page, and indexes key in B+ Tree.
 func (e *Engine) Put(key uint64, value []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.putLocked(key, value)
+}
+
+// PutIfAbsent inserts only when key is not already present.
+func (e *Engine) PutIfAbsent(key uint64, value []byte) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, err := e.tree.Find(key)
+	if err == nil {
+		return ErrRecordExists
+	}
+	if err != index.ErrKeyNotFound {
+		return err
+	}
+	return e.putLocked(key, value)
+}
+
+func (e *Engine) putLocked(key uint64, value []byte) error {
 
 	var keyBytes [8]byte
 	binary.LittleEndian.PutUint64(keyBytes[:], key)

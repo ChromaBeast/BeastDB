@@ -1,19 +1,22 @@
 export type PayloadFormat =
-  | "json_object"
-  | "json_array"
-  | "token"
-  | "string"
-  | "binary"
-  | "empty";
+  "json_object" | "json_array" | "token" | "string" | "binary" | "empty";
 
 export interface ParsedField {
   key: string;
   value: any;
-  type: "string" | "number" | "boolean" | "array" | "object" | "date" | "url" | "image" | "null";
+  type:
+    | "string"
+    | "number"
+    | "boolean"
+    | "array"
+    | "object"
+    | "date"
+    | "url"
+    | "image"
+    | "null";
 }
 
 export interface UniversalRecord {
-  key: number;
   keyStr: string;
   keyHex: string;
   prefix: number;
@@ -37,8 +40,12 @@ export interface TelemetryStats {
   lsn: number;
   role: string;
   mode: string;
-  status: string;
   version: string;
+}
+
+export interface SessionUser {
+  username: string;
+  role: "admin" | "viewer";
 }
 
 export type ViewMode = "grid" | "table";

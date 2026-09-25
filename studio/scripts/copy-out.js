@@ -22,6 +22,11 @@ function copyRecursiveSync(src, dest) {
 
 if (fs.existsSync(srcDir)) {
   console.log(`Copying static export from ${srcDir} to ${destDir}...`);
+  const oldAssets = path.resolve(destDir, '_next');
+  if (path.dirname(oldAssets) !== path.resolve(destDir)) {
+    throw new Error('Refusing to remove assets outside the static directory');
+  }
+  fs.rmSync(oldAssets, { recursive: true, force: true });
   copyRecursiveSync(srcDir, destDir);
   console.log('Successfully updated internal/web/static with Next.js export bundle.');
 } else {
