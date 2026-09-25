@@ -28,21 +28,24 @@ type EngineBackend interface {
 // secret is the 32-byte HMAC key for session signing.
 // Call Serve() to start accepting connections.
 func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error) {
-	sessions := auth.NewSessionManager(secret)
-	users := auth.NewUserStore(engine)
-	apiH := handler.NewAPIHandler(engine, sessions)
-
-	deps := &handler.Deps{Users: users, Sessions: sessions}
-
-	mux := http.NewServeMux()
-
-	// Static files — served from embedded FS
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		return nil, err
 	}
 
-	// Public routes
+	sessions := auth.NewSessionManager(secret)
+	users := auth.NewUserStore(engine)
+	apiH := handler.NewAPIHandler(engine, sessions)
+
+	deps := &handler.Deps{Users: users, Sessions: sessions, StaticFS: staticFS}
+
+	mux := http.NewServeMux()
+
+	// Public static assets (CSS, JS)
+	mux.Handle("/css/", http.FileServer(http.FS(staticFS)))
+	mux.Handle("/js/", http.FileServer(http.FS(staticFS)))
+
+	// Public auth routes
 	mux.HandleFunc("/login", handler.LoginHandler(deps))
 	mux.HandleFunc("/logout", handler.LogoutHandler(deps))
 
@@ -50,7 +53,10 @@ func NewServer(addr string, engine EngineBackend, secret []byte) (*Server, error
 	dashboardFS := http.FileServer(http.FS(staticFS))
 	mux.Handle("/", handler.AuthMiddleware(sessions, dashboardFS))
 
-	// Protected API routes
+	// Protected telemetry route
+	mux.Handle("/api/stats", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetStats)))
+
+	// Protected key-value CRUD routes
 	mux.Handle("/api/key", handler.AuthMiddleware(sessions, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
