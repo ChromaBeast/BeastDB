@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io/fs"
 	"net/http"
 
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
@@ -10,6 +11,7 @@ import (
 type Deps struct {
 	Users    *auth.UserStore
 	Sessions *auth.SessionManager
+	StaticFS fs.FS
 }
 
 // AuthMiddleware rejects unauthenticated requests to protected routes.

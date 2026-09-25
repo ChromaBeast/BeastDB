@@ -3,131 +3,101 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BeastDB — Admin Console</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0f1117; color: #e2e8f0; font-family: 'SF Mono','Fira Code',monospace; }
-    header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 1rem 2rem; background: #1a1d2e; border-bottom: 1px solid #2d3150;
-    }
-    .logo { font-size: 1.25rem; font-weight: 700; color: #7c3aed; }
-    .logout-btn {
-      padding: 0.4rem 1rem; background: transparent; border: 1px solid #2d3150;
-      border-radius: 6px; color: #94a3b8; font-family: inherit; font-size: 0.8rem;
-      cursor: pointer; transition: border-color 0.2s;
-    }
-    .logout-btn:hover { border-color: #f87171; color: #f87171; }
-    main { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
-    h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;
-         color: #64748b; margin-bottom: 1rem; }
-    .panel {
-      background: #1a1d2e; border: 1px solid #2d3150; border-radius: 10px;
-      padding: 1.5rem; margin-bottom: 1.5rem;
-    }
-    .row { display: flex; gap: 0.75rem; margin-bottom: 0.75rem; }
-    input[type=text], input[type=number] {
-      flex: 1; padding: 0.55rem 0.8rem; background: #0f1117;
-      border: 1px solid #2d3150; border-radius: 6px; color: #e2e8f0;
-      font-family: inherit; font-size: 0.85rem;
-    }
-    input:focus { outline: none; border-color: #7c3aed; }
-    .btn {
-      padding: 0.55rem 1.1rem; border: none; border-radius: 6px;
-      font-family: inherit; font-size: 0.85rem; font-weight: 600;
-      cursor: pointer; transition: background 0.2s;
-    }
-    .btn-primary { background: #7c3aed; color: #fff; }
-    .btn-primary:hover { background: #6d28d9; }
-    .btn-danger { background: #991b1b; color: #fff; }
-    .btn-danger:hover { background: #7f1d1d; }
-    .result {
-      background: #0f1117; border: 1px solid #2d3150; border-radius: 6px;
-      padding: 0.75rem 1rem; font-size: 0.8rem; color: #a5f3fc;
-      min-height: 2.5rem; white-space: pre-wrap; word-break: break-all;
-    }
-    .tag-ok  { color: #4ade80; }
-    .tag-err { color: #f87171; }
-  </style>
+  <title>BeastDB — Studio</title>
+  <link rel="stylesheet" href="/css/theme.css">
 </head>
 <body>
-  <header>
-    <span class="logo">⚡ BeastDB Admin Console</span>
-    <form method="POST" action="/logout" style="display:inline">
-      <button class="logout-btn" type="submit">Sign Out</button>
-    </form>
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="brand">
+      <span class="brand-logo">⚡ BeastDB</span>
+      <span class="badge badge-green"><span class="badge-dot"></span> <span id="statRole">Leader</span></span>
+      <span class="badge badge-purple">Node #1</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <span style="font-size: 0.85rem; color: var(--text-muted);">User: <strong style="color: var(--text-main);">admin</strong></span>
+      <form method="POST" action="/logout" style="margin: 0;">
+        <button class="btn btn-ghost" type="submit" style="padding: 0.4rem 0.85rem; font-size: 0.8rem;">Sign Out</button>
+      </form>
+    </div>
   </header>
-  <main>
-    <!-- GET Key -->
-    <h2>Lookup Key</h2>
-    <div class="panel">
-      <div class="row">
-        <input type="number" id="getKey" placeholder="Key (uint64)" min="0">
-        <button class="btn btn-primary" onclick="getKey()">Get</button>
-      </div>
-      <div class="result" id="getResult">—</div>
-    </div>
 
-    <!-- PUT Key -->
-    <h2>Insert / Update Key</h2>
-    <div class="panel">
-      <div class="row">
-        <input type="number" id="putKey" placeholder="Key (uint64)" min="0">
-        <input type="text"   id="putVal" placeholder="Value">
-        <button class="btn btn-primary" onclick="putKey()">Put</button>
+  <main style="max-width: 1200px; margin: 2rem auto; padding: 0 1.5rem;">
+    <!-- Live Telemetry HUD -->
+    <section class="hud-grid">
+      <div class="hud-card">
+        <div class="hud-title">WAL Log Sequence Number</div>
+        <div class="hud-val mono" id="statLsn" style="color: var(--accent-cyan);">#0</div>
       </div>
-      <div class="result" id="putResult">—</div>
-    </div>
+      <div class="hud-card">
+        <div class="hud-title">Index Engine</div>
+        <div class="hud-val" id="statMode">B+ Tree (4KB)</div>
+      </div>
+      <div class="hud-card">
+        <div class="hud-title">Storage Durability</div>
+        <div class="hud-val" style="color: var(--success);">ARIES / WAL</div>
+      </div>
+      <div class="hud-card">
+        <div class="hud-title">Engine Concurrency</div>
+        <div class="hud-val mono">RWMutex</div>
+      </div>
+    </section>
 
-    <!-- DELETE Key -->
-    <h2>Delete Key</h2>
-    <div class="panel">
-      <div class="row">
-        <input type="number" id="delKey" placeholder="Key (uint64)" min="0">
-        <button class="btn btn-danger" onclick="deleteKey()">Delete</button>
+    <!-- Studio Operations Layout -->
+    <section class="studio-layout">
+      <!-- Left: Key Query & Mutation Panel -->
+      <div class="card">
+        <div class="card-title">
+          <span>Key Operations</span>
+        </div>
+
+        <!-- Quick Point Query -->
+        <div class="form-group">
+          <label class="form-label" for="searchKey">Lookup by Key (uint64)</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input class="input-control mono" id="searchKey" type="number" placeholder="e.g. 1001" min="0">
+            <button class="btn btn-primary" onclick="executeGet()">Find</button>
+            <button class="btn btn-danger" onclick="executeDelete()">Delete</button>
+          </div>
+        </div>
+
+        <hr style="border: none; border-top: 1px solid var(--border); margin: 1.25rem 0;">
+
+        <!-- Insert / Update Tuple -->
+        <div class="card-title" style="margin-bottom: 0.75rem;">
+          <span>Insert / Update Record</span>
+          <button class="btn btn-ghost" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="formatJsonInput()">Format JSON</button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="mutationKey">Key (uint64)</label>
+          <input class="input-control mono" id="mutationKey" type="number" placeholder="e.g. 1001" min="0">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="mutationVal">Payload (JSON or text)</label>
+          <textarea class="input-control mono" id="mutationVal" placeholder='{"title": "Half-Life 2", "status": "completed"}'></textarea>
+        </div>
+
+        <button class="btn btn-primary" style="margin-top: 0.5rem;" onclick="executePut()">
+          Commit to B+ Tree & WAL
+        </button>
       </div>
-      <div class="result" id="delResult">—</div>
-    </div>
+
+      <!-- Right: Record Inspector -->
+      <div class="card">
+        <div class="card-title">
+          <span>Record Inspector</span>
+          <button class="btn btn-ghost" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="copyInspector()">Copy</button>
+        </div>
+        <pre class="code-viewer mono" id="recordInspector">// Select or insert a key to inspect its stored payload...</pre>
+      </div>
+    </section>
   </main>
-  <script>
-    async function getKey() {
-      const k = document.getElementById('getKey').value;
-      const el = document.getElementById('getResult');
-      try {
-        const r = await fetch(`/api/key?k=${k}`);
-        const body = await r.text();
-        el.innerHTML = r.ok
-          ? `<span class="tag-ok">OK</span>  ${body}`
-          : `<span class="tag-err">ERR ${r.status}</span>  ${body}`;
-      } catch(e) { el.innerHTML = `<span class="tag-err">Network error</span>`; }
-    }
 
-    async function putKey() {
-      const k = document.getElementById('putKey').value;
-      const v = document.getElementById('putVal').value;
-      const el = document.getElementById('putResult');
-      try {
-        const r = await fetch('/api/key', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({key: Number(k), value: v})
-        });
-        el.innerHTML = r.ok
-          ? `<span class="tag-ok">OK</span>  Inserted key ${k}`
-          : `<span class="tag-err">ERR ${r.status}</span>  ${await r.text()}`;
-      } catch(e) { el.innerHTML = `<span class="tag-err">Network error</span>`; }
-    }
+  <!-- Toast Notification Anchor -->
+  <div class="toast-container" id="toastContainer"></div>
 
-    async function deleteKey() {
-      const k = document.getElementById('delKey').value;
-      const el = document.getElementById('delResult');
-      try {
-        const r = await fetch(`/api/key?k=${k}`, {method: 'DELETE'});
-        el.innerHTML = r.ok
-          ? `<span class="tag-ok">OK</span>  Deleted key ${k}`
-          : `<span class="tag-err">ERR ${r.status}</span>  ${await r.text()}`;
-      } catch(e) { el.innerHTML = `<span class="tag-err">Network error</span>`; }
-    }
-  </script>
+  <script src="/js/dashboard.js"></script>
 </body>
 </html>

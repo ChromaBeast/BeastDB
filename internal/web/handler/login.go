@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
@@ -18,7 +19,13 @@ func LoginHandler(d *Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			http.ServeFile(w, r, "internal/web/static/login.html")
+			data, err := fs.ReadFile(d.StaticFS, "login.html")
+			if err != nil {
+				http.Error(w, "Login template missing", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(data)
 		case http.MethodPost:
 			handleLoginPost(w, r, d)
 		default:
