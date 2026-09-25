@@ -112,8 +112,18 @@ export const RecordsTable: React.FC<RecordsTableProps> = ({
                         {type}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 max-w-xs truncate font-medium text-slate-200">
-                      {title}
+                    <td className="px-5 py-3.5 max-w-sm truncate text-slate-200">
+                      <div className="flex items-center gap-2.5">
+                        {rec.parsed?.coverUrl ? (
+                          <img
+                            src={rec.parsed.coverUrl}
+                            alt=""
+                            className="h-7 w-7 rounded object-cover ring-1 ring-white/10 shrink-0"
+                            onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                          />
+                        ) : null}
+                        <span className="truncate font-medium">{title}</span>
+                      </div>
                     </td>
                     <td className="px-5 py-3.5">
                       <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-400 border border-emerald-500/20">

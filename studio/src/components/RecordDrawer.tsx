@@ -92,6 +92,14 @@ export const RecordDrawer: React.FC<RecordDrawerProps> = ({ record, onClose, onD
             <div className="space-y-4">
               {/* Primary Entity Banner */}
               <div className="rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 to-indigo-500/5 p-4">
+                {parsed.coverUrl && (
+                  <img
+                    src={parsed.coverUrl}
+                    alt=""
+                    className="mb-3 max-h-48 w-full rounded-lg object-cover ring-1 ring-white/10"
+                    onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                  />
+                )}
                 <div className="flex items-center justify-between">
                   <span className="rounded bg-purple-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-300">
                     {parsed.type ?? "ENTITY"}
