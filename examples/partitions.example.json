@@ -1,0 +1,20 @@
+[
+  {
+    "prefix": 1,
+    "label": "User Accounts",
+    "color": "emerald",
+    "description": "User profiles and authentication credentials"
+  },
+  {
+    "prefix": 2,
+    "label": "Secondary Index",
+    "color": "teal",
+    "description": "Deterministic index mappings"
+  },
+  {
+    "prefix": 16,
+    "label": "Entity Catalog",
+    "color": "orange",
+    "description": "Shared canonical items and metadata"
+  }
+]
