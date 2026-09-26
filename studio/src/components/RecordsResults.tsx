@@ -10,6 +10,18 @@ interface Props {
   onSelect: (r: UniversalRecord) => void;
   onNotice: (message: string, error?: boolean) => void;
 }
+function preview(record: UniversalRecord): string {
+  if (record.secondaryLabel) return record.secondaryLabel;
+  if (record.fields) {
+    const summary = record.attributes
+      .filter((field) => !["name", "title"].includes(field.key))
+      .slice(0, 3)
+      .map((field) => `${field.key}: ${field.value}`)
+      .join(" · ");
+    if (summary) return summary;
+  }
+  return record.raw || "Empty value";
+}
 export function RecordsResults({ records, view, onSelect, onNotice }: Props) {
   const copy = async (key: string) => {
     try {
@@ -36,7 +48,7 @@ export function RecordsResults({ records, view, onSelect, onNotice }: Props) {
             </span>
           </div>
           <p className="mt-2 line-clamp-2 min-h-10 break-all text-sm text-muted-foreground">
-            {r.secondaryLabel || r.raw || "Empty value"}
+            {preview(r)}
           </p>
           <div className="mt-4 flex justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
             <span className="truncate">{r.prefixLabel}</span>
@@ -74,7 +86,7 @@ export function RecordsResults({ records, view, onSelect, onNotice }: Props) {
                       {r.primaryLabel}
                     </button>
                     <span className="block max-w-full truncate text-xs text-muted-foreground">
-                      {r.secondaryLabel || r.raw || "Empty value"}
+                      {preview(r)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 300" role="img" aria-labelledby="title desc">
+  <title id="title">BeastDB database claw mark</title>
+  <desc id="desc">A dark, three tier database cylinder cut by three neon green claw slashes.</desc>
+  <defs>
+    <clipPath id="db-shell">
+      <path d="M34 55C34 27 90 12 160 12s126 15 126 43v187c0 26-56 46-126 46S34 268 34 242V55Z"/>
+    </clipPath>
+    <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#222724"/>
+      <stop offset=".48" stop-color="#121614"/>
+      <stop offset="1" stop-color="#080A09"/>
+    </linearGradient>
+    <linearGradient id="claw" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B9FF29"/>
+      <stop offset="1" stop-color="#8DE900"/>
+    </linearGradient>
+  </defs>
+  <path d="M34 55C34 27 90 12 160 12s126 15 126 43v187c0 26-56 46-126 46S34 268 34 242V55Z" fill="url(#shell)"/>
+  <g fill="none" stroke="#303833" stroke-width="5" opacity=".72">
+    <path d="M36 105c3 28 57 43 124 43s121-15 124-43"/>
+    <path d="M36 169c3 28 57 43 124 43s121-15 124-43"/>
+    <path d="M36 232c5 27 59 41 124 41s119-14 124-41"/>
+  </g>
+  <ellipse cx="160" cy="55" rx="126" ry="43" fill="#1C211E" stroke="#303833" stroke-width="4"/>
+  <g clip-path="url(#db-shell)" fill="url(#claw)">
+    <path d="M249 22 232 43 221 46 207 63 195 65 182 81 168 84 155 100 142 104 129 120 116 124 100 143 88 147 67 174 79 170 93 158 106 156 120 139 133 137 147 121 159 118 174 101 187 99 202 80 215 78 229 59 242 55 258 38 265 30Z"/>
+    <path d="M286 79 269 99 257 102 242 119 230 121 215 139 202 141 187 159 174 162 158 180 145 183 127 204 114 207 96 230 108 226 123 213 136 211 151 192 164 190 180 172 193 170 208 151 221 149 236 130 249 127 265 108 278 105 295 87 302 80Z"/>
+    <path d="M300 144 284 162 272 165 257 181 244 183 229 200 216 203 200 220 187 224 172 240 158 244 140 262 127 267 108 289 121 285 136 273 149 270 164 253 177 249 193 233 206 229 221 211 234 208 250 190 263 187 279 169 292 166 308 150 315 143Z"/>
+  </g>
+</svg>

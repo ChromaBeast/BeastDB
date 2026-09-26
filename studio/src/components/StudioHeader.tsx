@@ -6,11 +6,12 @@ import {
   Moon,
   RefreshCw,
   Sun,
-  UserRound,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { BeastDBLogo } from "./BeastDBLogo";
 import { SessionUser } from "../types";
 import { useTheme } from "../hooks/useTheme";
+import { RoleBadge } from "./RoleBadge";
 
 interface Props {
   view: "records" | "overview";
@@ -23,15 +24,9 @@ export function StudioHeader({ view, setView, user, busy, onRefresh }: Props) {
   const theme = useTheme();
   return (
     <header className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-3 px-4 py-3 md:px-8">
+      <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 px-4 py-3 md:px-8">
         <div className="mr-auto flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Database size={19} />
-          </div>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">BeastDB</div>
-            <div className="text-xs text-muted-foreground">Studio</div>
-          </div>
+          <BeastDBLogo />
         </div>
         <nav
           aria-label="Main navigation"
@@ -75,13 +70,21 @@ export function StudioHeader({ view, setView, user, busy, onRefresh }: Props) {
             {theme.dark ? <Sun size={17} /> : <Moon size={17} />}
           </Button>
           <div className="mx-2 hidden h-5 w-px bg-border sm:block" />
-          <span
-            className="hidden max-w-32 truncate text-xs text-muted-foreground sm:inline"
-            title={user?.username || "Session unavailable"}
-          >
-            <UserRound size={14} className="mr-1 inline" />
-            {user?.username || "Account"}
-          </span>
+          <div className="hidden items-center gap-2 sm:flex">
+            <div
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
+              aria-hidden="true"
+            >
+              {(user?.username || "??").slice(0, 2).toUpperCase()}
+            </div>
+            <span
+              className="max-w-24 truncate text-xs text-muted-foreground"
+              title={user?.username || "Session unavailable"}
+            >
+              {user?.username || "Account"}
+            </span>
+            <RoleBadge role={user?.role} />
+          </div>
           <form action="/logout" method="POST">
             <Button
               variant="ghost"

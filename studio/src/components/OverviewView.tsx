@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { SessionUser, TelemetryStats } from "../types";
 import { Button } from "./ui/button";
+import { PartitionChart } from "./PartitionChart";
+import { getPartitionMeta } from "../utils/key-decoder";
 
 interface Props {
   stats: TelemetryStats | null;
@@ -30,6 +32,13 @@ export function OverviewView({
   onRetry,
   onAnalyze,
 }: Props) {
+  const chartData = stats?.partitionCounts
+    ? Object.entries(stats.partitionCounts).map(([prefix, count]) => {
+        const meta = getPartitionMeta(Number(prefix));
+        return { label: meta.label, count, color: meta.color };
+      })
+    : [];
+
   return (
     <section aria-labelledby="overview-title" className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -122,6 +131,12 @@ export function OverviewView({
           </p>
         </div>
       </div>
+      {chartData.length > 0 && (
+        <div className="rounded-lg border bg-card p-6">
+          <h2 className="mb-4 font-semibold">Partition distribution</h2>
+          <PartitionChart data={chartData} />
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border bg-card p-6">
           <h2 className="font-semibold">Engine information</h2>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">
+  <style>
+    .body { fill: #252d34; }
+    .detail { stroke: #5a6670; }
+    .claw { stroke: #82c91e; }
+    @media (prefers-color-scheme: dark) {
+      .body { fill: #e3eaf0; }
+      .detail { stroke: #71808d; }
+      .claw { stroke: #a5e635; }
+    }
+  </style>
+  <path class="body" d="M18 4.75C25.32 4.75 31.25 6.93 31.25 9.61V24.4C31.25 27.08 25.32 29.25 18 29.25S4.75 27.08 4.75 24.4V9.61C4.75 6.93 10.68 4.75 18 4.75Z"/>
+  <path class="detail" d="M4.85 16.45C4.85 19.13 10.74 21.3 18 21.3s13.15-2.17 13.15-4.85M4.85 22.35c0 2.68 5.89 4.85 13.15 4.85s13.15-2.17 13.15-4.85M5 9.6c0 2.68 5.82 4.85 13 4.85s13-2.17 13-4.85" fill="none" stroke-width="1.5"/>
+  <path class="claw" d="m10.35 11.55 4.75 8.85m2.2-10.25 4.75 8.85m2.2-10.25L29 17.6" fill="none" stroke-width="2.7" stroke-linecap="round"/>
+</svg>

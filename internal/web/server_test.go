@@ -22,7 +22,8 @@ func TestEmbeddedStudioServesAuthenticatedBundle(t *testing.T) {
 	if err := auth.NewUserStore(engine).CreateUser("operator", "test-password", auth.RoleViewer); err != nil {
 		t.Fatal(err)
 	}
-	server, err := NewServer("127.0.0.1:0", engine, make([]byte, 32), "follower", "test-version")
+	server, err := NewServer("127.0.0.1:0", engine, make([]byte, 32), "follower", "test-version", nil)
+
 	if err != nil {
 		t.Fatal(err)
 	}

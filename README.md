@@ -1,13 +1,19 @@
-# ⚡ BeastDB
+<p align="center">
+  <img src="docs/assets/logo.png" alt="BeastDB Logo" width="440" />
+</p>
 
-A high-performance, distributed, crash-resilient database engine built from scratch in **pure Go** — no frameworks, no ORMs, no shortcuts. Every byte of the storage engine, replication layer, index, and embedded web studio was implemented by hand, from first principles.
+<p align="center">
+  <strong>A high-performance, distributed, crash-resilient database engine built from scratch in pure Go.</strong>
+</p>
 
-[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![Studio](https://img.shields.io/badge/Studio-Embedded%20Web%20GUI-blueviolet)](docs/studio.md)
-[![Zero Allocs](https://img.shields.io/badge/Hot%20Paths-0%20allocs%2Fop-brightgreen)](ROADMAP.md)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Modularity](https://img.shields.io/badge/Code%20Limit-%3C%20200%20LoC-orange)](CONTRIBUTING.md)
-[![Tests](https://img.shields.io/badge/Tests-Passing-success)](/)
+<p align="center">
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go" alt="Go Version" /></a>
+  <a href="docs/studio.md"><img src="https://img.shields.io/badge/Studio-Firebase--Style%20Console-blueviolet" alt="Studio" /></a>
+  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Hot%20Paths-0%20allocs%2Fop-brightgreen" alt="Zero Allocs" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Code%20Limit-%3C%20200%20LoC-orange" alt="Modularity" /></a>
+  <a href="/"><img src="https://img.shields.io/badge/Tests-Passing-success" alt="Tests" /></a>
+</p>
 
 ---
 
@@ -23,7 +29,7 @@ A high-performance, distributed, crash-resilient database engine built from scra
 | **Indexing** | On-disk B+ Tree — binary search routing, 50/50 leaf splits, borrow/merge rebalancing, streaming cursor with epoch concurrency detection |
 | **API** | Protobuf schema + gRPC service (unary + server-streaming), HTTP/2 multiplexing |
 | **Replication** | Leader-Follower WAL streaming — two-phase catch-up replay + live pub-sub broadcaster, batched ACK coalescing |
-| **Studio** | Embedded Next.js 15 Web Console (`//go:embed all:static`, 0 Node.js runtime), Argon2id auth, universal data explorer, 64-bit key bit-slicer |
+| **Studio** | Embedded Next.js 15 Web Console (`//go:embed all:static`, 0 Node.js runtime), Firebase-style 3-column explorer, Argon2id redaction, 64-bit key bit-slicer |
 
 ---
 
@@ -31,11 +37,14 @@ A high-performance, distributed, crash-resilient database engine built from scra
 
 BeastDB ships with **BeastDB Studio** — a modern, dark-mode administrative console embedded directly into the Go executable with **zero Node.js production runtime overhead**:
 
-- **Universal Multi-Purpose Data Explorer**: Introspects and visualizes **any schema** with zero data loss — complex nested JSON documents, plain string indices, delimited tokens, and raw payloads.
-- **Dual Layout Modes**: Switch between responsive **Card Gallery** (with media box art / cover detection) and dense **Data Table** (with column sorting and attribute pills).
-- **Adaptive Field Inspector**: Deep property sheet rendering every single nested attribute, image preview, date, and boolean badge.
+- **Firebase-Style 3-Pane Explorer**: Partition Rail (Collections) → Document List (with cover art/avatar badges) → Full-Height Field Inspector.
+- **Universal Project Usability**: Run BeastDB with any project schema by providing a runtime `-partition-config partitions.json` sidecar. No rebuild required.
+- **Automated Field Redaction**: `passwordHash`, `salt`, `token`, `secret`, and `apiKey` are stripped at parse time from property sheets.
+- **User Profile & Cascading Wipe**: Inspect user profiles (`0x01`) and perform an atomic one-click cascade delete across all partitions.
+- **Server-Side Full Keyspace Search**: B+ Tree cursor scan searching across all database records with partition filtering.
+- **Media Catalog & Normalization (`0x10`)**: Shared media catalog references eliminate duplicate payloads across user libraries.
+- **Live Partition Donut Chart**: Real-time distribution visualization of storage allocation across partitions.
 - **64-Bit Key Bit-Slicer**: Decomposes any uint64 key into Hex, Decimal, and Binary (High 8-bit Partition Prefix, 28-bit Bucket, 28-bit Item ID).
-- **Streaming Range Pagination**: Non-blocking B+ Tree cursor scan with `nextKey` continuation.
 
 > 📖 Deep-dive into architecture, auth synchronization, and key slicing: [docs/studio.md](docs/studio.md)
 

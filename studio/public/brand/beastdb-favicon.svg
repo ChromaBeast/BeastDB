@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BeastDB favicon">
+
+  <path d="M6 14c0-6 11-10 26-10s26 4 26 10v38c0 6-11 10-26 10S6 58 6 52V14Z" fill="#151A16"/>
+  <ellipse cx="32" cy="14" rx="26" ry="10" fill="#273029"/>
+  <path d="M6 27c1 5 12 8 26 8s25-3 26-8M6 41c1 5 12 8 26 8s25-3 26-8" fill="none" stroke="#3A453C" stroke-width="2"/>
+  <path d="M46 5 14 41 23 36 54 5ZM56 19 18 62 28 57 62 19ZM63 39 42 63 51 60 64 46Z" fill="#A8F21A"/>
+
+</svg>
