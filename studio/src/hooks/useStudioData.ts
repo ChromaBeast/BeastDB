@@ -43,9 +43,11 @@ export function useStudioData() {
   const [nextKey, setNextKey] = useState("0");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  const fetchStats = useCallback(async () => {
+  const fetchStats = useCallback(async (includeCounts = false) => {
     try {
-      setStats(await api<TelemetryStats>("/api/stats?counts=true"));
+      const url = includeCounts ? "/api/stats?counts=true" : "/api/stats";
+      const s = await api<TelemetryStats>(url);
+      setStats((prev) => (s.partitionCounts ? s : { ...s, partitionCounts: prev?.partitionCounts }));
       setStatsError(null);
     } catch (e) {
       setStats(null);
@@ -79,7 +81,7 @@ export function useStudioData() {
       setUser(null);
       setError(userResult.reason.message);
     }
-    await fetchStats();
+    await fetchStats(true);
     setLoading(false);
   }, [fetchStats]);
 
@@ -88,7 +90,7 @@ export function useStudioData() {
   }, [refresh]);
   useEffect(() => {
     const timer = window.setInterval(() => {
-      void fetchStats();
+      void fetchStats(false);
     }, 10000);
     return () => window.clearInterval(timer);
   }, [fetchStats]);

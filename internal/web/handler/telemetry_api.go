@@ -22,17 +22,16 @@ func (h *APIHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Query().Get("counts") == "true" {
-		records, err := h.engine.ScanRecords(0, 500000)
+		counts, err := h.engine.ScanPartitionCounts()
 		if err != nil {
 			http.Error(w, "Engine scan error", http.StatusInternalServerError)
 			return
 		}
-		counts := make(map[string]int)
-		for _, item := range records {
-			prefix := uint8(item.Key >> 56)
-			counts[fmt.Sprintf("%d", prefix)]++
+		strCounts := make(map[string]int, len(counts))
+		for prefix, count := range counts {
+			strCounts[fmt.Sprintf("%d", prefix)] = count
 		}
-		resp["partitionCounts"] = counts
+		resp["partitionCounts"] = strCounts
 	}
 
 	writeJSON(w, resp)

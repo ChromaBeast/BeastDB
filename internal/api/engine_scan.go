@@ -64,3 +64,28 @@ func (e *Engine) ScanRecordsPaginated(startKey uint64, limit int) ([]RecordItem,
 	}
 	return items, 0, false, nil
 }
+
+// ScanPartitionCounts iterates through all leaf keys without loading tuple values
+// and returns record counts grouped by the 8-bit partition prefix (key >> 56).
+func (e *Engine) ScanPartitionCounts() (map[uint8]int, error) {
+	cursor, err := e.Scan(0, math.MaxUint64)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close()
+
+	counts := make(map[uint8]int)
+	for {
+		key, _, ok, err := cursor.Next()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			break
+		}
+		prefix := uint8(key >> 56)
+		counts[prefix]++
+	}
+	return counts, nil
+}
+

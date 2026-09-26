@@ -36,6 +36,9 @@ func (e *precisionEngine) ScanRecordsPaginated(start uint64, limit int) ([]api.R
 	e.start = start
 	return []api.RecordItem{{Key: largeKey, KeyText: "18446744073709551615", Value: "value"}}, largeKey, true, nil
 }
+func (e *precisionEngine) ScanPartitionCounts() (map[uint8]int, error) {
+	return nil, nil
+}
 
 func TestPreciseKeysInRecordPage(t *testing.T) {
 	e := &precisionEngine{}
