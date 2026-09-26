@@ -7,6 +7,7 @@ import { PartitionRail } from "./PartitionRail";
 import { DocumentList } from "./DocumentList";
 import { Breadcrumb } from "./Breadcrumb";
 import { RecordDetails } from "./RecordDetails";
+import { getRegisteredPartitions } from "../utils/key-decoder";
 
 interface Props {
   records: UniversalRecord[];
@@ -16,8 +17,10 @@ interface Props {
   hasMore: boolean;
   canWrite: boolean;
   error: string | null;
+  partitionCounts?: Record<string, number>;
   onRetry: () => void;
   onLoadMore: () => void;
+  onLoadPartition?: (prefix: number) => Promise<void>;
   onSelect: (record: UniversalRecord | null) => void;
   onDelete: (key: string) => void;
   onDeleteUser?: (userHash: number) => void;
@@ -40,18 +43,34 @@ export function RecordsView(p: Props) {
   const [searchResults, setSearchResults] = useState<UniversalRecord[] | null>(null);
 
   const partitions = useMemo(() => {
-    const groups = new Map<number, { prefixLabel: string; count: number }>();
-    for (const r of p.records) {
-      const cur = groups.get(r.prefix);
-      groups.set(r.prefix, { prefixLabel: r.prefixLabel, count: (cur?.count || 0) + 1 });
+    const registered = getRegisteredPartitions();
+    const map = new Map<number, { prefixLabel: string; count: number }>();
+    for (const r of registered) {
+      const count = p.partitionCounts ? (p.partitionCounts[String(r.prefix)] ?? 0) : 0;
+      map.set(r.prefix, { prefixLabel: r.label, count });
     }
-    return [...groups.entries()]
+    for (const r of p.records) {
+      const existing = map.get(r.prefix);
+      if (existing) {
+        if (!p.partitionCounts) existing.count += 1;
+      } else {
+        const count = p.partitionCounts ? (p.partitionCounts[String(r.prefix)] ?? 1) : 1;
+        map.set(r.prefix, { prefixLabel: r.prefixLabel, count });
+      }
+    }
+    return [...map.entries()]
       .sort(([a], [b]) => a - b)
       .map(([prefix, g]) => ({ prefix, count: g.count, prefixLabel: g.prefixLabel }));
-  }, [p.records]);
+  }, [p.records, p.partitionCounts]);
+
+  const totalCount = useMemo(() => {
+    if (p.partitionCounts) {
+      return Object.values(p.partitionCounts).reduce((acc, c) => acc + c, 0);
+    }
+    return p.records.length;
+  }, [p.partitionCounts, p.records.length]);
 
   const formats = useMemo(() => [...new Set(p.records.map((r) => r.format))], [p.records]);
-
   const activeRecords = isSearchMode && searchResults ? searchResults : p.records;
 
   const shown = useMemo(() => {
@@ -63,6 +82,19 @@ export function RecordsView(p: Props) {
         (!q || isSearchMode || [r.keyStr, r.primaryLabel, r.secondaryLabel || "", r.raw].some((v) => v.toLowerCase().includes(q)))
     );
   }, [activeRecords, partition, format, search, isSearchMode]);
+
+  const choosePartition = (val: string) => {
+    setPartition(val);
+    p.onSelect(null);
+    setPane("documents");
+    if (val !== "all" && p.onLoadPartition) {
+      const pfx = Number(val);
+      const hasLoaded = p.records.some((r) => r.prefix === pfx);
+      if (!hasLoaded) {
+        void p.onLoadPartition(pfx);
+      }
+    }
+  };
 
   const handleLookup = async () => {
     const key = search.trim();
@@ -121,9 +153,7 @@ export function RecordsView(p: Props) {
             </Button>
           )}
           {p.canWrite && (
-            <Button onClick={p.onNew} size="sm">
-              <Plus size={16} /> New record
-            </Button>
+            <Button onClick={p.onNew} size="sm"><Plus size={16} /> New record</Button>
           )}
         </div>
       </div>
@@ -135,7 +165,7 @@ export function RecordsView(p: Props) {
       )}
       <div className="grid min-h-[660px] overflow-hidden rounded-xl border bg-card shadow-sm lg:grid-cols-[220px_minmax(280px,0.9fr)_minmax(380px,1.4fr)]">
         <div className={`${pane !== "partitions" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
-          <PartitionRail partitions={partitions} selected={partition} total={p.records.length} hasMore={p.hasMore} onSelect={(val) => { setPartition(val); p.onSelect(null); setPane("documents"); }} />
+          <PartitionRail partitions={partitions} selected={partition} total={totalCount} hasMore={p.hasMore} hasFullCounts={Boolean(p.partitionCounts)} onSelect={choosePartition} />
         </div>
         <div className={`${pane !== "documents" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
           <DocumentList records={shown} selected={p.selected} loading={p.loading} loadingMore={p.loadingMore} hasMore={p.hasMore} search={search} format={format} formats={formats} looking={looking} title={partitionTitle} shownCount={shown.length} onSearchChange={setSearch} onFormatChange={setFormat} onExactLookup={() => void handleLookup()} onLoadMore={p.onLoadMore} onSelect={(r) => { p.onSelect(r); setPane("details"); }} onBack={() => setPane("partitions")} canWrite={p.canWrite} onNew={p.onNew} />

@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="BeastDB Logo" width="440" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/beastdb-preview-dark.png" />
+    <img src="docs/assets/beastdb-preview-light.png" alt="BeastDB logo" width="440" />
+  </picture>
 </p>
 
 <p align="center">

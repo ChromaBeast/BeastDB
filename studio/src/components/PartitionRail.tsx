@@ -16,10 +16,11 @@ interface Props {
   selected: string;
   total: number;
   hasMore: boolean;
+  hasFullCounts?: boolean;
   onSelect: (value: string) => void;
 }
 
-export function PartitionRail({ partitions, selected, total, hasMore, onSelect }: Props) {
+export function PartitionRail({ partitions, selected, total, hasMore, hasFullCounts, onSelect }: Props) {
   return (
     <aside aria-label="Partitions" className="flex min-h-0 flex-col border-r">
       <div className="border-b px-5 py-5">
@@ -58,7 +59,9 @@ export function PartitionRail({ partitions, selected, total, hasMore, onSelect }
         })}
       </nav>
       <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-        Counts reflect loaded records{hasMore ? "; more are available" : ""}.
+        {hasFullCounts
+          ? "All registered partitions across keyspace."
+          : `Counts reflect loaded records${hasMore ? "; more are available" : ""}.`}
       </p>
     </aside>
   );

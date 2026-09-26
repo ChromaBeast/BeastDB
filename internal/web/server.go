@@ -45,6 +45,8 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 	// Public static assets (CSS, JS, Next.js artifacts)
 	mux.Handle("/css/", http.FileServer(http.FS(staticFS)))
 	mux.Handle("/js/", http.FileServer(http.FS(staticFS)))
+	mux.Handle("/brand/", http.FileServer(http.FS(staticFS)))
+	mux.Handle("/icon.svg", http.FileServer(http.FS(staticFS)))
 	mux.Handle("/_next/", http.FileServer(http.FS(staticFS)))
 
 	// Public auth routes

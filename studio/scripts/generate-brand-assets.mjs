@@ -82,4 +82,31 @@ const favicon = svg("BeastDB favicon", "0 0 64 64", `
 await emit("beastdb-favicon.svg", favicon, 256);
 await writeFile(path.resolve(brandDir, "../../src/app/icon.svg"), favicon);
 
+for (const size of [16, 32, 48]) {
+  await sharp(Buffer.from(favicon)).resize(size, size).png()
+    .toFile(path.join(brandDir, `beastdb-favicon-${size}.png`));
+}
+
+const appIconBackground = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#101611"/>
+</svg>`);
+const appMark = await sharp(path.join(brandDir, "beastdb-mark-dark.svg"))
+  .resize({ width: 382 }).png().toBuffer();
+const appIcon = await sharp(appIconBackground)
+  .composite([{ input: appMark, left: 65, top: 77 }]).png().toBuffer();
+await writeFile(path.join(brandDir, "beastdb-app-icon-512.png"), appIcon);
+await sharp(appIcon).resize(180, 180).png()
+  .toFile(path.join(brandDir, "beastdb-apple-touch-icon.png"));
+
+for (const theme of ["light", "dark"]) {
+  const horizontal = await sharp(path.join(brandDir, `beastdb-horizontal-${theme}.png`))
+    .resize({ width: 900 }).png().toBuffer();
+  const { width, height } = await sharp(horizontal).metadata();
+  await sharp({ create: {
+    width: 1200, height: 630, channels: 4,
+    background: theme === "dark" ? "#101611" : "#F7F9F6",
+  } }).composite([{ input: horizontal, left: Math.round((1200 - width) / 2), top: Math.round((630 - height) / 2) }])
+    .png().toFile(path.join(brandDir, `beastdb-social-${theme}.png`));
+}
+
 console.log("Generated BeastDB logo assets in", brandDir);

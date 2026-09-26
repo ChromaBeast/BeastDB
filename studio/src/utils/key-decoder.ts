@@ -54,6 +54,17 @@ export function getPartitionMeta(prefix: number): PartitionMeta {
   };
 }
 
+export function getRegisteredPartitions(): Array<{ prefix: number; label: string; color: string; description?: string }> {
+  return Object.entries(prefixRegistry)
+    .map(([prefix, meta]) => ({
+      prefix: Number(prefix),
+      label: meta.label,
+      color: meta.color,
+      description: meta.description,
+    }))
+    .sort((a, b) => a.prefix - b.prefix);
+}
+
 export function decodeKey(key: string): KeyDecoded {
   try {
     const bKey = BigInt(key);

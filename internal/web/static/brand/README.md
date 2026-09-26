@@ -9,7 +9,7 @@ The source artwork is SVG. Every logo is transparent and contains only the name 
 | App icon, compact navigation | `beastdb-mark-light.svg` | `beastdb-mark-dark.svg` |
 | Print in one color | `beastdb-horizontal-mono-black.svg` | `beastdb-horizontal-mono-white.svg` |
 
-Matching transparent PNG exports are included. Use `beastdb-favicon.svg` for browser tabs and small square placements. The `beastdb-preview-*.png` files show the horizontal logos on their intended backgrounds.
+Matching transparent PNG exports are included. Use `beastdb-favicon.svg` for browser tabs, the 16/32/48 px favicon PNGs as fallbacks, `beastdb-app-icon-512.png` for app listings, and `beastdb-apple-touch-icon.png` for iOS home screens. The `beastdb-social-*.png` files are 1200 × 630 share cards. The `beastdb-preview-*.png` files show the horizontal logos on their intended backgrounds.
 
 Colors: graphite `#151A16`, dark surface `#101611`, lime on light `#82C900`, lime on dark `#A8F21A`. Keep the logo proportions when resizing and leave at least one claw width of clear space around it.
 
