@@ -93,6 +93,8 @@ export default function StudioDashboard() {
             onNew={() => setNewOpen(true)}
             onLookup={data.lookup}
             onSearch={data.search}
+            partitionCounts={data.stats?.partitionCounts}
+            onLoadPartition={data.loadPartition}
             onNotice={showNotice}
           />
         ) : (

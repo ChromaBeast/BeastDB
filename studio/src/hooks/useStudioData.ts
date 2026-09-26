@@ -157,6 +157,18 @@ export function useStudioData() {
     return result.records.map(parseUniversalRecord);
   };
 
+  const loadPartition = async (prefix: number): Promise<void> => {
+    const startKey = (BigInt(prefix) << 56n).toString();
+    try {
+      const page = await api<Page>(`/api/records?start=${startKey}&limit=100`);
+      setRecords((current) => {
+        const existingKeys = new Set(current.map((r) => r.keyStr));
+        const newRecs = page.records.map(parseUniversalRecord).filter((r) => !existingKeys.has(r.keyStr));
+        return [...current, ...newRecs];
+      });
+    } catch {}
+  };
+
   return {
     stats,
     user,
@@ -169,6 +181,7 @@ export function useStudioData() {
     updatedAt,
     refresh,
     loadMore,
+    loadPartition,
     lookup,
     save,
     update,
