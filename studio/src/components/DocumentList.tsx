@@ -32,33 +32,33 @@ interface Props {
 
 export function DocumentList(p: Props) {
   return (
-    <div aria-label="Documents" className="flex min-h-0 flex-col border-r">
-      <div className="border-b px-4 py-4">
+    <div aria-label="Documents" className="flex min-h-0 flex-col border-r border-border">
+      <div className="border-b border-border px-4 py-4">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Back to partitions" onClick={p.onBack}>
             <ArrowLeft size={17} />
           </Button>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate font-semibold" title={p.title}>{p.title}</h2>
-            <p className="text-xs text-muted-foreground">{p.shownCount} shown · {p.records.length} loaded</p>
+            <h2 className="truncate font-semibold text-white" title={p.title}>{p.title}</h2>
+            <p className="text-xs font-mono text-zinc-400">{p.shownCount} shown · {p.records.length} loaded</p>
           </div>
           {p.canWrite && (
-            <Button size="sm" onClick={p.onNew} aria-label="New record">
+            <Button size="sm" onClick={p.onNew} aria-label="New record" className="gap-1 text-xs">
               <Plus size={14} /> New
             </Button>
           )}
         </div>
-        <div className="relative mt-4">
-          <Search size={15} className="absolute left-3 top-2.5 text-muted-foreground" />
-          <Input aria-label="Search loaded records" value={p.search} onChange={(e) => p.onSearchChange(e.target.value)} placeholder="Search loaded records" className="pl-9" />
+        <div className="relative mt-3">
+          <Search size={15} className="absolute left-3 top-2.5 text-zinc-500" />
+          <Input aria-label="Search loaded records" value={p.search} onChange={(e) => p.onSearchChange(e.target.value)} placeholder="Search loaded records…" className="pl-9 text-xs" />
         </div>
         <div className="mt-2 flex gap-2">
-          <select aria-label="Filter by format" value={p.format} onChange={(e) => p.onFormatChange(e.target.value)} className="h-9 min-w-0 flex-1 rounded-md border bg-card px-2 text-xs">
+          <select aria-label="Filter by format" value={p.format} onChange={(e) => p.onFormatChange(e.target.value)} className="h-9 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900/90 px-2 text-xs text-zinc-300 focus:outline-none focus:ring-1 focus:ring-beast-lime">
             <option value="all">All formats</option>
             {p.formats.map((f) => <option key={f} value={f}>{f.replace("_", " ")}</option>)}
           </select>
-          <Button variant="outline" size="sm" disabled={!p.search.trim() || p.looking} onClick={p.onExactLookup} title="Look up an exact decimal key">
-            <ArrowRight size={14} /> {p.looking ? "Finding" : "Exact key"}
+          <Button variant="outline" size="sm" disabled={!p.search.trim() || p.looking} onClick={p.onExactLookup} title="Look up an exact decimal key" className="text-xs">
+            <ArrowRight size={14} /> {p.looking ? "Seeking…" : "Exact key"}
           </Button>
         </div>
       </div>
