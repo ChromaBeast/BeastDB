@@ -21,7 +21,7 @@ export function UserProfilePanel({ record, canWrite, onDelete, onDeleteUser }: P
     <div className="flex flex-col gap-4 p-5">
       {/* Avatar */}
       <div className="flex items-center gap-4">
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-beast-lime text-xl font-bold text-black shadow-[0_0_15px_rgba(168,242,26,0.2)]">
           {initials}
         </div>
         <div className="min-w-0">

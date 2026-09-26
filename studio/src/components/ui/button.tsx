@@ -7,10 +7,10 @@ const styles = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:opacity-90",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-accent",
-        outline: "border border-input bg-card hover:bg-accent",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        default: "bg-beast-lime text-black font-semibold shadow hover:bg-beast-lime-hover shadow-[0_0_15px_rgba(168,242,26,0.18)]",
+        secondary: "border border-border bg-zinc-900 text-zinc-200 shadow-sm hover:bg-zinc-800 hover:text-white",
+        outline: "border border-border bg-card shadow-sm hover:bg-zinc-800 hover:text-white",
+        ghost: "hover:bg-zinc-800 hover:text-white",
         destructive:
           "bg-destructive text-destructive-foreground hover:opacity-90",
       },

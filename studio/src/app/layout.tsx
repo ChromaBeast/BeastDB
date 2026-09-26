@@ -12,15 +12,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark scroll-smooth" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('beastdb-theme');document.documentElement.classList.toggle('dark',t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem('beastdb-theme');document.documentElement.classList.toggle('dark',t!=='light')}catch(e){}})()`,
           }}
         />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="bg-zinc-950 text-zinc-100 antialiased min-h-screen selection:bg-beast-lime selection:text-black">{children}</body>
     </html>
   );
 }

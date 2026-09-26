@@ -84,18 +84,18 @@ export function DocumentList(p: Props) {
             const isSelected = p.selected?.keyStr === r.keyStr;
             return (
               <button key={r.keyStr} type="button" onClick={() => p.onSelect(r)} aria-current={isSelected ? "true" : undefined}
-                className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left ${isSelected ? "bg-accent" : "hover:bg-accent/70"}`}>
+                className={`flex w-full items-start gap-3 border-b border-border/70 px-4 py-3 text-left transition ${isSelected ? "bg-beast-lime/10 border-l-4 border-l-beast-lime shadow-sm" : "hover:bg-zinc-900/60"}`}>
                 {r.coverUrl ? (
-                  <img src={r.coverUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" />
+                  <img src={r.coverUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover border border-zinc-800" />
                 ) : (
                   <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded text-lg font-bold text-white ${bgClass}`}>
                     {r.primaryLabel.charAt(0).toUpperCase()}
                   </div>
                 )}
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{r.primaryLabel}</span>
-                  <span className="mt-0.5 block truncate text-xs text-muted-foreground">{r.secondaryLabel || r.format.replace("_", " ")}</span>
-                  <span className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">{r.keyStr}</span>
+                  <span className={`block truncate text-sm font-medium ${isSelected ? "text-white" : ""}`}>{r.primaryLabel}</span>
+                  <span className="mt-0.5 block truncate text-xs text-zinc-400">{r.secondaryLabel || r.format.replace("_", " ")}</span>
+                  <span className="mt-0.5 block truncate font-mono text-xs text-zinc-500">{r.keyStr}</span>
                 </span>
               </button>
             );
