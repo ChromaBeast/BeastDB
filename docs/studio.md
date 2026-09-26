@@ -77,9 +77,10 @@ go run ./cmd/server \
   -port 50051 \
   -data-dir ./data \
   -web-addr 0.0.0.0:8088 \
-  -admin-password my_secure_password \
-  -partition-config ./cmd/server/partitions.json
+  -admin-password my_secure_password
 ```
+
+*(Optional: pass `-partition-config ./path/to/partitions.json` if your project defines custom partition labels).*
 
 Open `http://localhost:8088` in your browser and sign in with username `admin`.
 

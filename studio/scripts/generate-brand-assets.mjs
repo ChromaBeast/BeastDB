@@ -39,6 +39,13 @@ for (const theme of ["light", "dark"]) {
       `${icon(10, 10, 300, 281)}\n${wordmark(315, 197, 142, beastColor, dbColor)}`),
     1590,
   );
+  const horizontalPng = path.join(brandDir, `beastdb-horizontal-${theme}.png`);
+  const { width, height } = await sharp(horizontalPng).metadata();
+  await sharp({ create: {
+    width, height, channels: 4,
+    background: theme === "dark" ? "#101611" : "#F7F9F6",
+  } }).composite([{ input: horizontalPng }]).png()
+    .toFile(path.join(brandDir, `beastdb-preview-${theme}.png`));
   await emit(
     `beastdb-stacked-${theme}.svg`,
     svg(`BeastDB stacked logo for ${theme} backgrounds`, "0 0 760 540",
@@ -73,5 +80,6 @@ const favicon = svg("BeastDB favicon", "0 0 64 64", `
   <path d="M46 5 14 41 23 36 54 5ZM56 19 18 62 28 57 62 19ZM63 39 42 63 51 60 64 46Z" fill="#A8F21A"/>
 `);
 await emit("beastdb-favicon.svg", favicon, 256);
+await writeFile(path.resolve(brandDir, "../../src/app/icon.svg"), favicon);
 
 console.log("Generated BeastDB logo assets in", brandDir);
