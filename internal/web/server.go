@@ -26,8 +26,9 @@ type EngineBackend interface {
 
 // NewServer constructs and wires all HTTP routes.
 // secret is the 32-byte HMAC key for session signing.
+// partitions is the optional project-defined partition registry served to the Studio.
 // Call Serve() to start accepting connections.
-func NewServer(addr string, engine EngineBackend, secret []byte, role, version string) (*Server, error) {
+func NewServer(addr string, engine EngineBackend, secret []byte, role, version string, partitions []handler.PartitionEntry) (*Server, error) {
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		return nil, err
@@ -35,7 +36,7 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 
 	sessions := auth.NewSessionManager(secret)
 	users := auth.NewUserStore(engine)
-	apiH := handler.NewAPIHandler(engine, sessions, role, version)
+	apiH := handler.NewAPIHandler(engine, sessions, role, version, partitions)
 
 	deps := &handler.Deps{Users: users, Sessions: sessions, StaticFS: staticFS}
 
@@ -58,6 +59,7 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 	mux.Handle("/api/stats", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetStats)))
 	mux.Handle("/api/me", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetMe)))
 	mux.Handle("/api/records", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetRecords)))
+	mux.Handle("/api/partitions", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetPartitions)))
 
 	// Protected key-value CRUD routes
 	mux.Handle("/api/key", handler.AuthMiddleware(sessions, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +74,13 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
 	})))
+
+	// Search route — authenticated users only
+	mux.Handle("/api/search", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.SearchRecords)))
+
+	// User bulk-delete route — admin only
+	mux.Handle("/api/user", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.DeleteUser)))
+
 
 	srv := &http.Server{
 		Addr:    addr,

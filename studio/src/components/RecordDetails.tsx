@@ -1,189 +1,131 @@
 "use client";
-import { useState } from "react";
-import * as Tabs from "@radix-ui/react-tabs";
-import { Copy, Download } from "lucide-react";
+import { Copy, Edit2, Trash2 } from "lucide-react";
 import { UniversalRecord } from "../types";
 import { formatBytes } from "../utils/format";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { RecordValue } from "./RecordValue";
-export function RecordDetails({
-  record,
-  onNotice,
-}: {
+import { UserProfilePanel } from "./UserProfilePanel";
+
+interface Props {
   record: UniversalRecord;
+  canWrite: boolean;
+  onDelete: (key: string) => void;
+  onDeleteUser?: (userHash: number) => void;
+  onEdit?: () => void;
   onNotice: (message: string, error?: boolean) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const formatted = (() => {
-    try {
-      return JSON.stringify(JSON.parse(record.raw), null, 2);
-    } catch {
-      return record.raw;
-    }
-  })();
+}
+
+function KeyInfoSection({ record, onNotice }: { record: UniversalRecord; onNotice: (m: string, e?: boolean) => void }) {
   const bits = BigInt(record.keyStr).toString(2).padStart(64, "0");
   const copy = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      onNotice(`${label} copied.`);
-    } catch {
-      onNotice("Copy failed.", true);
-    }
-  };
-  const download = () => {
-    const blob = new Blob([record.raw], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `record-${record.keyStr}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try { await navigator.clipboard.writeText(text); onNotice(`${label} copied.`); }
+    catch { onNotice("Copy failed.", true); }
   };
   return (
-    <Tabs.Root
-      key={record.keyStr}
-      defaultValue="fields"
-      className="mt-6 flex min-h-0 flex-1 flex-col"
-    >
-      <Tabs.List
-        aria-label="Record details"
-        className="grid grid-cols-3 rounded-md bg-muted p-1 text-sm"
-      >
-        <Tabs.Trigger
-          value="fields"
-          className="rounded px-2 py-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
-        >
-          Fields
-        </Tabs.Trigger>
-        <Tabs.Trigger
-          value="raw"
-          className="rounded px-2 py-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
-        >
-          Raw value
-        </Tabs.Trigger>
-        <Tabs.Trigger
-          value="key"
-          className="rounded px-2 py-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
-        >
-          Key details
-        </Tabs.Trigger>
-      </Tabs.List>
-      <div className="mt-5 min-h-0 flex-1 overflow-y-auto pb-4">
-        <Tabs.Content value="fields" className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {record.format.replace("_", " ")} · {formatBytes(record.byteSize)}
-          </p>
-          {record.fields ? (
-            Object.entries(record.fields).map(([k, v]) => (
-              <div key={k} className="rounded-md border p-3">
-                <div className="mb-2 font-mono text-xs font-medium text-muted-foreground">
-                  {k}
-                </div>
-                <RecordValue value={v} />
-              </div>
-            ))
-          ) : record.arrayItems ? (
-            record.arrayItems.map((v, i) => (
-              <div key={i} className="rounded-md border p-3">
-                <div className="mb-2 font-mono text-xs text-muted-foreground">
-                  [{i}]
-                </div>
-                <RecordValue value={v} />
-              </div>
-            ))
-          ) : (
-            <div className="rounded-md border p-3 text-sm">
-              <RecordValue value={record.raw || "Empty value"} />
-            </div>
-          )}
-        </Tabs.Content>
-        <Tabs.Content value="raw" className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Input
-              aria-label="Find in raw value"
-              placeholder="Find in value"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="min-w-32 flex-1"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Copy raw value"
-              onClick={() => void copy(record.raw, "Raw value")}
-            >
-              <Copy size={15} />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Download raw value"
-              onClick={download}
-            >
-              <Download size={15} />
-            </Button>
+    <details className="group rounded-md border">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Key info</summary>
+      <div className="space-y-3 border-t px-4 pb-4 pt-3">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs text-muted-foreground">Decimal</p>
+            <code className="break-all text-sm">{record.keyStr}</code>
           </div>
-          <p className="text-xs text-muted-foreground">
-            {search
-              ? `${formatted.toLowerCase().split(search.toLowerCase()).length - 1} matches`
-              : `${formatBytes(record.byteSize)} · original value preserved`}
-          </p>
-          <pre className="max-h-[65vh] overflow-auto rounded-md border bg-muted/50 p-4 text-xs leading-6 whitespace-pre-wrap break-all">
-            {formatted}
-          </pre>
-        </Tabs.Content>
-        <Tabs.Content value="key" className="space-y-4">
-          <div className="rounded-md border p-4">
-            <p className="text-xs text-muted-foreground">Decimal key</p>
-            <div className="mt-1 flex items-center justify-between gap-2">
-              <code className="break-all text-sm">{record.keyStr}</code>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Copy key"
-                onClick={() => void copy(record.keyStr, "Key")}
-              >
-                <Copy size={15} />
-              </Button>
-            </div>
-          </div>
-          <div className="rounded-md border p-4">
-            <p className="text-xs text-muted-foreground">Hexadecimal</p>
-            <code className="mt-1 block break-all text-sm">
-              {record.keyHex}
-            </code>
-          </div>
-          <div className="rounded-md border p-4">
-            <p className="text-xs text-muted-foreground">
-              64-bit layout · 8-bit partition / 28-bit user / 28-bit item
-            </p>
-            <code className="mt-3 block break-all text-xs leading-6">
-              {bits.slice(0, 8)}{" "}
-              <span className="text-muted-foreground">·</span>{" "}
-              {bits.slice(8, 36)}{" "}
-              <span className="text-muted-foreground">·</span> {bits.slice(36)}
-            </code>
-            <dl className="mt-4 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt>Partition</dt>
-                <dd>
-                  {record.prefixLabel} (0x
-                  {record.prefix.toString(16).padStart(2, "0").toUpperCase()})
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt>User hash</dt>
-                <dd className="font-mono">{record.userHash}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt>Item hash</dt>
-                <dd className="font-mono">{record.itemHash}</dd>
-              </div>
-            </dl>
-          </div>
-        </Tabs.Content>
+          <Button variant="ghost" size="icon" aria-label="Copy key" onClick={() => void copy(record.keyStr, "Key")}>
+            <Copy size={14} />
+          </Button>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Hexadecimal</p>
+          <code className="block break-all text-sm">{record.keyHex}</code>
+        </div>
+        <dl className="space-y-1 text-sm">
+          <div className="flex justify-between"><dt className="text-muted-foreground">Partition</dt><dd>{record.prefixLabel}</dd></div>
+          {record.userHash != null && <div className="flex justify-between"><dt className="text-muted-foreground">User hash</dt><dd className="font-mono">{record.userHash}</dd></div>}
+          {record.itemHash != null && <div className="flex justify-between"><dt className="text-muted-foreground">Item hash</dt><dd className="font-mono">{record.itemHash}</dd></div>}
+        </dl>
+        <p className="text-xs text-muted-foreground">64-bit: {bits.slice(0, 8)} · {bits.slice(8, 36)} · {bits.slice(36)}</p>
       </div>
-    </Tabs.Root>
+    </details>
+  );
+}
+
+export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit, onNotice }: Props) {
+  // User profile: special layout
+  if (record.prefix === 0x01) {
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <UserProfilePanel
+          record={record}
+          canWrite={canWrite}
+          onDelete={onDelete}
+          onDeleteUser={onDeleteUser ?? (() => {})}
+        />
+        <div className="px-5 pb-5">
+          <KeyInfoSection record={record} onNotice={onNotice} />
+        </div>
+      </div>
+    );
+  }
+
+  const formatted = (() => { try { return JSON.stringify(JSON.parse(record.raw), null, 2); } catch { return record.raw; } })();
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5">
+      {/* Cover image */}
+      {record.coverUrl && (
+        <img src={record.coverUrl} alt="" className="w-full max-h-40 rounded-lg object-cover" />
+      )}
+      {/* Fields */}
+      {record.fields && (
+        <section>
+          <p className="mb-2 text-xs text-muted-foreground">{record.format.replace("_", " ")} · {formatBytes(record.byteSize)}</p>
+          <div className="space-y-2">
+            {Object.entries(record.fields).map(([k, v]) => (
+              <div key={k} className="rounded-md border p-3">
+                <div className="mb-1 font-mono text-xs font-medium text-muted-foreground">{k}</div>
+                <RecordValue value={v} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {/* Array items */}
+      {record.arrayItems && (
+        <section>
+          <p className="mb-2 text-xs text-muted-foreground">Array · {record.arrayItems.length} items</p>
+          <div className="space-y-2">
+            {record.arrayItems.map((v, i) => (
+              <div key={i} className="rounded-md border p-3">
+                <div className="mb-1 font-mono text-xs text-muted-foreground">[{i}]</div>
+                <RecordValue value={v} />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {/* Fallback */}
+      {!record.fields && !record.arrayItems && (
+        <div className="rounded-md border p-3 text-sm"><RecordValue value={record.raw || "Empty value"} /></div>
+      )}
+      {/* Raw JSON accordion */}
+      <details className="rounded-md border">
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Raw JSON</summary>
+        <pre className="max-h-72 overflow-auto border-t bg-muted/50 px-4 py-3 text-xs leading-6 whitespace-pre-wrap break-all">{formatted}</pre>
+      </details>
+      {/* Key info accordion */}
+      <KeyInfoSection record={record} onNotice={onNotice} />
+      {/* Edit */}
+      {canWrite && onEdit && (
+        <Button variant="outline" size="sm" onClick={onEdit} className="self-start">
+          <Edit2 size={14} /> Edit record
+        </Button>
+      )}
+      {/* Delete */}
+      {canWrite && (
+        <Button variant="ghost" size="sm" className="self-start text-destructive" onClick={() => onDelete(record.keyStr)}>
+          <Trash2 size={14} /> Delete record
+        </Button>
+      )}
+    </div>
   );
 }

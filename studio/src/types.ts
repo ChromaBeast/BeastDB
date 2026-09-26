@@ -41,6 +41,7 @@ export interface TelemetryStats {
   role: string;
   mode: string;
   version: string;
+  partitionCounts?: Record<string, number>;
 }
 
 export interface SessionUser {
@@ -55,4 +56,12 @@ export interface DomainDistribution {
   label: string;
   count: number;
   color: string;
+}
+
+export interface PartitionConfig {
+  prefix: number;
+  label: string;
+  color: string;
+  description?: string;
+  icon?: string;
 }

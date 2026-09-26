@@ -44,7 +44,12 @@ export function RecordSheet({
                 Key {record.keyStr} · {formatBytes(record.byteSize)}
               </SheetDescription>
             </div>
-            <RecordDetails record={record} onNotice={onNotice} />
+            <RecordDetails
+              record={record}
+              canWrite={canWrite}
+              onDelete={onDelete}
+              onNotice={onNotice}
+            />
             {canWrite && (
               <div className="border-t pt-4">
                 <Button

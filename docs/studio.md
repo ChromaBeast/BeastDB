@@ -77,7 +77,20 @@ go run ./cmd/server \
   -port 50051 \
   -data-dir ./data \
   -web-addr 0.0.0.0:8088 \
-  -admin-password my_secure_password
+  -admin-password my_secure_password \
+  -partition-config ./cmd/server/partitions.json
 ```
 
 Open `http://localhost:8088` in your browser and sign in with username `admin`.
+
+---
+
+## 🔥 Firebase-Style UI & Universal Capabilities
+
+- **3-Pane Collection Explorer**: Firebase Console style navigation: Left Partition Rail (with color-coded indicators) → Document List (with cover art/avatar badges) → Full-height Document Viewer.
+- **Server-Driven Dynamic Partitions**: Any project can customize partitions via `-partition-config partitions.json` without recompiling the Studio.
+- **Automated Sensitive Field Redaction**: `passwordHash`, `salt`, `token`, `secret`, and `apiKey` are stripped at parse time from property sheets.
+- **Dedicated User Profile & Cascading Delete**: Selecting a User Account record (`0x01`) opens an avatar profile panel. Admins can delete a single record or perform a cascading wipe (`DELETE /api/user?userHash=...`) of all orphan records across the keyspace.
+- **Server-Side Full Keyspace Search**: `GET /api/search` executes high-speed scanning across all B+ Tree leaves with optional partition filters.
+- **Live Partition Distribution Donut Chart**: Dynamic SVG chart in the Overview dashboard summarizing keyspace allocation per partition in real time.
+- **Direct Inline Record Editor**: Inspect, validate JSON syntax, and update records directly in place.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -15,6 +16,7 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/replication"
 	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
+	"github.com/ChromaBeast/beastdb/internal/web/handler"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -22,14 +24,15 @@ import (
 const Version = "0.1.0-release"
 
 func main() {
-	role := flag.String("role", "leader", "Node cluster role: leader or follower")
-	port := flag.Int("port", 50051, "Port for gRPC service")
-	leaderAddr := flag.String("leader-addr", "127.0.0.1:50051", "Leader node address for replication")
-	dataDir := flag.String("data-dir", "./data", "Directory to store data and WAL files")
-	poolSize := flag.Int("pool-size", 128, "Buffer pool frame capacity (4KB blocks)")
-	replicaID := flag.String("replica-id", "replica-1", "Unique identifier for this replica node")
-	webAddr := flag.String("web-addr", "127.0.0.1:8080", "Address for the web admin console (empty to disable)")
-	adminPassword := flag.String("admin-password", "changeme", "Initial admin user password (used only on first run)")
+	role              := flag.String("role", "leader", "Node cluster role: leader or follower")
+	port              := flag.Int("port", 50051, "Port for gRPC service")
+	leaderAddr        := flag.String("leader-addr", "127.0.0.1:50051", "Leader node address for replication")
+	dataDir           := flag.String("data-dir", "./data", "Directory to store data and WAL files")
+	poolSize          := flag.Int("pool-size", 128, "Buffer pool frame capacity (4KB blocks)")
+	replicaID         := flag.String("replica-id", "replica-1", "Unique identifier for this replica node")
+	webAddr           := flag.String("web-addr", "127.0.0.1:8080", "Address for the web admin console (empty to disable)")
+	adminPassword     := flag.String("admin-password", "changeme", "Initial admin user password (used only on first run)")
+	partitionConfig   := flag.String("partition-config", "", "Path to partitions.json defining Studio partition labels (optional)")
 	flag.Parse()
 
 	log.Printf("Starting BeastDB v%s [Role: %s] on port :%d...", Version, *role, *port)
@@ -70,6 +73,19 @@ func main() {
 		}()
 	}
 
+	// Load optional partition registry for the Studio UI.
+	var partitions []handler.PartitionEntry
+	if *partitionConfig != "" {
+		data, readErr := os.ReadFile(*partitionConfig)
+		if readErr != nil {
+			log.Printf("Warning: could not read partition config %q: %v", *partitionConfig, readErr)
+		} else if err := json.Unmarshal(data, &partitions); err != nil {
+			log.Printf("Warning: invalid partition config JSON: %v", err)
+		} else {
+			log.Printf("Loaded %d partition definitions from %q", len(partitions), *partitionConfig)
+		}
+	}
+
 	// Start embedded web admin console if an address is configured.
 	if *webAddr != "" {
 		secret, secretErr := auth.GenerateSecret()
@@ -77,7 +93,7 @@ func main() {
 			log.Fatalf("Failed to generate session secret: %v", secretErr)
 		}
 
-		webSrv, webErr := web.NewServer(*webAddr, engine, secret, *role, Version)
+		webSrv, webErr := web.NewServer(*webAddr, engine, secret, *role, Version, partitions)
 		if webErr != nil {
 			log.Fatalf("Failed to create web server: %v", webErr)
 		}

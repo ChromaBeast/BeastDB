@@ -23,15 +23,16 @@ type EngineReader interface {
 
 // APIHandler handles data access routes under /api/.
 type APIHandler struct {
-	engine   EngineReader
-	sessions *auth.SessionManager
-	role     string
-	version  string
+	engine     EngineReader
+	sessions   *auth.SessionManager
+	role       string
+	version    string
+	partitions []PartitionEntry
 }
 
-// NewAPIHandler creates an APIHandler with engine and session dependencies.
-func NewAPIHandler(e EngineReader, s *auth.SessionManager, role, version string) *APIHandler {
-	return &APIHandler{engine: e, sessions: s, role: role, version: version}
+// NewAPIHandler creates an APIHandler with engine, session, and partition registry.
+func NewAPIHandler(e EngineReader, s *auth.SessionManager, role, version string, partitions []PartitionEntry) *APIHandler {
+	return &APIHandler{engine: e, sessions: s, role: role, version: version, partitions: partitions}
 }
 
 // GetRecords handles GET /api/records?start=<uint64>&limit=<int>.

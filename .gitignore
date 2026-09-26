@@ -22,3 +22,7 @@ Thumbs.db
 # Agent configuration
 GEMINI.md
 
+# Build caches & temp
+*.tsbuildinfo
+tmp/
+data/

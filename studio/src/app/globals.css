@@ -23,6 +23,10 @@
   --border: 220 13% 88%;
   --input: 220 13% 88%;
   --ring: 222 35% 18%;
+  --brand-mark-body: #252d34;
+  --brand-mark-detail: #5a6670;
+  --brand-claw: #82c91e;
+  --brand-wordmark-accent: #4a7300;
   --radius: 0.625rem;
 }
 .dark {
@@ -46,6 +50,13 @@
   --border: 225 10% 24%;
   --input: 225 10% 24%;
   --ring: 220 14% 85%;
+  --brand-mark-body: #e3eaf0;
+  --brand-mark-detail: #71808d;
+  --brand-claw: #a5e635;
+  --brand-wordmark-accent: #a5e635;
+}
+.brand-wordmark-accent {
+  color: var(--brand-wordmark-accent);
 }
 * {
   border-color: hsl(var(--border));

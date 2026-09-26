@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { SessionUser, TelemetryStats, UniversalRecord } from "../types";
+import { PartitionConfig, SessionUser, TelemetryStats, UniversalRecord } from "../types";
 import { parseUniversalRecord } from "../utils/data-parser";
+import { setPartitionRegistry } from "../utils/key-decoder";
 
 type RawRecord = { keyText: string; value: string };
 type Page = { records: RawRecord[]; nextKeyText: string; hasMore: boolean };
@@ -17,7 +18,12 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error("Your session expired. Sign in again.");
   if (response.status === 403)
     throw new Error("Your account cannot make this change.");
-  if (response.status === 404) throw new Error("That record was not found.");
+  if (response.status === 404)
+    throw new Error(
+      url.startsWith("/api/key?")
+        ? "That record was not found."
+        : "Data endpoint unavailable.",
+    );
   if (!response.ok)
     throw new Error((await response.text()).trim() || "Request failed.");
   return response.status === 204 || response.status === 201
@@ -39,7 +45,7 @@ export function useStudioData() {
 
   const fetchStats = useCallback(async () => {
     try {
-      setStats(await api<TelemetryStats>("/api/stats"));
+      setStats(await api<TelemetryStats>("/api/stats?counts=true"));
       setStatsError(null);
     } catch (e) {
       setStats(null);
@@ -50,10 +56,16 @@ export function useStudioData() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [pageResult, userResult] = await Promise.allSettled([
+    const [pageResult, userResult, partitionsResult] = await Promise.allSettled([
       api<Page>("/api/records?limit=100"),
       api<SessionUser>("/api/me"),
+      api<PartitionConfig[]>("/api/partitions"),
     ]);
+    // Apply partition registry FIRST — decodeKey must see correct labels
+    // before parseUniversalRecord is called below.
+    if (partitionsResult.status === "fulfilled") {
+      setPartitionRegistry(partitionsResult.value);
+    }
     if (pageResult.status === "fulfilled") {
       setRecords(pageResult.value.records.map(parseUniversalRecord));
       setHasMore(pageResult.value.hasMore);
@@ -114,11 +126,35 @@ export function useStudioData() {
     await refresh();
   };
 
+  const update = async (key: string, value: string): Promise<void> => {
+    await api<void>("/api/key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key, value, createOnly: false }),
+    });
+    await refresh();
+  };
+
   const remove = async (key: string): Promise<void> => {
     await api<void>(`/api/key?k=${encodeURIComponent(key)}`, {
       method: "DELETE",
     });
     await refresh();
+  };
+
+  const removeUser = async (userHash: number): Promise<{ deleted: number }> => {
+    const res = await api<{ deleted: number }>(`/api/user?userHash=${userHash}`, {
+      method: "DELETE",
+    });
+    await refresh();
+    return res;
+  };
+
+  const search = async (q: string, prefix?: number): Promise<UniversalRecord[]> => {
+    const params = new URLSearchParams({ q, limit: "50" });
+    if (prefix) params.set("prefix", String(prefix));
+    const result = await api<{ records: RawRecord[]; count: number }>(`/api/search?${params}`);
+    return result.records.map(parseUniversalRecord);
   };
 
   return {
@@ -135,6 +171,9 @@ export function useStudioData() {
     loadMore,
     lookup,
     save,
+    update,
     remove,
+    removeUser,
+    search,
   };
 }

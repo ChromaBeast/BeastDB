@@ -22,19 +22,25 @@ export function inferFieldType(val: any): ParsedField["type"] {
 
 function findImage(obj: any): string | undefined {
   if (!obj || typeof obj !== "object") return undefined;
-  const candidates = [obj.coverUrl, obj.posterUrl, obj.avatarUrl, obj.thumbnail, obj.image, obj.icon,
-                      obj.game?.coverUrl, obj.movie?.posterUrl, obj.tv?.posterUrl, obj.book?.coverUrl];
+  const candidates = [
+    obj.coverUrl, obj.posterUrl, obj.avatarUrl,
+    obj.thumbnail, obj.image, obj.icon, obj.photo,
+  ];
   for (const c of candidates) {
     if (typeof c === "string" && c.startsWith("http")) return c;
   }
-  for (const k of Object.keys(obj)) {
-    const v = obj[k];
-    if (typeof v === "string" && (v.includes("steamstatic.com") || v.includes("tmdb.org") || v.match(/\.(jpg|jpeg|png|webp)$/i))) {
+  for (const v of Object.values(obj)) {
+    if (typeof v === "string" && v.match(/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i)) {
       return v;
     }
   }
   return undefined;
 }
+
+const REDACTED_KEYS = new Set([
+  "passwordHash", "password", "salt", "token", "secret",
+  "apiKey", "apiSecret", "privateKey", "sessionToken",
+]);
 
 export function parseUniversalRecord(rawItem: { keyText: string; value: string }): UniversalRecord {
   const decoded = decodeKey(rawItem.keyText);
@@ -60,15 +66,19 @@ export function parseUniversalRecord(rawItem: { keyText: string; value: string }
       const parsed = JSON.parse(trimmed);
       if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
         format = "json_object";
-        fields = parsed;
+        // Filter sensitive fields for display; parsed is still used for label/cover extraction
+        fields = Object.fromEntries(
+          Object.entries(parsed).filter(([k]) => !REDACTED_KEYS.has(k))
+        );
         coverUrl = findImage(parsed);
-        const inner = parsed.game || parsed.movie || parsed.tv || parsed.book || parsed.user || {};
 
-        primaryLabel = String(parsed.title || inner.title || parsed.name || inner.name ||
-                              parsed.username || parsed.email || parsed.id || `Entity ${decoded.prefixHex}`);
-        secondaryLabel = String(inner.developer || inner.releaseYear || parsed.description || parsed.notes || "");
-        status = parsed.status || inner.status || parsed.role;
-        rating = parsed.rating ?? inner.rating ?? parsed.userRating;
+        primaryLabel = String(
+          parsed.title ?? parsed.name ?? parsed.username ??
+          parsed.email ?? parsed.id ?? `Entity ${decoded.prefixHex}`
+        );
+        secondaryLabel = String(parsed.description ?? parsed.subtitle ?? parsed.notes ?? "");
+        status = parsed.status ?? parsed.role ?? parsed.type;
+        rating = parsed.rating ?? parsed.score ?? parsed.userRating;
 
         // Collect top summary attributes
         for (const [k, v] of Object.entries(parsed)) {
@@ -82,6 +92,10 @@ export function parseUniversalRecord(rawItem: { keyText: string; value: string }
           } else if (attributes.length < 5) {
             attributes.push({ key: k, value: Array.isArray(v) ? `[${v.length}]` : String(v), type: typeof v });
           }
+        }
+        // mediaId → reference attribute for media catalog (0x10)
+        if (parsed.mediaId != null) {
+          attributes.push({ key: "mediaRef", value: String(parsed.mediaId), type: "number" });
         }
       }
     } catch {

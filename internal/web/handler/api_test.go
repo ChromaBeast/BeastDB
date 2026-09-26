@@ -39,7 +39,7 @@ func (e *precisionEngine) ScanRecordsPaginated(start uint64, limit int) ([]api.R
 
 func TestPreciseKeysInRecordPage(t *testing.T) {
 	e := &precisionEngine{}
-	h := NewAPIHandler(e, auth.NewSessionManager(make([]byte, 32)), "follower", "test")
+	h := NewAPIHandler(e, auth.NewSessionManager(make([]byte, 32)), "follower", "test", nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/records?start=18446744073709551615", nil)
 	w := httptest.NewRecorder()
 	h.GetRecords(w, req)
@@ -64,7 +64,7 @@ func TestPutAcceptsStringAndLegacyNumberKeys(t *testing.T) {
 	for _, body := range []string{`{"key":"18446744073709551615","value":"hello"}`, `{"key":18446744073709551615,"value":"hello"}`} {
 		e := &precisionEngine{}
 		sessions := auth.NewSessionManager(make([]byte, 32))
-		h := NewAPIHandler(e, sessions, "leader", "test")
+		h := NewAPIHandler(e, sessions, "leader", "test", nil)
 		cookieResponse := httptest.NewRecorder()
 		sessions.IssueSessionCookie(cookieResponse, &auth.User{Username: "admin", Role: auth.RoleAdmin})
 		req := httptest.NewRequest(http.MethodPost, "/api/key", strings.NewReader(body))
@@ -80,7 +80,7 @@ func TestPutAcceptsStringAndLegacyNumberKeys(t *testing.T) {
 func TestPutRejectsInvalidKey(t *testing.T) {
 	e := &precisionEngine{}
 	sessions := auth.NewSessionManager(make([]byte, 32))
-	h := NewAPIHandler(e, sessions, "leader", "test")
+	h := NewAPIHandler(e, sessions, "leader", "test", nil)
 	cookieResponse := httptest.NewRecorder()
 	sessions.IssueSessionCookie(cookieResponse, &auth.User{Username: "admin", Role: auth.RoleAdmin})
 	req := httptest.NewRequest(http.MethodPost, "/api/key", strings.NewReader(`{"key":"18446744073709551616","value":"hello"}`))
@@ -103,7 +103,7 @@ func TestCreateOnlyConflictAndViewerPermission(t *testing.T) {
 	} {
 		e := &precisionEngine{existing: tc.existing}
 		sessions := auth.NewSessionManager(make([]byte, 32))
-		h := NewAPIHandler(e, sessions, "leader", "test")
+		h := NewAPIHandler(e, sessions, "leader", "test", nil)
 		cookieResponse := httptest.NewRecorder()
 		sessions.IssueSessionCookie(cookieResponse, &auth.User{Username: "user", Role: tc.role})
 		req := httptest.NewRequest(http.MethodPost, "/api/key", strings.NewReader(`{"key":"18446744073709551615","value":"new","createOnly":true}`))
