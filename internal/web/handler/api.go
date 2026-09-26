@@ -19,6 +19,7 @@ type EngineReader interface {
 	CurrentLSN() uint64
 	ScanRecords(startKey uint64, limit int) ([]api.RecordItem, error)
 	ScanRecordsPaginated(startKey uint64, limit int) ([]api.RecordItem, uint64, bool, error)
+	ScanPartitionCounts() (map[uint8]int, error)
 }
 
 // APIHandler handles data access routes under /api/.

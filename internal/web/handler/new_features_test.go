@@ -29,6 +29,13 @@ func (m *mockEngine) ScanRecords(startKey uint64, limit int) ([]api.RecordItem, 
 func (m *mockEngine) ScanRecordsPaginated(start uint64, limit int) ([]api.RecordItem, uint64, bool, error) {
 	return m.records, 0, false, nil
 }
+func (m *mockEngine) ScanPartitionCounts() (map[uint8]int, error) {
+	counts := make(map[uint8]int)
+	for _, item := range m.records {
+		counts[uint8(item.Key>>56)]++
+	}
+	return counts, nil
+}
 
 func TestGetPartitions(t *testing.T) {
 	parts := []PartitionEntry{
