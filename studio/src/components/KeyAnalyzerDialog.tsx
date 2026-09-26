@@ -4,93 +4,84 @@ import { decodeKey } from "../utils/key-decoder";
 import { fnv1a64 } from "../utils/format";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from "./ui/dialog";
+import { Badge } from "./ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { KeyBitSlicer } from "./KeyBitSlicer";
 
-export function KeyAnalyzerDialog({
-  open,
-  onClose,
-}: {
+interface Props {
   open: boolean;
   onClose: () => void;
-}) {
+}
+
+const PRESETS = [
+  { label: "User (0x01)", prefix: "72057594037927936" },
+  { label: "Token (0x05)", prefix: "360287970189639680" },
+  { label: "Catalog (0x10)", prefix: "1152921504606846976" },
+];
+
+export function KeyAnalyzerDialog({ open, onClose }: Props) {
   const [key, setKey] = useState("");
   const [seed, setSeed] = useState("");
-  const valid =
-    /^(0|[1-9]\d*)$/.test(key) && BigInt(key || "0") <= 18446744073709551615n;
-  const decoded = valid ? decodeKey(key) : null;
+
+  const valid = /^(0|[1-9]\d*)$/.test(key) && BigInt(key || "0") <= 18446744073709551615n;
+  const decoded = valid && key ? decodeKey(key) : null;
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) onClose();
-      }}
-    >
-      <DialogContent>
-        <DialogTitle className="text-xl font-semibold">
-          Key analyzer
-        </DialogTitle>
-        <DialogDescription className="mt-1 text-sm text-muted-foreground">
-          Inspect a 64-bit BeastDB key or derive one from an identifier.
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-xl">
+        <DialogTitle className="text-xl font-bold tracking-tight">Key Analyzer</DialogTitle>
+        <DialogDescription className="mt-1 text-xs text-muted-foreground">
+          Inspect 64-bit BeastDB keys, decode partition anatomy, or hash identifiers via FNV-1a.
         </DialogDescription>
-        <div className="mt-5 space-y-4">
+
+        <div className="mt-4 space-y-4">
           <div>
-            <label htmlFor="analyzer-key" className="text-sm font-medium">
-              Decimal key
-            </label>
-            <Input
-              id="analyzer-key"
-              className="mt-2 font-mono"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="Enter a key"
-            />
+            <div className="flex items-center justify-between">
+              <label htmlFor="analyzer-key" className="text-xs font-mono text-zinc-400">DECIMAL KEY</label>
+              <div className="flex gap-1">
+                {PRESETS.map((p) => (
+                  <button key={p.prefix} type="button" onClick={() => setKey(p.prefix)} className="text-[10px] font-mono text-zinc-500 hover:text-beast-lime underline">
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Input id="analyzer-key" className="mt-1.5 font-mono text-sm" value={key} onChange={(e) => setKey(e.target.value)} placeholder="e.g. 72057594037927936" />
           </div>
-          <div className="flex gap-2">
-            <Input
-              aria-label="Identifier to hash"
-              value={seed}
-              onChange={(e) => setSeed(e.target.value)}
-              placeholder="String identifier"
-            />
-            <Button
-              variant="outline"
-              disabled={!seed.trim()}
-              onClick={() => setKey(fnv1a64(seed.trim()))}
-            >
-              Hash
-            </Button>
+
+          <div>
+            <label className="text-xs font-mono text-zinc-400">HASH STRING IDENTIFIER (FNV-1a)</label>
+            <div className="mt-1.5 flex gap-2">
+              <Input aria-label="Identifier to hash" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="e.g. alice@example.com or user_104" className="font-mono text-sm" />
+              <Button variant="secondary" disabled={!seed.trim()} onClick={() => setKey(fnv1a64(seed.trim()))}>
+                Hash
+              </Button>
+            </div>
           </div>
+
           {key && !valid && (
-            <p role="alert" className="text-sm text-destructive">
-              Enter an unsigned 64-bit decimal key.
+            <p role="alert" className="text-xs text-destructive font-mono">
+              Invalid key: Must be an unsigned 64-bit integer (0 to 18446744073709551615).
             </p>
           )}
+
           {decoded && (
-            <dl className="divide-y rounded-md border px-4 text-sm">
-              <div className="flex justify-between gap-3 py-3">
-                <dt className="text-muted-foreground">Hexadecimal</dt>
-                <dd className="font-mono">{decoded.hex}</dd>
+            <div className="space-y-3 pt-2">
+              <KeyBitSlicer keyStr={decoded.raw} prefixLabel={decoded.prefixLabel} userHash={decoded.userHash} itemHash={decoded.itemHash} />
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2.5">
+                  <span className="text-[10px] font-mono text-zinc-400">HEXADECIMAL</span>
+                  <p className="mt-1 font-mono text-white font-medium">{decoded.hex}</p>
+                </div>
+                <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2.5">
+                  <span className="text-[10px] font-mono text-zinc-400">PARTITION METADATA</span>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <Badge variant="lime">{decoded.prefixHex}</Badge>
+                    <span className="truncate text-zinc-300 font-medium">{decoded.prefixLabel}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between gap-3 py-3">
-                <dt className="text-muted-foreground">Partition</dt>
-                <dd>
-                  {decoded.prefixLabel} ({decoded.prefixHex})
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3 py-3">
-                <dt className="text-muted-foreground">User hash</dt>
-                <dd className="font-mono">{decoded.userHash}</dd>
-              </div>
-              <div className="flex justify-between gap-3 py-3">
-                <dt className="text-muted-foreground">Item hash</dt>
-                <dd className="font-mono">{decoded.itemHash}</dd>
-              </div>
-            </dl>
+            </div>
           )}
         </div>
       </DialogContent>

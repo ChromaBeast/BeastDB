@@ -123,19 +123,19 @@ export function NewRecordDialog({
           <Tabs.Root value={mode} onValueChange={setMode}>
             <Tabs.List
               aria-label="Value editor"
-              className="grid grid-cols-2 rounded-md bg-muted p-1 text-sm"
+              className="grid grid-cols-2 rounded-lg border border-zinc-800 bg-zinc-900/80 p-1 text-xs"
             >
               <Tabs.Trigger
                 value="raw"
-                className="rounded py-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
+                className="rounded-md py-1.5 transition data-[state=active]:bg-beast-lime/15 data-[state=active]:text-beast-lime data-[state=active]:border data-[state=active]:border-beast-lime/30 data-[state=active]:font-medium text-zinc-400"
               >
-                Raw value
+                Raw JSON / Payload
               </Tabs.Trigger>
               <Tabs.Trigger
                 value="builder"
-                className="rounded py-1.5 data-[state=active]:bg-card data-[state=active]:shadow-sm"
+                className="rounded-md py-1.5 transition data-[state=active]:bg-beast-lime/15 data-[state=active]:text-beast-lime data-[state=active]:border data-[state=active]:border-beast-lime/30 data-[state=active]:font-medium text-zinc-400"
               >
-                JSON builder
+                Structured Builder
               </Tabs.Trigger>
             </Tabs.List>
             <Tabs.Content value="raw" className="mt-3">
