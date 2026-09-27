@@ -1,92 +1,119 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/beastdb-preview-dark.png" />
-    <img src="docs/assets/beastdb-preview-light.png" alt="BeastDB logo" width="440" />
+    <img src="docs/assets/beastdb-preview-light.png" alt="BeastDB" width="440" />
   </picture>
 </p>
 
-<p align="center">
-  <strong>A high-performance, distributed, crash-resilient database engine built from scratch in pure Go.</strong>
-</p>
+<h3 align="center">High-Performance, Crash-Resilient Distributed Database — Built from Scratch in Pure Go</h3>
 
 <p align="center">
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go" alt="Go Version" /></a>
-  <a href="docs/studio.md"><img src="https://img.shields.io/badge/Studio-Firebase--Style%20Console-blueviolet" alt="Studio" /></a>
-  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Hot%20Paths-0%20allocs%2Fop-brightgreen" alt="Zero Allocs" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
-  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/Code%20Limit-%3C%20200%20LoC-orange" alt="Modularity" /></a>
-  <a href="/"><img src="https://img.shields.io/badge/Tests-Passing-success" alt="Tests" /></a>
+  <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Hot%20Paths-0%20allocs%2Fop-brightgreen" alt="Zero Allocs" /></a>
+  <img src="https://img.shields.io/badge/Tests-Passing-success" alt="Tests" />
+  <img src="https://img.shields.io/badge/Studio-Embedded-blueviolet" alt="Studio" />
 </p>
 
 ---
 
-## 🏛️ What's Inside
+BeastDB is a purpose-built OLTP database engine designed for **read-heavy, structured workloads**. Every layer — from memory allocation to on-disk page layout — is implemented from first principles in Go with zero external dependencies beyond gRPC.
 
-| Layer | What Was Built |
+It ships as a **single static binary** that includes a full gRPC service, WAL-backed durability, leader-follower replication, and an embedded Next.js web console. No sidecars, no JVM, no Node.js runtime in production.
+
+---
+
+## Why BeastDB?
+
+| Concern | How BeastDB addresses it |
 |---|---|
-| **Memory** | Zero-copy string↔byte conversions, cache-line-padded structs, FNV-1a hasher, open-addressing hash map, binary heap, ring buffer |
-| **Network** | Custom binary TCP frame protocol (10-byte header + CRC32), zero-allocation RESP2 parser & writer |
-| **Cache** | 64-shard partitioned `RWMutex` map, O(1) LRU eviction list, dual passive+active TTL heap, `sync.Pool` buffer recycling |
-| **Storage** | 4KB hardware-aligned Slotted Pages (stable `RID`s, O(1) tombstone delete), `fsync`-safe Disk Manager, Clock-Sweep Buffer Pool |
-| **Durability** | 23-byte binary WAL frames with IEEE CRC32 torn-write detection, crash recovery scanner, checkpointing |
-| **Indexing** | On-disk B+ Tree — binary search routing, 50/50 leaf splits, borrow/merge rebalancing, streaming cursor with epoch concurrency detection |
-| **API** | Protobuf schema + gRPC service (unary + server-streaming), HTTP/2 multiplexing |
-| **Replication** | Leader-Follower WAL streaming — two-phase catch-up replay + live pub-sub broadcaster, batched ACK coalescing |
-| **Studio** | Embedded Next.js 15 Web Console (`//go:embed all:static`, 0 Node.js runtime), Firebase-style 3-column explorer, Argon2id redaction, 64-bit key bit-slicer |
+| **Predictable latency** | B+ Tree with `O(log N)` point reads at 180 ns, 0 allocs — no compaction spikes |
+| **Crash safety** | 23-byte ARIES WAL frames with CRC32 torn-write detection; full replay on boot |
+| **Operational simplicity** | Single binary, `go run ./cmd/server -dev` for local dev, `docker compose up` for prod |
+| **Developer ergonomics** | Embedded Studio web UI, `beastctl` CLI, partition-aware key builder, fixture seeding |
+| **Replication** | Leader-follower WAL streaming — two-phase catch-up + live pub-sub, batched ACK coalescing |
 
 ---
 
-## 🖥️ BeastDB Studio (Embedded Web Console)
+## Quickstart
 
-BeastDB ships with **BeastDB Studio** — a modern, dark-mode administrative console embedded directly into the Go executable with **zero Node.js production runtime overhead**:
+### Local dev (ephemeral, zero disk residue)
 
-- **Firebase-Style 3-Pane Explorer**: Partition Rail (Collections) → Document List (with cover art/avatar badges) → Full-Height Field Inspector.
-- **Universal Project Usability**: Run BeastDB with any project schema by providing a runtime `-partition-config partitions.json` sidecar. No rebuild required.
-- **Automated Field Redaction**: `passwordHash`, `salt`, `token`, `secret`, and `apiKey` are stripped at parse time from property sheets.
-- **User Profile & Cascading Wipe**: Inspect user profiles (`0x01`) and perform an atomic one-click cascade delete across all partitions.
-- **Server-Side Full Keyspace Search**: B+ Tree cursor scan searching across all database records with partition filtering.
-- **Media Catalog & Normalization (`0x10`)**: Shared media catalog references eliminate duplicate payloads across user libraries.
-- **Live Partition Donut Chart**: Real-time distribution visualization of storage allocation across partitions.
-- **64-Bit Key Bit-Slicer**: Decomposes any uint64 key into Hex, Decimal, and Binary (High 8-bit Partition Prefix, 28-bit Bucket, 28-bit Item ID).
+```bash
+go run ./cmd/server -dev
+```
 
-> 📖 Deep-dive into architecture, auth synchronization, and key slicing: [docs/studio.md](docs/studio.md)
+Starts the gRPC server on `:50051`, opens Studio at `http://localhost:8088` with credentials `admin / admin`, and purges all data on `Ctrl+C`. No leftover files.
 
----
+### Production / persistent
 
-## 📊 Performance Benchmarks
+```bash
+go run ./cmd/server \
+  -role leader \
+  -port 50051 \
+  -data-dir ./data \
+  -web-addr 0.0.0.0:8088 \
+  -admin-password your_password \
+  -partition-config ./cmd/server/partitions.json
+```
 
-Benchmarked on **Intel Core i5-12450HX**, **Go 1.26**, Windows/amd64 (`go test -bench=. -benchmem ./...`):
+### 3-node cluster (Docker)
 
-| Component | Benchmark | Latency | Throughput | Allocs |
-|---|---|---|---|---|
-| **Core DSA** | Vector Push | **1.37 ns/op** | ~729M ops/sec | **0 B · 0 allocs** |
-| **Core DSA** | Ring Buffer Push/Pop | **1.73 ns/op** | ~578M ops/sec | **0 B · 0 allocs** |
-| **Core DSA** | Open-Address Hash Get | **8.45 ns/op** | ~118M ops/sec | **0 B · 0 allocs** |
-| **Core DSA** | Zero-Copy `[]byte→string` | **0.30 ns/op** | ~3.3B ops/sec | **0 B · 0 allocs** |
-| **Storage** | Slotted Page Tuple Read | **8.01 ns/op** | ~125M reads/sec | **0 B · 0 allocs** |
-| **Index** | B+ Tree Point Query | **180 ns/op** | ~5.5M lookups/sec | **0 B · 0 allocs** |
-| **Index** | Streaming Cursor Scan (101 keys) | **1208 ns/op** | ~12 ns/key | **64 B · 1 alloc** |
-| **Cache** | Sharded Concurrent Get | **51.1 ns/op** | ~19.5M ops/sec | **21 B · 1 alloc** |
-| **Cache** | Set/Get Roundtrip | **92.8 ns/op** | ~10.7M ops/sec | **11 B · 1 alloc** |
-| **Durability** | WAL Append + fsync | **2.35 µs/op** | ~425K writes/sec | **64 B · 1 alloc** |
-| **Network** | TCP Frame Encode | **30.4 ns/op** | ~33M frames/sec | **48 B · 1 alloc** |
-| **API** | gRPC End-to-End Get | **129 µs/op** | ~7.7K req/sec | 9KB · 152 allocs |
+```bash
+# Leader (:50051, Studio :8088) + Follower-1 (:50052) + Follower-2 (:50053)
+docker compose up -d --build
+
+# Studio: http://localhost:8088  ·  admin / admin
+```
 
 ---
 
-## 🏗️ Architecture
+## `beastctl` CLI
+
+Standalone binary for scripting, CI pipelines, and data migration — no browser required.
+
+```bash
+go build -o beastctl ./cmd/beastctl
+
+beastctl ping   --addr 127.0.0.1:50051                        # Health check + latency
+beastctl export --out backup.json --partition 0x01             # Snapshot by partition
+beastctl import --file backup.json                             # Restore from snapshot
+beastctl seed   --file examples/fixtures/seed.json             # Load fixtures with partition stats
+beastctl get    --key 72057594037927936                        # Inspect a single record
+beastctl put    --key 72057594037927936 --value '{"name":"x"}' # Write a record
+beastctl delete --key 72057594037927936                        # Tombstone a record
+```
+
+---
+
+## BeastDB Studio
+
+An administrative console embedded directly in the binary — zero Node.js in production.
+
+- **Firebase-Style 3-Pane Explorer** — Partition rail → Document list → Full field inspector
+- **Partition-Aware Key Builder** — Pick a partition, enter domain/item seeds → auto-computes `(prefix << 56) | FNV28(domain) << 28) | FNV28(item)`. No manual bit-shifting.
+- **64-Bit Key Bit-Slicer** — Decomposes any `uint64` key into prefix / domain / item segments with hex + binary view
+- **Cascading User Deletion** — Atomic wipe across all partitions for a given user hash
+- **Automatic Secret Redaction** — `passwordHash`, `salt`, `token`, `apiKey` stripped at parse time
+- **Live Partition Donut Chart** — Ground-truth partition counts via key-only B+ Tree leaf scan (0 tuple I/O)
+
+Provide a `partitions.json` sidecar to name and color-code your collections — no recompile needed.
+
+---
+
+## Engine Architecture
 
 ```mermaid
 flowchart TD
     Client["Client\n(gRPC / Protobuf)"] --> GS["GRPCServer :50051\nHTTP/2 · Streaming RPC"]
-    Browser["Admin Operator\n(Browser)"] --> WS["Web Console :8088\nEmbedded Next.js · Argon2id"]
+    Browser["Admin\n(Browser)"] --> WS["Studio :8088\nEmbedded Next.js · Argon2id"]
 
     GS --> E["Engine\nRWMutex coordinator"]
     WS --> E
 
     E --> WAL["WAL\nCRC32 torn-write guard\nAppend-only · fsync"]
-    E --> BPM["BufferPoolManager\nClock-Sweep eviction\nRWMutex fast-path · sync.Pool"]
-    E --> BT["B+ Tree\nBinary search · epoch guard\nLeft+right sibling rebalance"]
+    E --> BPM["BufferPoolManager\nClock-Sweep eviction\nsync.Pool fast-path"]
+    E --> BT["B+ Tree\nBinary search · epoch guard\nLeaf split / sibling rebalance"]
 
     BPM --> DM["DiskManager\n4KB aligned pages · fsync"]
     BT --> BPM
@@ -101,71 +128,84 @@ flowchart TD
     F --> E
 ```
 
-> 📐 Full component spec: [docs/architecture.md](docs/architecture.md)
+---
+
+## What's Under the Hood
+
+| Layer | Implementation |
+|---|---|
+| **Memory** | Zero-copy `[]byte↔string` via `unsafe`, cache-line-padded structs, FNV-1a hasher, open-addressing hash map, binary heap, ring buffer |
+| **Network** | 10-byte binary TCP frame (`0xDB` magic + CRC32), zero-alloc RESP2 parser & writer |
+| **Cache** | 64-shard partitioned `RWMutex` map, O(1) LRU eviction list, dual passive+active TTL heap, `sync.Pool` buffer recycling |
+| **Storage** | 4KB hardware-aligned Slotted Pages (stable `RID`s, O(1) tombstone delete), `fsync`-safe Disk Manager, Clock-Sweep Buffer Pool |
+| **Durability** | 23-byte binary WAL frames, IEEE CRC32 torn-write detection, ARIES crash recovery scanner, checkpointing |
+| **Indexing** | On-disk B+ Tree — binary search routing, 50/50 leaf splits, borrow/merge rebalancing, streaming cursor with epoch detection |
+| **API** | Protobuf schema + gRPC service — `Get`, `Put`, `Delete`, server-streaming `Scan` |
+| **Replication** | Leader-follower physical WAL streaming — two-phase catch-up + live broadcaster, batched ACK coalescing |
+| **Tooling** | `-dev` ephemeral emulator, `beastctl` CLI (export/import/seed/ping/crud), embedded Studio console |
 
 ---
 
-## ⚖️ Workload Profile & Trade-offs (B+ Tree vs. LSM-Tree)
+## Benchmarks
 
-BeastDB is architected as a **Read-Optimized / Balanced OLTP Engine**, prioritizing deterministic sub-microsecond point reads and streaming range scans over pure write-ingestion append logs.
+Measured on **Intel Core i5-12450HX**, Go 1.26, Windows/amd64:
 
-| Dimension | B+ Tree Engine (BeastDB) | LSM-Tree Engine (e.g., RocksDB) |
-|---|---|---|
-| **Primary Workload** | **Point reads, updates & ordered range scans** | Write-heavy ingestion & append-only streams |
-| **Point Read Latency**| **$O(\log_B N)$ direct jump** (180 ns, 0 allocs) | Multi-level lookup (MemTable + Bloom + SSTables) |
-| **Range Scans** | **Sequential leaf traversal** (12 ns/key) | Multi-way merge-sort across sorted runs |
-| **Tail Latency** | **Predictable** (no compaction spikes) | Variable (subject to compaction write stalls) |
-| **Role of WAL** | **Crash durability** (ARIES recovery for pages) | **Primary ingest buffer** (replays to MemTable) |
-
----
-
-## 🛠️ Developer Setup & Quickstart
-
-### Prerequisites
-- **Go 1.26+** · **Git** · **Docker & Docker Compose** *(optional)*
-
-### 1. Run Engine + Studio Locally
-```bash
-# Launch Primary Leader with gRPC (:50051) and Studio Web Console (:8088)
-go run ./cmd/server \
-  -role leader \
-  -port 50051 \
-  -data-dir ./tmp/primary \
-  -web-addr 0.0.0.0:8088 \
-  -admin-password admin
-
-# Open Studio Console: http://localhost:8088 (User: admin)
 ```
-
-### 2. Multi-Node Replication Cluster (Docker Compose)
-```bash
-# Spins up 1 Leader (50051, Studio 8088) + 2 Followers (50052, 50053)
-docker compose up -d --build
-```
-
-### 3. Tests & Micro-Benchmarks
-```bash
-# Run unit tests and chaos torn-write injection recovery
-go test -v ./...
-
-# Run zero-allocation benchmarks
 go test -bench=. -benchmem ./...
 ```
 
-### 4. Language-Agnostic Client Integration
-BeastDB defines its contract with [Protocol Buffers](api/proto/beastdb.proto) for native zero-dependency clients in any language:
+| Component | Operation | Latency | Allocs |
+|---|---|---|---|
+| Core DSA | Zero-copy `[]byte→string` | **0.30 ns/op** | 0 B · 0 |
+| Core DSA | Vector Push | **1.37 ns/op** | 0 B · 0 |
+| Core DSA | Open-Address Hash Get | **8.45 ns/op** | 0 B · 0 |
+| Storage | Slotted Page Tuple Read | **8.01 ns/op** | 0 B · 0 |
+| Index | B+ Tree Point Query | **180 ns/op** | 0 B · 0 |
+| Index | Streaming Cursor (101 keys) | **1208 ns/op** (~12 ns/key) | 64 B · 1 |
+| Cache | Sharded Concurrent Get | **51.1 ns/op** | 21 B · 1 |
+| Durability | WAL Append + fsync | **2.35 µs/op** | 64 B · 1 |
+| Network | TCP Frame Encode | **30.4 ns/op** | 48 B · 1 |
+| API | gRPC End-to-End Get | **129 µs/op** | ~9 KB · 152 |
 
-```go
-// Go Client Example
-conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
-client := beastv1.NewBeastDBServiceClient(conn)
-client.Put(ctx, &beastv1.PutRequest{Key: 42, Value: []byte("beast_mode")})
+---
+
+## B+ Tree vs LSM-Tree
+
+BeastDB is optimized for **read-heavy OLTP** — deterministic point reads and ordered range scans. It is not designed for write-heavy append workloads.
+
+| Dimension | BeastDB (B+ Tree) | RocksDB (LSM-Tree) |
+|---|---|---|
+| Point Read | `O(log N)` direct jump — **180 ns, 0 allocs** | MemTable + Bloom + multi-SSTable lookup |
+| Range Scan | Sequential leaf traversal — **12 ns/key** | Multi-way merge-sort across sorted runs |
+| Tail Latency | **Predictable** — no compaction spikes | Variable — subject to compaction write stalls |
+| WAL Role | **Crash durability** (ARIES recovery for pages) | Primary ingest buffer (replays to MemTable) |
+
+---
+
+## Tests
+
+```bash
+go test ./...        # All packages including chaos torn-write recovery
+go test -bench=. -benchmem ./...  # Zero-alloc micro-benchmarks
 ```
 
-> 🌐 See [docs/clients.md](docs/clients.md) for Python, Node.js/TypeScript, and Rust guides.
+---
+
+## Client Integration
+
+BeastDB publishes a Protobuf contract — generate clients in any language:
+
+```go
+// Go
+conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+client := beastv1.NewBeastDBServiceClient(conn)
+client.Put(ctx, &beastv1.PutRequest{Key: 72057594037927936, Value: []byte(`{"name":"beast"}`)})
+```
+
+See [`api/proto/beastdb.proto`](api/proto/beastdb.proto) for the full contract. Python, TypeScript, and Rust client guides are in [`docs/clients.md`](docs/clients.md).
 
 ---
 
 ## 👤 Author
 
-Sheersh Jaiswal ([@ChromaBeast](https://github.com/ChromaBeast))
+**Sheersh Jaiswal** · [@ChromaBeast](https://github.com/ChromaBeast)
