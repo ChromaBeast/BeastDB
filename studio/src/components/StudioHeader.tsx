@@ -2,6 +2,7 @@
 import {
   Activity,
   Database,
+  Key,
   LogOut,
   Moon,
   RefreshCw,
@@ -19,8 +20,9 @@ interface Props {
   user: SessionUser | null;
   busy: boolean;
   onRefresh: () => void;
+  onOpenTokens?: () => void;
 }
-export function StudioHeader({ view, setView, user, busy, onRefresh }: Props) {
+export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenTokens }: Props) {
   const theme = useTheme();
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-[#090a0d]/90 backdrop-blur-md">
@@ -50,6 +52,18 @@ export function StudioHeader({ view, setView, user, busy, onRefresh }: Props) {
           </button>
         </nav>
         <div className="flex items-center gap-1 md:ml-auto">
+          {onOpenTokens && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenTokens}
+              aria-label="API Access Tokens"
+              title="API Access Tokens"
+              className="text-zinc-400 hover:text-amber-400"
+            >
+              <Key size={17} />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

@@ -1,4 +1,4 @@
-import { Database, Folder } from "lucide-react";
+import { Database, Folder, Key } from "lucide-react";
 import { getPartitionMeta } from "../utils/key-decoder";
 
 const COLOR_BORDER: Record<string, string> = {
@@ -18,9 +18,10 @@ interface Props {
   hasMore: boolean;
   hasFullCounts?: boolean;
   onSelect: (value: string) => void;
+  onOpenTokens?: () => void;
 }
 
-export function PartitionRail({ partitions, selected, total, hasMore, hasFullCounts, onSelect }: Props) {
+export function PartitionRail({ partitions, selected, total, hasMore, hasFullCounts, onSelect, onOpenTokens }: Props) {
   return (
     <aside aria-label="Partitions" className="flex min-h-0 flex-col border-r border-border">
       <div className="border-b border-border px-5 py-5">
@@ -58,6 +59,19 @@ export function PartitionRail({ partitions, selected, total, hasMore, hasFullCou
           );
         })}
       </nav>
+      {onOpenTokens && (
+        <div className="border-t border-border p-2">
+          <button
+            type="button"
+            onClick={onOpenTokens}
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition group"
+          >
+            <Key size={15} className="shrink-0 text-amber-400 group-hover:scale-110 transition-transform" />
+            <span className="min-w-0 flex-1 truncate font-medium">API Tokens</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">0x05</span>
+          </button>
+        </div>
+      )}
       <p className="border-t border-border px-4 py-3 text-[11px] font-mono text-zinc-500">
         {hasFullCounts
           ? "All registered partitions across keyspace."

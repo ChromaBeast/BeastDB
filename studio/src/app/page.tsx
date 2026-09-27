@@ -8,6 +8,7 @@ import { NewRecordDialog } from "../components/NewRecordDialog";
 import { KeyAnalyzerDialog } from "../components/KeyAnalyzerDialog";
 import { DeleteUserDialog } from "../components/DeleteUserDialog";
 import { EditRecordPanel } from "../components/EditRecordPanel";
+import { ApiTokensDialog } from "../components/ApiTokensDialog";
 import { Dialog, DialogContent } from "../components/ui/dialog";
 import { Button } from "../components/ui/button";
 import {
@@ -26,6 +27,7 @@ export default function StudioDashboard() {
   const [view, setView] = useState<"records" | "overview">("records");
   const [selected, setSelected] = useState<UniversalRecord | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [tokensOpen, setTokensOpen] = useState(false);
   const [analyzerOpen, setAnalyzerOpen] = useState(false);
   const [deleteKey, setDeleteKey] = useState<string | null>(null);
   const [deleteUserHash, setDeleteUserHash] = useState<number | null>(null);
@@ -68,7 +70,7 @@ export default function StudioDashboard() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <StudioHeader view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} />
+      <StudioHeader view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} onOpenTokens={() => setTokensOpen(true)} />
       {data.user?.role === "viewer" && (
         <div className="border-b bg-amber-50 dark:bg-amber-950/20 px-4 py-2 text-center text-sm text-amber-800 dark:text-amber-200">
           You have view-only access — contact an admin to make changes.
@@ -96,6 +98,7 @@ export default function StudioDashboard() {
             partitionCounts={data.stats?.partitionCounts}
             onLoadPartition={data.loadPartition}
             onNotice={showNotice}
+            onOpenTokens={() => setTokensOpen(true)}
           />
         ) : (
           <OverviewView
@@ -112,6 +115,7 @@ export default function StudioDashboard() {
         )}
       </main>
       <NewRecordDialog open={newOpen} onClose={() => setNewOpen(false)} onSave={data.save} onLookup={data.lookup} onNotice={showNotice} />
+      <ApiTokensDialog open={tokensOpen} onClose={() => setTokensOpen(false)} onNotice={showNotice} />
       <KeyAnalyzerDialog open={analyzerOpen} onClose={() => setAnalyzerOpen(false)} />
       <DeleteUserDialog open={deleteUserHash !== null} userHash={deleteUserHash} onConfirm={() => void removeUserCascade()} onClose={() => setDeleteUserHash(null)} />
       <Dialog open={editingRecord !== null} onOpenChange={(open) => { if (!open) setEditingRecord(null); }}>

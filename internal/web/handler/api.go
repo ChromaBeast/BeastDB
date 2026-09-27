@@ -28,11 +28,17 @@ type APIHandler struct {
 	role       string
 	version    string
 	partitions []PartitionEntry
+	tokens     *auth.TokenStore
 }
 
 // NewAPIHandler creates an APIHandler with engine, session, and partition registry.
 func NewAPIHandler(e EngineReader, s *auth.SessionManager, role, version string, partitions []PartitionEntry) *APIHandler {
 	return &APIHandler{engine: e, sessions: s, role: role, version: version, partitions: partitions}
+}
+
+// SetTokenStore assigns the persistent TokenStore to the APIHandler.
+func (h *APIHandler) SetTokenStore(ts *auth.TokenStore) {
+	h.tokens = ts
 }
 
 // GetRecords handles GET /api/records?start=<uint64>&limit=<int>.

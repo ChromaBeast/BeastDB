@@ -58,14 +58,18 @@ func main() {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
 
+	tokenStore := initTokenStore(engine)
+
 	var grpcOpts []grpc.ServerOption
-	if *apiToken != "" {
-		authInterceptor := api.NewAuthInterceptor(*apiToken)
+	if *apiToken != "" || tokenStore != nil {
+		authInterceptor := api.NewAuthInterceptor(*apiToken, tokenStore)
 		grpcOpts = append(grpcOpts,
 			grpc.UnaryInterceptor(authInterceptor.Unary()),
 			grpc.StreamInterceptor(authInterceptor.Stream()),
 		)
-		log.Printf("🔐 gRPC service protected with Bearer token authentication.")
+		if *apiToken != "" {
+			log.Printf("🔐 gRPC service protected with Bearer token authentication.")
+		}
 	} else if !*devMode {
 		log.Printf("⚠️  SECURITY NOTICE: gRPC running without api-token. Set BEASTDB_API_TOKEN to require Bearer auth.")
 	}
@@ -114,7 +118,7 @@ func main() {
 			log.Fatalf("Failed to initialize session secret: %v", secretErr)
 		}
 
-		webSrv, webErr := web.NewServer(*webAddr, engine, secret, *role, Version, partitions)
+		webSrv, webErr := web.NewServer(*webAddr, engine, secret, *role, Version, partitions, tokenStore)
 		if webErr != nil {
 			log.Fatalf("Failed to create web server: %v", webErr)
 		}

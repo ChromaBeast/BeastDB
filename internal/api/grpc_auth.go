@@ -10,14 +10,27 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// AuthInterceptor enforces Bearer token authentication on incoming gRPC RPCs.
-type AuthInterceptor struct {
-	token string
+// TokenValidator evaluates whether an API token is valid against the database.
+type TokenValidator interface {
+	Validate(raw string) bool
 }
 
-// NewAuthInterceptor creates a new gRPC auth interceptor.
-func NewAuthInterceptor(token string) *AuthInterceptor {
-	return &AuthInterceptor{token: strings.TrimSpace(token)}
+// AuthInterceptor enforces Bearer token authentication on incoming gRPC RPCs.
+type AuthInterceptor struct {
+	staticToken string
+	validator   TokenValidator
+}
+
+// NewAuthInterceptor creates a new gRPC auth interceptor with optional dynamic validator.
+func NewAuthInterceptor(staticToken string, validator ...TokenValidator) *AuthInterceptor {
+	var v TokenValidator
+	if len(validator) > 0 {
+		v = validator[0]
+	}
+	return &AuthInterceptor{
+		staticToken: strings.TrimSpace(staticToken),
+		validator:   v,
+	}
 }
 
 // Unary returns a grpc.UnaryServerInterceptor.
@@ -41,7 +54,7 @@ func (a *AuthInterceptor) Stream() grpc.StreamServerInterceptor {
 }
 
 func (a *AuthInterceptor) authorize(ctx context.Context) error {
-	if a.token == "" {
+	if a.staticToken == "" && a.validator == nil {
 		return nil
 	}
 	md, ok := metadata.FromIncomingContext(ctx)
@@ -57,8 +70,11 @@ func (a *AuthInterceptor) authorize(ctx context.Context) error {
 		return status.Errorf(codes.Unauthenticated, "authorization must be Bearer token")
 	}
 	token := strings.TrimSpace(header[7:])
-	if token != a.token {
-		return status.Errorf(codes.Unauthenticated, "invalid authorization token")
+	if a.staticToken != "" && token == a.staticToken {
+		return nil
 	}
-	return nil
+	if a.validator != nil && a.validator.Validate(token) {
+		return nil
+	}
+	return status.Errorf(codes.Unauthenticated, "invalid authorization token")
 }

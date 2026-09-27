@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
 // getEnv returns the environment variable value if non-empty, or the fallback.
@@ -61,4 +64,29 @@ func loadOrGenerateSessionSecret(dataDir string) ([]byte, error) {
 	}
 
 	return secret, nil
+}
+
+// initTokenStore creates and loads persistent API tokens from partition 0x05.
+func initTokenStore(engine *api.Engine) *auth.TokenStore {
+	return auth.NewTokenStore(engine, func(start, end uint64) ([]auth.TokenRecord, error) {
+		cursor, err := engine.Scan(start, end)
+		if err != nil {
+			return nil, err
+		}
+		defer cursor.Close()
+
+		var records []auth.TokenRecord
+		for {
+			k, rid, ok, err := cursor.Next()
+			if err != nil || !ok {
+				break
+			}
+			val, err := engine.ReadTuple(rid)
+			if err != nil {
+				continue
+			}
+			records = append(records, auth.TokenRecord{Key: k, Value: val})
+		}
+		return records, nil
+	})
 }

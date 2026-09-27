@@ -29,7 +29,7 @@ type EngineBackend interface {
 // secret is the 32-byte HMAC key for session signing.
 // partitions is the optional project-defined partition registry served to the Studio.
 // Call Serve() to start accepting connections.
-func NewServer(addr string, engine EngineBackend, secret []byte, role, version string, partitions []handler.PartitionEntry) (*Server, error) {
+func NewServer(addr string, engine EngineBackend, secret []byte, role, version string, partitions []handler.PartitionEntry, tokenStore ...*auth.TokenStore) (*Server, error) {
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		return nil, err
@@ -38,6 +38,9 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 	sessions := auth.NewSessionManager(secret)
 	users := auth.NewUserStore(engine)
 	apiH := handler.NewAPIHandler(engine, sessions, role, version, partitions)
+	if len(tokenStore) > 0 && tokenStore[0] != nil {
+		apiH.SetTokenStore(tokenStore[0])
+	}
 	rateLimiter := handler.NewLoginRateLimiter(5, 30*time.Second)
 
 	deps := &handler.Deps{
@@ -89,6 +92,20 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 
 	// User bulk-delete route — admin only
 	mux.Handle("/api/user", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.DeleteUser)))
+
+	// API token management — admin only
+	mux.Handle("/api/tokens", handler.AdminMiddleware(sessions, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			apiH.GetTokens(w, r)
+		case http.MethodPost:
+			apiH.CreateToken(w, r)
+		case http.MethodDelete:
+			apiH.DeleteToken(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})))
 
 
 	srv := &http.Server{

@@ -29,6 +29,7 @@ interface Props {
   onLookup: (key: string) => Promise<UniversalRecord>;
   onSearch?: (q: string, prefix?: number) => Promise<UniversalRecord[]>;
   onNotice: (message: string, error?: boolean) => void;
+  onOpenTokens?: () => void;
 }
 
 type Pane = "partitions" | "documents" | "details";
@@ -165,7 +166,7 @@ export function RecordsView(p: Props) {
       )}
       <div className="grid min-h-[660px] overflow-hidden rounded-xl border bg-card shadow-sm lg:grid-cols-[220px_minmax(280px,0.9fr)_minmax(380px,1.4fr)]">
         <div className={`${pane !== "partitions" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
-          <PartitionRail partitions={partitions} selected={partition} total={totalCount} hasMore={p.hasMore} hasFullCounts={Boolean(p.partitionCounts)} onSelect={choosePartition} />
+          <PartitionRail partitions={partitions} selected={partition} total={totalCount} hasMore={p.hasMore} hasFullCounts={Boolean(p.partitionCounts)} onSelect={choosePartition} onOpenTokens={p.onOpenTokens} />
         </div>
         <div className={`${pane !== "documents" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
           <DocumentList records={shown} selected={p.selected} loading={p.loading} loadingMore={p.loadingMore} hasMore={p.hasMore} search={search} format={format} formats={formats} looking={looking} title={partitionTitle} shownCount={shown.length} onSearchChange={setSearch} onFormatChange={setFormat} onExactLookup={() => void handleLookup()} onLoadMore={p.onLoadMore} onSelect={(r) => { p.onSelect(r); setPane("details"); }} onBack={() => setPane("partitions")} canWrite={p.canWrite} onNew={p.onNew} />

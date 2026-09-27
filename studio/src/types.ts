@@ -65,3 +65,14 @@ export interface PartitionConfig {
   description?: string;
   icon?: string;
 }
+
+export interface APITokenItem {
+  id: string;
+  name: string;
+  token_hash: string;
+  masked_token: string;
+  role: string;
+  created_at: string;
+  created_by: string;
+}
+
