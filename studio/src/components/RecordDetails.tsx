@@ -18,9 +18,10 @@ interface Props {
   onNotice: (message: string, error?: boolean) => void;
   onScanRange?: (start: string, end: string) => Promise<UniversalRecord[]>;
   onSelect?: (record: UniversalRecord) => void;
+  partitionCounts?: Record<string, number>;
 }
 
-export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit, onNotice, onScanRange, onSelect }: Props) {
+export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit, onNotice, onScanRange, onSelect, partitionCounts }: Props) {
   const copy = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -46,13 +47,15 @@ export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit
   })();
 
   const noop = async () => [] as UniversalRecord[];
-  if (record.prefix === 0x01) {
+  const isUserRecord = Boolean(record.fields?.email || record.fields?.username);
+  if (isUserRecord) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
         <UserProfilePanel
           record={record} canWrite={canWrite}
           onDelete={onDelete} onDeleteUser={onDeleteUser ?? (() => {})}
           onScanRange={onScanRange ?? noop} onSelect={onSelect ?? (() => {})}
+          partitionCounts={partitionCounts}
         />
         <div className="px-5 pb-5">
           <details className="group rounded-lg border border-border bg-card/50">

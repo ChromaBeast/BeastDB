@@ -14,16 +14,17 @@ interface Props {
   onDeleteUser: (userHash: number) => void;
   onScanRange: (start: string, end: string) => Promise<UniversalRecord[]>;
   onSelect: (record: UniversalRecord) => void;
+  partitionCounts?: Record<string, number>;
 }
 
-export function UserProfilePanel({ record, canWrite, onDelete, onDeleteUser, onScanRange, onSelect }: Props) {
+export function UserProfilePanel({ record, canWrite, onDelete, onDeleteUser, onScanRange, onSelect, partitionCounts }: Props) {
   const name = record.fields?.username || record.fields?.name || "?";
   const initials = String(name).slice(0, 2).toUpperCase();
   const email = record.fields?.email as string | undefined;
   const role = record.fields?.role as string | undefined;
   const createdAt = record.fields?.createdAt as string | undefined;
 
-  const { collections, ready } = useUserContext(record.userHash, onScanRange);
+  const { collections, ready } = useUserContext(record.userHash, record.prefix, partitionCounts, onScanRange);
 
   const totalRelated = collections.reduce((s, c) => s + c.records.length, 0);
 

@@ -1,5 +1,9 @@
-import type { PartitionConfig } from "../types";
-import { DEFAULT_REGISTRY, type PartitionMeta } from "./default-partitions";
+import type { PartitionConfig, UniversalRecord } from "../types";
+import {
+  type PartitionMeta,
+  getDeterministicColor,
+  inferPartitionMeta,
+} from "./schema-inference";
 
 export type { PartitionMeta };
 
@@ -14,16 +18,11 @@ export interface KeyDecoded {
   itemHash: number;
 }
 
-// Fallback to DEFAULT_REGISTRY unless custom partitions are provided by GET /api/partitions.
-let prefixRegistry: Record<number, PartitionMeta> = { ...DEFAULT_REGISTRY };
+let prefixRegistry: Record<number, PartitionMeta> = {};
 
 export function setPartitionRegistry(entries: PartitionConfig[]): void {
-  if (!entries || entries.length === 0) {
-    prefixRegistry = { ...DEFAULT_REGISTRY };
-    return;
-  }
   const next: Record<number, PartitionMeta> = {};
-  for (const e of entries) {
+  for (const e of entries ?? []) {
     next[e.prefix] = { label: e.label, color: e.color, description: e.description };
   }
   prefixRegistry = next;
@@ -32,7 +31,7 @@ export function setPartitionRegistry(entries: PartitionConfig[]): void {
 export function getPartitionMeta(prefix: number): PartitionMeta {
   return prefixRegistry[prefix] ?? {
     label: `Partition 0x${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
-    color: "slate",
+    color: getDeterministicColor(prefix),
   };
 }
 
@@ -86,26 +85,57 @@ export function formatKeyCompact(key: string): string {
   return str;
 }
 
-export function buildPartitionList(records: Array<{ prefix: number; prefixLabel: string }>, partitionCounts?: Record<string, number>) {
+export function buildPartitionList(records: UniversalRecord[], partitionCounts?: Record<string, number>) {
   const map = new Map<number, { prefixLabel: string; count: number }>();
+
+  const recordsByPrefix = new Map<number, UniversalRecord[]>();
+  for (const r of records) {
+    let list = recordsByPrefix.get(r.prefix);
+    if (!list) {
+      list = [];
+      recordsByPrefix.set(r.prefix, list);
+    }
+    list.push(r);
+  }
+
+  const resolveMeta = (prefix: number): PartitionMeta => {
+    if (prefixRegistry[prefix]) return prefixRegistry[prefix];
+    const recs = recordsByPrefix.get(prefix);
+    if (recs && recs.length > 0) {
+      const inferred = inferPartitionMeta(recs, prefix);
+      prefixRegistry[prefix] = inferred;
+      return inferred;
+    }
+    return getPartitionMeta(prefix);
+  };
+
   for (const r of getRegisteredPartitions()) {
     const count = partitionCounts ? (partitionCounts[String(r.prefix)] ?? 0) : 0;
     map.set(r.prefix, { prefixLabel: r.label, count });
   }
+
   for (const [rawPrefix, count] of Object.entries(partitionCounts ?? {})) {
     const prefix = Number(rawPrefix);
     if (!map.has(prefix)) {
-      map.set(prefix, { prefixLabel: getPartitionMeta(prefix).label, count });
+      const meta = resolveMeta(prefix);
+      map.set(prefix, { prefixLabel: meta.label, count });
     }
   }
+
   for (const r of records) {
     const existing = map.get(r.prefix);
     if (existing) {
       if (!partitionCounts) existing.count += 1;
+      if (existing.prefixLabel.startsWith("Partition 0x")) {
+        const meta = resolveMeta(r.prefix);
+        existing.prefixLabel = meta.label;
+      }
     } else {
       const count = partitionCounts ? (partitionCounts[String(r.prefix)] ?? 1) : 1;
-      map.set(r.prefix, { prefixLabel: r.prefixLabel, count });
+      const meta = resolveMeta(r.prefix);
+      map.set(r.prefix, { prefixLabel: meta.label, count });
     }
   }
+
   return [...map.entries()].sort(([a], [b]) => a - b).map(([prefix, g]) => ({ prefix, count: g.count, prefixLabel: g.prefixLabel }));
 }

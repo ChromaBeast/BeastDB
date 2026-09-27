@@ -1,10 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { UniversalRecord } from "../types";
-import { getRegisteredPartitions } from "../utils/key-decoder";
-
-// For a given userHash, scan all non-identity partitions (skip 0x01 = the user's own record).
-const SKIP_PREFIXES = new Set([0x01, 0x02, 0x05, 0x0a, 0x0b, 0x0c]);
+import { getPartitionMeta } from "../utils/key-decoder";
+import { inferCollectionName } from "../utils/schema-inference";
 
 export interface UserCollectionResult {
   prefix: number;
@@ -16,36 +14,52 @@ export interface UserCollectionResult {
 
 type ScanFn = (start: string, end: string) => Promise<UniversalRecord[]>;
 
-export function useUserContext(userHash: number | undefined, onScanRange: ScanFn) {
+// Scan all partitions that actually have data (from partitionCounts), except the
+// user's own identity partition — so we discover collections dynamically from
+// real data rather than any hardcoded schema.
+export function useUserContext(
+  userHash: number | undefined,
+  identityPrefix: number,
+  partitionCounts: Record<string, number> | undefined,
+  onScanRange: ScanFn,
+) {
   const [collections, setCollections] = useState<UserCollectionResult[]>([]);
   const [ready, setReady] = useState(false);
 
   const load = useCallback(async () => {
-    if (userHash == null) return;
-    const partitions = getRegisteredPartitions().filter((p) => !SKIP_PREFIXES.has(p.prefix));
+    if (userHash == null || !partitionCounts) return;
+    const prefixes = Object.keys(partitionCounts)
+      .map(Number)
+      .filter((p) => p !== identityPrefix && partitionCounts[String(p)] > 0);
+    if (prefixes.length === 0) { setReady(true); return; }
 
-    // Initialise with loading state
-    setCollections(partitions.map((p) => ({ prefix: p.prefix, label: p.label, color: p.color, records: [], loading: true })));
+    setCollections(prefixes.map((prefix) => {
+      const meta = getPartitionMeta(prefix);
+      return { prefix, label: meta.label, color: meta.color, records: [], loading: true };
+    }));
     setReady(false);
 
-    // Fan out all scans in parallel — each is a single B+ Tree bounded range scan
+    // Fan out one bounded B+ Tree range scan per partition — all parallel
     const results = await Promise.all(
-      partitions.map(async (p): Promise<UserCollectionResult> => {
-        const base = (BigInt(p.prefix) << 56n) | (BigInt(userHash) << 28n);
+      prefixes.map(async (prefix): Promise<UserCollectionResult> => {
+        const meta = getPartitionMeta(prefix);
+        const base = (BigInt(prefix) << 56n) | (BigInt(userHash) << 28n);
         const start = base.toString();
         const end = (base | 0x0fffffffn).toString();
         try {
           const records = await onScanRange(start, end);
-          return { prefix: p.prefix, label: p.label, color: p.color, records, loading: false };
+          const inferred = inferCollectionName(records);
+          const label = (meta.label.startsWith("Partition 0x") && inferred) ? inferred : meta.label;
+          return { prefix, label, color: meta.color, records, loading: false };
         } catch {
-          return { prefix: p.prefix, label: p.label, color: p.color, records: [], loading: false };
+          return { prefix, label: meta.label, color: meta.color, records: [], loading: false };
         }
       }),
     );
 
-    setCollections(results.filter((r) => r.records.length > 0));
+    setCollections(results.filter((r) => r.records.length > 0).sort((a, b) => a.prefix - b.prefix));
     setReady(true);
-  }, [userHash, onScanRange]);
+  }, [userHash, identityPrefix, partitionCounts, onScanRange]);
 
   useEffect(() => { void load(); }, [load]);
 

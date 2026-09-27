@@ -1,12 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import {
-  PartitionConfig,
-  SearchResponse,
-  SessionUser,
-  TelemetryStats,
-  UniversalRecord,
-} from "../types";
+import { PartitionConfig, SearchResponse, SessionUser, TelemetryStats, UniversalRecord } from "../types";
 import { parseUniversalRecord } from "../utils/data-parser";
 import { setPartitionRegistry } from "../utils/key-decoder";
 import { api } from "../lib/api-client";
@@ -153,23 +147,16 @@ export function useStudioData() {
     };
   };
 
-  const save = async (key: string, value: string): Promise<void> => {
+  const postKey = async (key: string, value: string, createOnly: boolean) => {
     await api<void>("/api/key", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value, createOnly: true }),
+      body: JSON.stringify({ key, value, createOnly }),
     });
     await refresh();
   };
-
-  const update = async (key: string, value: string): Promise<void> => {
-    await api<void>("/api/key", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, value, createOnly: false }),
-    });
-    await refresh();
-  };
+  const save = (key: string, value: string) => postKey(key, value, true);
+  const update = (key: string, value: string) => postKey(key, value, false);
 
   const remove = async (key: string): Promise<void> => {
     await api<void>(`/api/key?k=${encodeURIComponent(key)}`, { method: "DELETE" });

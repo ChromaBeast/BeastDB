@@ -76,71 +76,48 @@ export function RecordsView(p: Props) {
     }
   };
 
-  const handleSearchText = async (query: string, prefix?: number) => {
+  const withBusy = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try { await fn(); } catch (e) { p.onNotice((e as Error).message, true); } finally { setBusy(false); }
+  };
+
+  const handleSearchText = (query: string, prefix?: number) => withBusy(async () => {
     if (!p.onSearch) return;
-    setBusy(true);
-    try {
-      const res = await p.onSearch(query, { prefix });
-      setSearchResults(res.records);
-      setSearchMeta({ ...res, query });
-      setIsSearchMode(true);
-      p.onNotice(`Found ${res.count} matches across ${res.scannedCount} keys.`);
-    } catch (e) {
-      p.onNotice((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
+    const res = await p.onSearch(query, { prefix });
+    setSearchResults(res.records);
+    setSearchMeta({ ...res, query });
+    setIsSearchMode(true);
+    p.onNotice(`Found ${res.count} matches across ${res.scannedCount} keys.`);
+  });
 
-  const handleContinueScan = async () => {
+  const handleContinueScan = () => withBusy(async () => {
     if (!p.onSearch || !searchMeta?.nextKey) return;
-    setBusy(true);
-    try {
-      const res = await p.onSearch(searchMeta.query, { prefix: searchMeta.prefix, start: searchMeta.nextKey });
-      setSearchResults((curr) => [...(curr || []), ...res.records]);
-      setSearchMeta({
-        ...res,
-        query: searchMeta.query,
-        count: (searchMeta.count || 0) + res.count,
-        scannedCount: (searchMeta.scannedCount || 0) + res.scannedCount,
-      });
-      p.onNotice(`Scanned +${res.scannedCount} keys. Total matches: ${searchMeta.count + res.count}`);
-    } catch (e) {
-      p.onNotice((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
+    const res = await p.onSearch(searchMeta.query, { prefix: searchMeta.prefix, start: searchMeta.nextKey });
+    setSearchResults((curr) => [...(curr || []), ...res.records]);
+    setSearchMeta({
+      ...res,
+      query: searchMeta.query,
+      count: (searchMeta.count || 0) + res.count,
+      scannedCount: (searchMeta.scannedCount || 0) + res.scannedCount,
+    });
+    p.onNotice(`Scanned +${res.scannedCount} keys. Total: ${searchMeta.count + res.count}`);
+  });
 
-  const handleLookupKey = async (key: string) => {
-    setBusy(true);
-    try {
-      const rec = await p.onLookup(key);
-      setPartition(String(rec.prefix));
-      p.onSelect(rec);
-      setPane("details");
-    } catch (e) {
-      p.onNotice((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const handleLookupKey = (key: string) => withBusy(async () => {
+    const rec = await p.onLookup(key);
+    setPartition(String(rec.prefix));
+    p.onSelect(rec);
+    setPane("details");
+  });
 
-  const handleScanRange = async (startKey: string, endKey: string) => {
+  const handleScanRange = (startKey: string, endKey: string) => withBusy(async () => {
     if (!p.onScanRange) return;
-    setBusy(true);
-    try {
-      const recs = await p.onScanRange(startKey, endKey);
-      setSearchResults(recs);
-      setIsSearchMode(true);
-      setSearchMeta(null);
-      p.onNotice(`Retrieved ${recs.length} records in range.`);
-    } catch (e) {
-      p.onNotice((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
+    const recs = await p.onScanRange(startKey, endKey);
+    setSearchResults(recs);
+    setIsSearchMode(true);
+    setSearchMeta(null);
+    p.onNotice(`Retrieved ${recs.length} records in range.`);
+  });
 
   const partitionTitle = partitions.find((g) => String(g.prefix) === partition)?.prefixLabel || `Partition 0x${Number(partition).toString(16).padStart(2, "0").toUpperCase()}`;
 
@@ -194,7 +171,7 @@ export function RecordsView(p: Props) {
         </div>
         <div className={`${pane !== "details" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
           {p.selected ? (
-            <RecordDetails record={p.selected} canWrite={p.canWrite} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser} onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined} onNotice={p.onNotice} onScanRange={p.onScanRange} onSelect={(r) => { p.onSelect(r); setPane("details"); }} />
+            <RecordDetails record={p.selected} canWrite={p.canWrite} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser} onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined} onNotice={p.onNotice} onScanRange={p.onScanRange} onSelect={(r) => { p.onSelect(r); setPane("details"); }} partitionCounts={p.partitionCounts} />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
               <div className="rounded-xl border bg-muted p-4"><FileText size={24} className="text-muted-foreground" /></div>
