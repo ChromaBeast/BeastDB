@@ -9,10 +9,25 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
-var ErrRecordExists = errors.New("record already exists")
+const MaxRecordSize = 4000
+
+var (
+	// ErrRecordExists indicates a key is already present during PutIfAbsent.
+	ErrRecordExists = errors.New("record already exists")
+	// ErrRecordTooLarge indicates the payload exceeds the 4,000 byte limit.
+	ErrRecordTooLarge = errors.New("record value exceeds maximum supported size of 4000 bytes")
+	// ErrReadOnlyReplica indicates mutation attempts on a read-only replica node.
+	ErrReadOnlyReplica = errors.New("writes are not permitted on read-only replica")
+)
 
 // Put logs mutation to WAL, stores tuple in slotted page, and indexes key in B+ Tree.
 func (e *Engine) Put(key uint64, value []byte) error {
+	if e.IsReadOnly() {
+		return ErrReadOnlyReplica
+	}
+	if len(value) > MaxRecordSize {
+		return ErrRecordTooLarge
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.putLocked(key, value)
@@ -20,6 +35,12 @@ func (e *Engine) Put(key uint64, value []byte) error {
 
 // PutIfAbsent inserts only when key is not already present.
 func (e *Engine) PutIfAbsent(key uint64, value []byte) error {
+	if e.IsReadOnly() {
+		return ErrReadOnlyReplica
+	}
+	if len(value) > MaxRecordSize {
+		return ErrRecordTooLarge
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	_, err := e.tree.Find(key)
@@ -105,41 +126,6 @@ func (e *Engine) Get(key uint64) ([]byte, bool, error) {
 	return val, true, nil
 }
 
-// Delete marks tuple deleted in slotted page, removes index entry, and logs tombstone.
-func (e *Engine) Delete(key uint64) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	var keyBytes [8]byte
-	binary.LittleEndian.PutUint64(keyBytes[:], key)
-	lsn, err := e.wal.Write(wal.OpDelete, keyBytes[:], nil)
-	if err != nil {
-		return err
-	}
-
-	rid, err := e.tree.Find(key)
-	if err == index.ErrKeyNotFound {
-		e.notifyCommit(lsn, wal.OpDelete, keyBytes[:], nil)
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	page, err := e.bpm.FetchPage(rid.PageID)
-	if err == nil {
-		_ = page.DeleteTuple(rid.SlotID)
-		_ = e.bpm.UnpinPage(rid.PageID, true)
-	}
-
-	if err := e.tree.Delete(key); err != nil {
-		return err
-	}
-
-	e.unindexValueLocked(key)
-	e.notifyCommit(lsn, wal.OpDelete, keyBytes[:], nil)
-	return nil
-}
 
 // Scan returns a streaming cursor iterator over the requested key range.
 // The engine's read lock is held for the cursor's entire lifetime and released

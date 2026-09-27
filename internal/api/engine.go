@@ -20,6 +20,7 @@ type Engine struct {
 	activeDataPage uint64
 	observer       CommitObserver
 	secIndex       *index.SecondaryIndex
+	readOnly       bool
 	mu             sync.RWMutex
 }
 
@@ -88,64 +89,69 @@ func (e *Engine) WALPath() string {
 	return e.wal.Path()
 }
 
+// SetReadOnly toggles read-only mode for replica nodes.
+func (e *Engine) SetReadOnly(ro bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.readOnly = ro
+}
+
+// IsReadOnly reports whether the engine is currently in read-only mode.
+func (e *Engine) IsReadOnly() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.readOnly
+}
+
 // ApplyReplicatedRecord writes a replicated mutation from Leader into local state.
 func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
-	if len(key) < 8 {
-		return nil
-	}
-	keyUint := binary.LittleEndian.Uint64(key)
-
 	switch opType {
 	case wal.OpPut:
-		return e.Put(keyUint, value)
+		if len(key) < 8 {
+			return nil
+		}
+		keyUint := binary.LittleEndian.Uint64(key)
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.putLocked(keyUint, value)
+
 	case wal.OpDelete:
-		_ = e.Delete(keyUint)
+		if len(key) < 8 {
+			return nil
+		}
+		keyUint := binary.LittleEndian.Uint64(key)
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return e.deleteLocked(keyUint)
+
+	case wal.OpBatch:
+		batchOps, err := wal.DecodeBatchPayload(value)
+		if err != nil {
+			return err
+		}
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		for _, bOp := range batchOps {
+			if len(bOp.Key) < 8 {
+				continue
+			}
+			k := binary.LittleEndian.Uint64(bOp.Key)
+			if bOp.Type == wal.OpPut {
+				if err := e.applyPutInMemory(k, bOp.Value); err != nil {
+					return err
+				}
+				e.indexValueLocked(k, bOp.Value)
+			} else if bOp.Type == wal.OpDelete {
+				if err := e.applyDeleteInMemory(k); err != nil {
+					return err
+				}
+				e.unindexValueLocked(k)
+			}
+		}
 		return nil
+
 	default:
 		return nil
 	}
-}
-
-// Close flushes all dirty pages to physical disk and releases file handles.
-func (e *Engine) Close() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	var firstErr error
-	recordErr := func(err error) {
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
-
-	recordErr(e.updateMeta(func(m *storage.MetaData) {
-		m.LastCheckpointLSN = e.wal.CurrentLSN()
-		m.ActiveDataPageID = e.activeDataPage
-		m.RootPageID = e.tree.RootPageID()
-	}))
-	recordErr(e.bpm.FlushAll())
-	recordErr(e.wal.Close())
-	recordErr(e.disk.Close())
-	return firstErr
-}
-
-// Checkpoint flushes all dirty pages to disk, then rotates the WAL file.
-// After a checkpoint, crash recovery only needs to scan the new (empty) WAL.
-// Safe to call periodically (e.g., every N writes or on a timer).
-func (e *Engine) Checkpoint() error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-
-	if err := e.updateMeta(func(m *storage.MetaData) {
-		m.LastCheckpointLSN = e.wal.CurrentLSN()
-		m.ActiveDataPageID = e.activeDataPage
-		m.RootPageID = e.tree.RootPageID()
-	}); err != nil {
-		return fmt.Errorf("checkpoint update meta: %w", err)
-	}
-	if err := e.bpm.FlushAll(); err != nil {
-		return fmt.Errorf("checkpoint flush dirty pages: %w", err)
-	}
-	return e.wal.Checkpoint()
 }
 

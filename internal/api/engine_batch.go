@@ -33,8 +33,16 @@ type BatchOperation struct {
 // All operations are logged in a single WAL record with a single CRC32 checksum, ensuring
 // that all operations commit together or none do.
 func (e *Engine) BatchWrite(ops []BatchOperation) error {
+	if e.IsReadOnly() {
+		return ErrReadOnlyReplica
+	}
 	if len(ops) == 0 {
 		return ErrEmptyBatchWrite
+	}
+	for _, op := range ops {
+		if op.Type == BatchOpPut && len(op.Value) > MaxRecordSize {
+			return ErrRecordTooLarge
+		}
 	}
 
 	e.mu.Lock()
@@ -86,11 +94,9 @@ func (e *Engine) BatchWrite(ops []BatchOperation) error {
 		}
 	}
 
-	// 4. Notify replication observer of the atomic batch commit
+	// 4. Notify replication observer of the atomic batch commit as a single unit
 	if e.observer != nil {
-		for _, wOp := range walOps {
-			e.observer.OnCommit(lsn, wOp.Type, wOp.Key, wOp.Value)
-		}
+		e.observer.OnCommit(lsn, wal.OpBatch, nil, payload)
 	}
 
 	return nil

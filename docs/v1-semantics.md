@@ -56,7 +56,7 @@
 
 | Component | Supported Version / Target | Notes |
 |---|---|---|
-| **Go Runtime** | Go 1.22.x, 1.23.x, 1.24.x | Required for building engine and CLI binaries |
+| **Go Runtime** | Go 1.26.x (pinned in go.mod) | Required for building engine and CLI binaries |
 | **Node / Bun** | Bun 1.1+, Node.js 20 LTS | Required for Studio build and web assets |
 | **Linux** | Ubuntu 22.04+, Debian 12+, RHEL 9+ | Recommended for primary production deployments |
 | **Windows** | Windows 10/11, Windows Server 2019+ | Fully supported; test suite validated |
