@@ -33,7 +33,13 @@ func main() {
 	webAddr           := flag.String("web-addr", "127.0.0.1:8080", "Address for the web admin console (empty to disable)")
 	adminPassword     := flag.String("admin-password", "admin", "Initial admin user password (used only on first run)")
 	partitionConfig   := flag.String("partition-config", "", "Path to partitions.json defining Studio partition labels (optional)")
+	devMode           := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	flag.Parse()
+
+	if *devMode {
+		cleanup := setupDevMode(dataDir, webAddr, adminPassword, *port)
+		defer cleanup()
+	}
 
 	log.Printf("Starting BeastDB v%s [Role: %s] on port :%d...", Version, *role, *port)
 

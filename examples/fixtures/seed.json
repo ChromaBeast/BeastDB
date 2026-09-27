@@ -1,0 +1,75 @@
+[
+  {
+    "key": 72057594037927937,
+    "value": {
+      "id": 1,
+      "username": "alice",
+      "displayName": "Alice Valkyrie",
+      "email": "alice@beastdb.dev",
+      "role": "admin",
+      "created_at": "2026-09-27T10:00:00Z"
+    }
+  },
+  {
+    "key": 72057594037927938,
+    "value": {
+      "id": 2,
+      "username": "bob",
+      "displayName": "Bob Stone",
+      "email": "bob@beastdb.dev",
+      "role": "member",
+      "created_at": "2026-09-27T10:15:00Z"
+    }
+  },
+  {
+    "key": 72057594037927939,
+    "value": {
+      "id": 3,
+      "username": "charlie",
+      "displayName": "Charlie Root",
+      "email": "charlie@beastdb.dev",
+      "role": "member",
+      "created_at": "2026-09-27T10:30:00Z"
+    }
+  },
+  {
+    "key": 144115188075855873,
+    "value": {
+      "sku": "PROD-BEAST-01",
+      "name": "BeastDB Enterprise Node",
+      "category": "Software",
+      "price": 999.00,
+      "inStock": true
+    }
+  },
+  {
+    "key": 144115188075855874,
+    "value": {
+      "sku": "PROD-HW-02",
+      "name": "NVMe Storage Appliance 4TB",
+      "category": "Hardware",
+      "price": 450.00,
+      "inStock": true
+    }
+  },
+  {
+    "key": 1152921504606846977,
+    "value": {
+      "mediaId": "MOV-001",
+      "title": "Interstellar",
+      "format": "4K HDR",
+      "director": "Christopher Nolan",
+      "year": 2014
+    }
+  },
+  {
+    "key": 1152921504606846978,
+    "value": {
+      "mediaId": "MOV-002",
+      "title": "Inception",
+      "format": "4K UHD",
+      "director": "Christopher Nolan",
+      "year": 2010
+    }
+  }
+]
