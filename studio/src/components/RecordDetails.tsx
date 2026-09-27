@@ -16,9 +16,11 @@ interface Props {
   onDeleteUser?: (userHash: number) => void;
   onEdit?: () => void;
   onNotice: (message: string, error?: boolean) => void;
+  onScanRange?: (start: string, end: string) => Promise<UniversalRecord[]>;
+  onSelect?: (record: UniversalRecord) => void;
 }
 
-export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit, onNotice }: Props) {
+export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit, onNotice, onScanRange, onSelect }: Props) {
   const copy = async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -43,10 +45,15 @@ export function RecordDetails({ record, canWrite, onDelete, onDeleteUser, onEdit
     }
   })();
 
+  const noop = async () => [] as UniversalRecord[];
   if (record.prefix === 0x01) {
     return (
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <UserProfilePanel record={record} canWrite={canWrite} onDelete={onDelete} onDeleteUser={onDeleteUser ?? (() => {})} />
+        <UserProfilePanel
+          record={record} canWrite={canWrite}
+          onDelete={onDelete} onDeleteUser={onDeleteUser ?? (() => {})}
+          onScanRange={onScanRange ?? noop} onSelect={onSelect ?? (() => {})}
+        />
         <div className="px-5 pb-5">
           <details className="group rounded-lg border border-border bg-card/50">
             <summary className="flex cursor-pointer select-none items-center justify-between px-4 py-2.5 text-xs font-mono font-medium text-muted-foreground hover:text-foreground">

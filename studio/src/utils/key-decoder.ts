@@ -1,4 +1,7 @@
 import type { PartitionConfig } from "../types";
+import { DEFAULT_REGISTRY, type PartitionMeta } from "./default-partitions";
+
+export type { PartitionMeta };
 
 export interface KeyDecoded {
   raw: string;
@@ -11,18 +14,16 @@ export interface KeyDecoded {
   itemHash: number;
 }
 
-export interface PartitionMeta {
-  label: string;
-  color: string;
-  description?: string;
-}
-
-// Names and colors come from GET /api/partitions; unknown prefixes stay generic.
-let prefixRegistry: Record<number, PartitionMeta> = {};
+// Fallback to DEFAULT_REGISTRY unless custom partitions are provided by GET /api/partitions.
+let prefixRegistry: Record<number, PartitionMeta> = { ...DEFAULT_REGISTRY };
 
 export function setPartitionRegistry(entries: PartitionConfig[]): void {
+  if (!entries || entries.length === 0) {
+    prefixRegistry = { ...DEFAULT_REGISTRY };
+    return;
+  }
   const next: Record<number, PartitionMeta> = {};
-  for (const e of entries ?? []) {
+  for (const e of entries) {
     next[e.prefix] = { label: e.label, color: e.color, description: e.description };
   }
   prefixRegistry = next;

@@ -194,7 +194,7 @@ export function RecordsView(p: Props) {
         </div>
         <div className={`${pane !== "details" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
           {p.selected ? (
-            <RecordDetails record={p.selected} canWrite={p.canWrite} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser} onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined} onNotice={p.onNotice} />
+            <RecordDetails record={p.selected} canWrite={p.canWrite} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser} onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined} onNotice={p.onNotice} onScanRange={p.onScanRange} onSelect={(r) => { p.onSelect(r); setPane("details"); }} />
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
               <div className="rounded-xl border bg-muted p-4"><FileText size={24} className="text-muted-foreground" /></div>
