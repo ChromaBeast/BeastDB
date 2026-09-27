@@ -58,14 +58,10 @@ go run ./cmd/server \
 ```
 
 ### 3-node cluster (Docker)
-
 ```bash
 # Leader (:50051, Studio :8088) + Follower-1 (:50052) + Follower-2 (:50053)
-docker compose up -d --build
-
-# Studio: http://localhost:8088  ·  admin / admin
+BEASTDB_ADMIN_PASSWORD=secret docker compose up -d --build
 ```
-
 ---
 
 ## `beastctl` CLI
@@ -181,28 +177,19 @@ BeastDB is optimized for **read-heavy OLTP** — deterministic point reads and o
 | WAL Role | **Crash durability** (ARIES recovery for pages) | Primary ingest buffer (replays to MemTable) |
 
 ---
-
-## Tests
-
+## Tests & Benchmarks
 ```bash
-go test ./...        # All packages including chaos torn-write recovery
-go test -bench=. -benchmem ./...  # Zero-alloc micro-benchmarks
+go test -count=1 ./...           # All packages including chaos and crash recovery
+go test -bench=. -benchmem ./... # Reproducible system and zero-alloc benchmarks
 ```
-
 ---
-
-## Client Integration
-
-BeastDB publishes a Protobuf contract — generate clients in any language:
-
+## Client Integration & Contract
+BeastDB publishes a Protobuf contract ([`api/proto/beastdb.proto`](api/proto/beastdb.proto)). See [`docs/clients.md`](docs/clients.md) for Go, Python, TypeScript, and Rust integration guides.
 ```go
-// Go
 conn, _ := grpc.NewClient("localhost:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
 client := beastv1.NewBeastDBServiceClient(conn)
 client.Put(ctx, &beastv1.PutRequest{Key: 72057594037927936, Value: []byte(`{"name":"beast"}`)})
 ```
-
-See [`api/proto/beastdb.proto`](api/proto/beastdb.proto) for the full contract. Python, TypeScript, and Rust client guides are in [`docs/clients.md`](docs/clients.md).
 
 ---
 
