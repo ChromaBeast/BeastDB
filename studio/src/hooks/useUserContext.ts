@@ -49,7 +49,7 @@ export function useUserContext(
         try {
           const records = await onScanRange(start, end);
           const inferred = inferCollectionName(records);
-          const label = (meta.label.startsWith("Partition 0x") && inferred) ? inferred : meta.label;
+          const label = (meta.label.startsWith("Collection ") && inferred) ? inferred : meta.label;
           return { prefix, label, color: meta.color, records, loading: false };
         } catch {
           return { prefix, label: meta.label, color: meta.color, records: [], loading: false };

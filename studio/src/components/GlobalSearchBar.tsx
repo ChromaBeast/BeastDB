@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Binary, FileSearch, Hash, Search } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -32,6 +32,8 @@ export function GlobalSearchBar({
   const [exactKey, setExactKey] = useState("");
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
+
+  useEffect(() => { setSelectedPrefix(activePartition); }, [activePartition]);
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +121,7 @@ export function GlobalSearchBar({
               <option value="all">Entire Keyspace (All Partitions)</option>
               {partitions.map((p) => (
                 <option key={p.prefix} value={p.prefix}>
-                  {p.prefixLabel} · 0x{p.prefix.toString(16).padStart(2, "0").toUpperCase()}
+                  {p.prefixLabel}
                 </option>
               ))}
             </select>

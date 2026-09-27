@@ -1,15 +1,14 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { FileText } from "lucide-react";
-import { SearchResponse, UniversalRecord } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { SearchResponse, UniversalRecord, ViewMode } from "../types";
 import { Button } from "./ui/button";
-import { PartitionRail } from "./PartitionRail";
-import { DocumentList } from "./DocumentList";
 import { Breadcrumb } from "./Breadcrumb";
-import { RecordDetails } from "./RecordDetails";
 import { GlobalSearchBar, SearchMode } from "./GlobalSearchBar";
 import { SearchCoverageBanner } from "./SearchCoverageBanner";
+import { RecordsToolbar } from "./RecordsToolbar";
+import { ExplorerContent } from "./ExplorerContent";
 import { buildPartitionList } from "../utils/key-decoder";
+import { usePartitionMetadata } from "../hooks/usePartitionMetadata";
 
 interface Props {
   records: UniversalRecord[];
@@ -35,11 +34,13 @@ interface Props {
   onOpenTokens?: () => void;
 }
 
-type Pane = "partitions" | "documents" | "details";
-
 export function RecordsView(p: Props) {
-  const [pane, setPane] = useState<Pane>("documents");
+  const metadataRevision = usePartitionMetadata(p.partitionCounts);
+  const initialized = useRef(false);
+  const [pane, setPane] = useState<"partitions" | "documents" | "details">("documents");
   const [searchMode, setSearchMode] = useState<SearchMode>("text");
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [busy, setBusy] = useState(false);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchResults, setSearchResults] = useState<UniversalRecord[] | null>(null);
@@ -47,16 +48,18 @@ export function RecordsView(p: Props) {
 
   const partitions = useMemo(
     () => buildPartitionList(p.records, p.partitionCounts),
-    [p.records, p.partitionCounts]
+    [p.records, p.partitionCounts, metadataRevision]
   );
 
   const [partition, setPartition] = useState<string>("1");
 
   useEffect(() => {
-    if (partitions.length > 0 && partition === "1" && !partitions.some(g => String(g.prefix) === "1")) {
-      setPartition(String(partitions[0].prefix));
-    }
-  }, [partitions, partition]);
+    if (initialized.current || !p.partitionCounts || partitions.length === 0) return;
+    initialized.current = true;
+    const first = partitions.some((item) => item.prefix === 1) ? 1 : partitions[0].prefix;
+    setPartition(String(first));
+    void p.onLoadPartition?.(first);
+  }, [partitions, p.partitionCounts, p.onLoadPartition]);
 
   const totalCount = useMemo(() => {
     if (p.partitionCounts) return Object.values(p.partitionCounts).reduce((acc, c) => acc + c, 0);
@@ -65,15 +68,19 @@ export function RecordsView(p: Props) {
 
   const activeRecords = isSearchMode && searchResults ? searchResults : p.records;
 
+  const filteredRecords = useMemo(() => {
+    if (statusFilter === "all") return activeRecords;
+    return activeRecords.filter((r) => String(r.status ?? "").toLowerCase() === statusFilter);
+  }, [activeRecords, statusFilter]);
+
   const choosePartition = (val: string) => {
     setPartition(val);
+    setStatusFilter("all");
     setIsSearchMode(false);
     setSearchResults(null);
     p.onSelect(null);
     setPane("documents");
-    if (p.onLoadPartition) {
-      void p.onLoadPartition(Number(val));
-    }
+    void p.onLoadPartition?.(Number(val));
   };
 
   const withBusy = async (fn: () => Promise<void>) => {
@@ -95,8 +102,7 @@ export function RecordsView(p: Props) {
     const res = await p.onSearch(searchMeta.query, { prefix: searchMeta.prefix, start: searchMeta.nextKey });
     setSearchResults((curr) => [...(curr || []), ...res.records]);
     setSearchMeta({
-      ...res,
-      query: searchMeta.query,
+      ...res, query: searchMeta.query,
       count: (searchMeta.count || 0) + res.count,
       scannedCount: (searchMeta.scannedCount || 0) + res.scannedCount,
     });
@@ -119,7 +125,7 @@ export function RecordsView(p: Props) {
     p.onNotice(`Retrieved ${recs.length} records in range.`);
   });
 
-  const partitionTitle = partitions.find((g) => String(g.prefix) === partition)?.prefixLabel || `Partition 0x${Number(partition).toString(16).padStart(2, "0").toUpperCase()}`;
+  const partitionTitle = partitions.find((g) => String(g.prefix) === partition)?.prefixLabel || `Collection ${Number(partition).toString(16).padStart(2, "0").toUpperCase()}`;
 
   return (
     <section aria-labelledby="records-title" className="flex min-h-0 flex-1 flex-col gap-3">
@@ -131,26 +137,18 @@ export function RecordsView(p: Props) {
       </div>
 
       <GlobalSearchBar
-        mode={searchMode}
-        onModeChange={setSearchMode}
-        partitions={partitions}
-        activePartition={partition}
-        onSearchText={handleSearchText}
-        onLookupKey={handleLookupKey}
-        onScanRange={handleScanRange}
+        mode={searchMode} onModeChange={setSearchMode}
+        partitions={partitions} activePartition={partition}
+        onSearchText={handleSearchText} onLookupKey={handleLookupKey} onScanRange={handleScanRange}
         busy={busy}
       />
 
       {isSearchMode && searchMeta && (
         <SearchCoverageBanner
-          query={searchMeta.query}
-          count={searchMeta.count}
-          scannedCount={searchMeta.scannedCount}
-          hasMore={searchMeta.hasMore}
-          prefix={searchMeta.prefix}
-          prefixLabel={partitions.find(g => g.prefix === searchMeta.prefix)?.prefixLabel}
-          loadingMore={busy}
-          onContinueScan={handleContinueScan}
+          query={searchMeta.query} count={searchMeta.count} scannedCount={searchMeta.scannedCount}
+          hasMore={searchMeta.hasMore} prefix={searchMeta.prefix}
+          prefixLabel={partitions.find((g) => g.prefix === searchMeta.prefix)?.prefixLabel}
+          loadingMore={busy} onContinueScan={handleContinueScan}
           onClear={() => { setIsSearchMode(false); setSearchResults(null); setSearchMeta(null); }}
         />
       )}
@@ -162,25 +160,29 @@ export function RecordsView(p: Props) {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 overflow-hidden rounded-xl border bg-card shadow-sm lg:grid-cols-[220px_minmax(320px,1fr)_minmax(380px,1.4fr)]">
-        <div className={`${pane !== "partitions" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
-          <PartitionRail partitions={partitions} selected={partition} total={totalCount} hasMore={p.hasMore} hasFullCounts={Boolean(p.partitionCounts)} onSelect={choosePartition} />
-        </div>
-        <div className={`${pane !== "documents" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
-          <DocumentList records={activeRecords} selected={p.selected} loading={p.loading} loadingMore={p.loadingMore} hasMore={p.hasMore} title={isSearchMode ? "Search Results" : partitionTitle} shownCount={activeRecords.length} onLoadMore={p.onLoadMore} onSelect={(r) => { p.onSelect(r); setPane("details"); }} onBack={() => setPane("partitions")} canWrite={p.canWrite} onNew={p.onNew} />
-        </div>
-        <div className={`${pane !== "details" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
-          {p.selected ? (
-            <RecordDetails record={p.selected} canWrite={p.canWrite} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser} onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined} onNotice={p.onNotice} onScanRange={p.onScanRange} onSelect={(r) => { p.onSelect(r); setPane("details"); }} partitionCounts={p.partitionCounts} />
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
-              <div className="rounded-xl border bg-muted p-4"><FileText size={24} className="text-muted-foreground" /></div>
-              <h2 className="mt-4 font-medium text-foreground">Select a record</h2>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">Choose a record from the list to view its fields, raw payload, and key breakdown.</p>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Toolbar with dynamic status filter pills & view switcher */}
+      <RecordsToolbar
+        records={activeRecords}
+        activeStatus={statusFilter}
+        onSelectStatus={setStatusFilter}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        canWrite={p.canWrite}
+        onNew={p.onNew}
+      />
+
+      {/* Main Multi-Mode Explorer Content */}
+      <ExplorerContent
+        viewMode={viewMode} records={filteredRecords} selected={p.selected}
+        loading={p.loading} loadingMore={p.loadingMore} hasMore={p.hasMore}
+        partitionTitle={isSearchMode ? "Search Results" : partitionTitle}
+        canWrite={p.canWrite} pane={pane} partitions={partitions} partition={partition}
+        totalCount={totalCount} partitionCounts={p.partitionCounts}
+        onSelect={p.onSelect} onSetPane={setPane} onLoadMore={p.onLoadMore} onNew={p.onNew}
+        onChoosePartition={choosePartition} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser}
+        onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined}
+        onNotice={p.onNotice} onScanRange={p.onScanRange}
+      />
     </section>
   );
 }

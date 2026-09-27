@@ -19,6 +19,7 @@ export interface KeyDecoded {
 }
 
 let prefixRegistry: Record<number, PartitionMeta> = {};
+let inferredRegistry: Record<number, PartitionMeta> = {};
 
 export function setPartitionRegistry(entries: PartitionConfig[]): void {
   const next: Record<number, PartitionMeta> = {};
@@ -28,9 +29,13 @@ export function setPartitionRegistry(entries: PartitionConfig[]): void {
   prefixRegistry = next;
 }
 
+export function setInferredPartitionRegistry(entries: Record<number, PartitionMeta>): void {
+  inferredRegistry = entries;
+}
+
 export function getPartitionMeta(prefix: number): PartitionMeta {
-  return prefixRegistry[prefix] ?? {
-    label: `Partition 0x${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
+  return prefixRegistry[prefix] ?? inferredRegistry[prefix] ?? {
+    label: `Collection ${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
     color: getDeterministicColor(prefix),
   };
 }
@@ -99,14 +104,9 @@ export function buildPartitionList(records: UniversalRecord[], partitionCounts?:
   }
 
   const resolveMeta = (prefix: number): PartitionMeta => {
-    if (prefixRegistry[prefix]) return prefixRegistry[prefix];
+    if (prefixRegistry[prefix] || inferredRegistry[prefix]) return getPartitionMeta(prefix);
     const recs = recordsByPrefix.get(prefix);
-    if (recs && recs.length > 0) {
-      const inferred = inferPartitionMeta(recs, prefix);
-      prefixRegistry[prefix] = inferred;
-      return inferred;
-    }
-    return getPartitionMeta(prefix);
+    return recs?.length ? inferPartitionMeta(recs, prefix) : getPartitionMeta(prefix);
   };
 
   for (const r of getRegisteredPartitions()) {
@@ -126,7 +126,7 @@ export function buildPartitionList(records: UniversalRecord[], partitionCounts?:
     const existing = map.get(r.prefix);
     if (existing) {
       if (!partitionCounts) existing.count += 1;
-      if (existing.prefixLabel.startsWith("Partition 0x")) {
+      if (existing.prefixLabel.startsWith("Collection ")) {
         const meta = resolveMeta(r.prefix);
         existing.prefixLabel = meta.label;
       }
@@ -137,5 +137,12 @@ export function buildPartitionList(records: UniversalRecord[], partitionCounts?:
     }
   }
 
-  return [...map.entries()].sort(([a], [b]) => a - b).map(([prefix, g]) => ({ prefix, count: g.count, prefixLabel: g.prefixLabel }));
+  const names = new Map<string, number>();
+  for (const item of map.values()) names.set(item.prefixLabel, (names.get(item.prefixLabel) ?? 0) + 1);
+  return [...map.entries()].sort(([a], [b]) => a - b).map(([prefix, g]) => ({
+    prefix, count: g.count,
+    prefixLabel: (names.get(g.prefixLabel) ?? 0) > 1
+      ? `${g.prefixLabel} · ${prefix.toString(16).padStart(2, "0").toUpperCase()}`
+      : g.prefixLabel,
+  }));
 }

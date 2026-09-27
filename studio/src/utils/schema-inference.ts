@@ -6,82 +6,70 @@ export interface PartitionMeta {
   description?: string;
 }
 
-const PALETTE = [
-  "emerald", "purple", "cyan", "blue", "indigo",
-  "rose", "amber", "teal", "violet", "sky", "orange",
-];
+const PALETTE = ["emerald", "purple", "cyan", "blue", "indigo", "rose", "amber", "teal", "violet", "sky", "orange"];
+const RELATION_IDS = new Set(["user", "owner", "sender", "receiver", "actor", "target", "friend", "parent", "createdby", "updatedby"]);
+const GENERIC_OBJECTS = new Set(["data", "payload", "metadata", "details", "attributes", "fields"]);
 
 export function getDeterministicColor(prefix: number): string {
   return PALETTE[prefix % PALETTE.length];
 }
 
 function pluralize(word: string): string {
-  if (word.endsWith("s") || word.endsWith("sh") || word.endsWith("ch")) return `${word}es`;
-  if (word.endsWith("y") && !/[aeiou]y$/i.test(word)) return `${word.slice(0, -1)}ies`;
+  if (/^media$/i.test(word)) return word;
+  if (/s$/i.test(word)) return word;
+  if (/(sh|ch|x|z)$/i.test(word)) return `${word}es`;
+  if (/[^aeiou]y$/i.test(word)) return `${word.slice(0, -1)}ies`;
   return `${word}s`;
 }
 
 export function formatCollectionName(str: string): string {
-  const cleaned = str.replace(/[_-]/g, " ").trim();
-  const words = cleaned.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-  const formatted = words.join(" ");
-  return words.length === 1 ? pluralize(formatted) : formatted;
+  const cleaned = str.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]/g, " ").trim();
+  const words = cleaned.split(/\s+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+  if (words.length === 0) return "";
+  return [...words.slice(0, -1), pluralize(words[words.length - 1])].join(" ");
 }
 
-export function inferCollectionName(records: UniversalRecord[]): string | undefined {
-  for (const r of records) {
-    if (!r.fields) continue;
-    const f = r.fields;
+function nameFromFields(f: Record<string, unknown>): { label: string; confidence: number } | undefined {
+  const tag = f.collection ?? f.entity ?? f.model ?? f.table ?? f._type;
+  if (typeof tag === "string" && tag.trim()) return { label: formatCollectionName(tag), confidence: 5 };
 
-    // 1. Discriminator tags
-    const tag = f.collection || f.type || f.kind || f.entity || f.model || f._type || f.table;
-    if (typeof tag === "string" && tag.trim()) {
-      return formatCollectionName(tag);
-    }
-
-    // 2. Generic *Id / *_id pattern (e.g. productId -> Products, gameId -> Games)
-    for (const key of Object.keys(f)) {
-      const match = key.match(/^([a-zA-Z0-9]+?)(?:Id|_id)$/i);
-      if (match && match[1]) {
-        const noun = match[1].toLowerCase();
-        if (noun !== "id" && noun !== "item") {
-          if (noun === "media") return "Media Catalog";
-          if (noun === "tv" || noun === "show") return "TV Shows";
-          return formatCollectionName(noun);
-        }
+  for (const [key, value] of Object.entries(f)) {
+    if (value && typeof value === "object" && !Array.isArray(value)
+      && !GENERIC_OBJECTS.has(key.toLowerCase()) && !RELATION_IDS.has(key.toLowerCase())) {
+      const nested = value as Record<string, unknown>;
+      if (typeof nested.title === "string" || typeof nested.name === "string" || nested.id != null) {
+        return { label: formatCollectionName(key), confidence: 4 };
       }
     }
-
-    // 3. Strong semantic signatures
-    if (f.email && (f.username || f.name || f.role || f.passwordHash || f.password_hash)) {
-      return "Users";
-    }
-    if (f.sku || (f.price !== undefined && (f.category || f.inStock !== undefined))) {
-      return "Products";
-    }
-    if (f.director || f.format === "4K HDR" || f.runtime) {
-      return "Movies";
-    }
-    if (f.isbn || f.author || f.pages) {
-      return "Books";
-    }
-    if (f.token || f.sessionToken || f.refreshToken || f.token_hash) {
-      return "Tokens";
-    }
-    if (f.friendId || f.friend_id || f.relationship) {
-      return "Friendships";
-    }
-    if (f.temperature || f.humidity || f.sensorId) {
-      return "Telemetry";
-    }
   }
+
+  const keys = Object.keys(f);
+  // Field combinations are hints; no key prefix is bound to a domain.
+  if (f.sku != null && f.price != null) return { label: "Products", confidence: 4 };
+  if (f.sensorId != null && (f.temperature != null || f.humidity != null)) return { label: "Telemetry", confidence: 4 };
+  if (f.email != null && (f.username != null || f.passwordHash != null)) return { label: "Users", confidence: 4 };
+
+  const ids = keys.map((key) => key.match(/^(.+?)(?:Id|_id)$/i)?.[1]).filter((name): name is string => Boolean(name));
+  const subjects = ids.filter((name) => !RELATION_IDS.has(name.toLowerCase()) && name.toLowerCase() !== "item");
+  if (subjects.length === 1) return { label: formatCollectionName(subjects[0]), confidence: 3 };
+  const weakTag = f.type ?? f.kind;
+  if (typeof weakTag === "string" && weakTag.trim()) return { label: formatCollectionName(weakTag), confidence: 2 };
   return undefined;
 }
 
+export function inferCollectionName(records: UniversalRecord[]): string | undefined {
+  const scores = new Map<string, number>();
+  for (const record of records) {
+    if (!record.fields) continue;
+    const candidate = nameFromFields(record.fields);
+    if (candidate) scores.set(candidate.label, (scores.get(candidate.label) ?? 0) + candidate.confidence);
+  }
+  return [...scores].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
 export function inferPartitionMeta(records: UniversalRecord[], prefix: number): PartitionMeta {
-  const inferredLabel = inferCollectionName(records);
   return {
-    label: inferredLabel ?? `Partition 0x${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
+    label: inferCollectionName(records) ?? `Collection ${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
     color: getDeterministicColor(prefix),
   };
 }

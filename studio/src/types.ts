@@ -62,7 +62,7 @@ export interface SessionUser {
   role: "admin" | "viewer";
 }
 
-export type ViewMode = "grid" | "table";
+export type ViewMode = "split" | "table" | "grid";
 
 export interface DomainDistribution {
   prefix: number;
