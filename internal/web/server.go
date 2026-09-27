@@ -59,6 +59,10 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 	mux.Handle("/icon.svg", http.FileServer(http.FS(staticFS)))
 	mux.Handle("/_next/", http.FileServer(http.FS(staticFS)))
 
+	// Public operational health routes
+	mux.HandleFunc("/healthz", handler.HealthzHandler(version))
+	mux.HandleFunc("/readyz", handler.ReadyzHandler(engine, role))
+
 	// Public auth routes
 	mux.HandleFunc("/login", handler.LoginHandler(deps))
 	mux.HandleFunc("/logout", handler.LogoutHandler(deps))

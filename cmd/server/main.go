@@ -15,64 +15,74 @@ import (
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/replication"
-	"github.com/ChromaBeast/beastdb/internal/web"
-	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 const Version = "0.1.0-release"
 
 func main() {
-	role              := flag.String("role", getEnv("BEASTDB_ROLE", "leader"), "Node cluster role: leader or follower")
-	port              := flag.Int("port", getEnvInt("BEASTDB_PORT", 50051), "Port for gRPC service")
-	leaderAddr        := flag.String("leader-addr", getEnv("BEASTDB_LEADER_ADDR", "127.0.0.1:50051"), "Leader node address for replication")
-	dataDir           := flag.String("data-dir", getEnv("BEASTDB_DATA_DIR", "./data"), "Directory to store data and WAL files")
-	poolSize          := flag.Int("pool-size", getEnvInt("BEASTDB_POOL_SIZE", 128), "Buffer pool frame capacity (4KB blocks)")
-	replicaID         := flag.String("replica-id", getEnv("BEASTDB_REPLICA_ID", "replica-1"), "Unique identifier for this replica node")
-	webAddr           := flag.String("web-addr", getEnv("BEASTDB_WEB_ADDR", "127.0.0.1:8080"), "Address for the web admin console (empty to disable)")
-	adminPassword     := flag.String("admin-password", getEnv("BEASTDB_ADMIN_PASSWORD", "admin"), "Initial admin user password (or BEASTDB_ADMIN_PASSWORD)")
-	partitionConfig   := flag.String("partition-config", getEnv("BEASTDB_PARTITION_CONFIG", ""), "Path to partitions.json defining Studio partition labels (optional)")
-	apiToken          := flag.String("api-token", getEnv("BEASTDB_API_TOKEN", ""), "Bearer token for gRPC authentication (or BEASTDB_API_TOKEN)")
-	devMode           := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
+	role := flag.String("role", getEnv("BEASTDB_ROLE", "leader"), "Node cluster role: leader or follower")
+	bindAddr := flag.String("bind-addr", getEnv("BEASTDB_BIND_ADDR", "127.0.0.1"), "Bind address for gRPC service")
+	port := flag.Int("port", getEnvInt("BEASTDB_PORT", 50051), "Port for gRPC service")
+	leaderAddr := flag.String("leader-addr", getEnv("BEASTDB_LEADER_ADDR", "127.0.0.1:50051"), "Leader node address for replication")
+	dataDir := flag.String("data-dir", getEnv("BEASTDB_DATA_DIR", "./data"), "Directory to store data and WAL files")
+	poolSize := flag.Int("pool-size", getEnvInt("BEASTDB_POOL_SIZE", 128), "Buffer pool frame capacity (4KB blocks)")
+	replicaID := flag.String("replica-id", getEnv("BEASTDB_REPLICA_ID", "replica-1"), "Unique identifier for this replica node")
+	webAddr := flag.String("web-addr", getEnv("BEASTDB_WEB_ADDR", "127.0.0.1:8080"), "Address for the web admin console (empty to disable)")
+	adminPassword := flag.String("admin-password", getEnv("BEASTDB_ADMIN_PASSWORD", "admin"), "Initial admin user password (or BEASTDB_ADMIN_PASSWORD)")
+	partitionConfig := flag.String("partition-config", getEnv("BEASTDB_PARTITION_CONFIG", ""), "Path to partitions.json defining Studio partition labels (optional)")
+	apiToken := flag.String("api-token", getEnv("BEASTDB_API_TOKEN", ""), "Bearer token for gRPC authentication (or BEASTDB_API_TOKEN)")
+	tlsCert := flag.String("tls-cert", getEnv("BEASTDB_TLS_CERT", ""), "Path to TLS server/client certificate file (PEM)")
+	tlsKey := flag.String("tls-key", getEnv("BEASTDB_TLS_KEY", ""), "Path to TLS server/client private key file (PEM)")
+	tlsCA := flag.String("tls-ca", getEnv("BEASTDB_TLS_CA", ""), "Path to TLS CA certificate file (PEM)")
+	insecureAuth := flag.Bool("insecure-auth", false, "Permit default credentials on public interfaces (unsafe, for testing only)")
+	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	flag.Parse()
 
+	grpcBind := fmt.Sprintf("%s:%d", *bindAddr, *port)
 	if *devMode {
 		cleanup := setupDevMode(dataDir, webAddr, adminPassword, *port)
 		defer cleanup()
-	} else if *adminPassword == "admin" {
-		log.Println("⚠️  SECURITY WARNING: Using default password 'admin'. Set BEASTDB_ADMIN_PASSWORD in production!")
+	} else {
+		if err := validateSecurityConfig(*adminPassword, *webAddr, grpcBind, *devMode, *insecureAuth); err != nil {
+			log.Fatalf("FATAL: %v", err)
+		}
+		if *adminPassword == "admin" {
+			log.Println("⚠️  SECURITY WARNING: Using default password 'admin' on loopback. Set BEASTDB_ADMIN_PASSWORD in production!")
+		}
 	}
 
-	log.Printf("Starting BeastDB v%s [Role: %s] on port :%d...", Version, *role, *port)
-
+	log.Printf("Starting BeastDB v%s [Role: %s] on %s...", Version, *role, grpcBind)
 	if err := os.MkdirAll(*dataDir, 0755); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	dbPath := filepath.Join(*dataDir, "beast.bin")
-	walPath := filepath.Join(*dataDir, "beast.wal")
-
-	engine, err := api.NewEngine(dbPath, walPath, *poolSize)
+	engine, err := api.NewEngine(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize)
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
+	if *role != "leader" {
+		engine.SetReadOnly(true)
+		log.Printf("🔒 Node running in follower mode: engine write path set to read-only.")
+	}
 
 	tokenStore := initTokenStore(engine)
-
 	var grpcOpts []grpc.ServerOption
+	if *tlsCert != "" && *tlsKey != "" {
+		creds, err := loadServerTLS(*tlsCert, *tlsKey, *tlsCA)
+		if err != nil {
+			log.Fatalf("Failed to initialize server TLS: %v", err)
+		}
+		grpcOpts = append(grpcOpts, grpc.Creds(creds))
+		log.Printf("🔒 gRPC service secured with TLS transport credentials.")
+	}
 	if *apiToken != "" || tokenStore != nil {
 		authInterceptor := api.NewAuthInterceptor(*apiToken, tokenStore)
-		grpcOpts = append(grpcOpts,
-			grpc.UnaryInterceptor(authInterceptor.Unary()),
-			grpc.StreamInterceptor(authInterceptor.Stream()),
-		)
+		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(authInterceptor.Unary()), grpc.StreamInterceptor(authInterceptor.Stream()))
 		if *apiToken != "" {
 			log.Printf("🔐 gRPC service protected with Bearer token authentication.")
 		}
-	} else if !*devMode {
-		log.Printf("⚠️  SECURITY NOTICE: gRPC running without api-token. Set BEASTDB_API_TOKEN to require Bearer auth.")
 	}
 
 	grpcServer := api.NewGRPCServer(engine, grpcOpts...)
@@ -83,15 +93,16 @@ func main() {
 		repServer := replication.NewLeaderServer(engine.WALPath())
 		repServer.RegisterService(grpcServer.RawServer())
 		engine.SetCommitObserver(repServer)
-		log.Printf("Leader node initialized with replication service.")
 	} else {
-		log.Printf("Follower node connecting to leader at %s...", *leaderAddr)
-		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
+		if err != nil {
+			log.Fatalf("Failed to initialize follower client TLS: %v", err)
+		}
+		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(clientCreds))
 		if err != nil {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}
 		defer conn.Close()
-
 		followerClient := replication.NewFollowerClient(*replicaID, engine, conn)
 		go func() {
 			for ctx.Err() == nil {
@@ -107,56 +118,20 @@ func main() {
 		}()
 	}
 
-	// Load optional partition registry for the Studio UI.
 	var partitions []handler.PartitionEntry
 	if *partitionConfig != "" {
-		data, readErr := os.ReadFile(*partitionConfig)
-		if readErr != nil {
-			log.Printf("Warning: could not read partition config %q: %v", *partitionConfig, readErr)
-		} else if err := json.Unmarshal(data, &partitions); err != nil {
-			log.Printf("Warning: invalid partition config JSON: %v", err)
-		} else {
-			log.Printf("Loaded %d partition definitions from %q", len(partitions), *partitionConfig)
+		if data, err := os.ReadFile(*partitionConfig); err == nil {
+			_ = json.Unmarshal(data, &partitions)
 		}
 	}
 
-	// Start embedded web admin console if an address is configured.
-	if *webAddr != "" {
-		secret, secretErr := loadOrGenerateSessionSecret(*dataDir)
-		if secretErr != nil {
-			log.Fatalf("Failed to initialize session secret: %v", secretErr)
-		}
+	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore)
+	defer stopWeb()
 
-		webSrv, webErr := web.NewServer(*webAddr, engine, secret, *role, Version, partitions, tokenStore)
-		if webErr != nil {
-			log.Fatalf("Failed to create web server: %v", webErr)
-		}
-
-		// Seed default admin on first run, or synchronize if custom password provided.
-		store := auth.NewUserStore(engine)
-		if *adminPassword != "admin" {
-			if err := store.SetUserPassword("admin", *adminPassword, auth.RoleAdmin); err != nil {
-				log.Printf("Failed to sync admin password: %v", err)
-			} else {
-				log.Printf("Admin password synchronized with configured runtime flag.")
-			}
-		} else {
-			if seedErr := store.CreateUser("admin", "admin", auth.RoleAdmin); seedErr != nil {
-				log.Printf("Admin user already exists (skipping seed): %v", seedErr)
-			} else {
-				log.Printf("Default admin user created. Change the password immediately!")
-			}
-		}
-
-		go webSrv.Serve()
-		defer webSrv.Shutdown()
-	}
-
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	lis, err := net.Listen("tcp", grpcBind)
 	if err != nil {
-		log.Fatalf("Failed to listen on port %d: %v", *port, err)
+		log.Fatalf("Failed to listen on %s: %v", grpcBind, err)
 	}
-
 	go func() {
 		log.Printf("BeastDB gRPC server listening on %s", lis.Addr().String())
 		if err := grpcServer.Serve(lis); err != nil {
@@ -166,18 +141,13 @@ func main() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	sig := <-sigChan
 	log.Printf("Received signal %s. Initiating graceful shutdown...", sig)
 
 	cancel()
 	grpcServer.GracefulStop()
-
 	if err := engine.Close(); err != nil {
 		log.Printf("Error flushing engine to disk: %v", err)
-	} else {
-		log.Printf("Buffer pool and WAL flushed successfully to %s", *dataDir)
 	}
-
 	log.Println("BeastDB stopped cleanly. Goodbye!")
 }

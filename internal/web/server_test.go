@@ -53,3 +53,40 @@ func TestEmbeddedStudioServesAuthenticatedBundle(t *testing.T) {
 		t.Fatalf("session endpoint: %d %s", me.Code, me.Body.String())
 	}
 }
+
+func TestHealthzAndReadyzEndpoints(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := api.NewEngine(filepath.Join(dir, "db.bin"), filepath.Join(dir, "db.wal"), 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+
+	server, err := NewServer("127.0.0.1:0", engine, make([]byte, 32), "leader", "1.0.0-test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test unauthenticated /healthz
+	healthRec := httptest.NewRecorder()
+	healthReq := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	server.httpServer.Handler.ServeHTTP(healthRec, healthReq)
+	if healthRec.Code != http.StatusOK {
+		t.Fatalf("healthz status %d, body: %s", healthRec.Code, healthRec.Body.String())
+	}
+	if !strings.Contains(healthRec.Body.String(), `"status":"ok"`) || !strings.Contains(healthRec.Body.String(), `"version":"1.0.0-test"`) {
+		t.Fatalf("unexpected healthz body: %s", healthRec.Body.String())
+	}
+
+	// Test unauthenticated /readyz
+	readyRec := httptest.NewRecorder()
+	readyReq := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	server.httpServer.Handler.ServeHTTP(readyRec, readyReq)
+	if readyRec.Code != http.StatusOK {
+		t.Fatalf("readyz status %d, body: %s", readyRec.Code, readyRec.Body.String())
+	}
+	if !strings.Contains(readyRec.Body.String(), `"status":"ready"`) || !strings.Contains(readyRec.Body.String(), `"role":"leader"`) {
+		t.Fatalf("unexpected readyz body: %s", readyRec.Body.String())
+	}
+}
+

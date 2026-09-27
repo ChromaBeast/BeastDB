@@ -6,7 +6,7 @@ services:
     container_name: beastdb-primary
     command: ["-role", "leader", "-port", "50051", "-data-dir", "/data", "-pool-size", "256", "-web-addr", "0.0.0.0:8088"]
     environment:
-      - BEASTDB_ADMIN_PASSWORD=${BEASTDB_ADMIN_PASSWORD:-admin}
+      - BEASTDB_ADMIN_PASSWORD=${BEASTDB_ADMIN_PASSWORD:?BEASTDB_ADMIN_PASSWORD environment variable must be set for deployment}
       - BEASTDB_SESSION_SECRET=${BEASTDB_SESSION_SECRET:-}
       - BEASTDB_API_TOKEN=${BEASTDB_API_TOKEN:-}
     ports:
