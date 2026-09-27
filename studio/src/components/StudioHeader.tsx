@@ -28,19 +28,19 @@ interface Props {
 export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenTokens }: Props) {
   const theme = useTheme();
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-[#090a0d]/90 backdrop-blur-md">
+    <header className="sticky top-0 z-40 shrink-0 border-b border-border bg-background/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3 px-4 py-3 md:px-8">
         <div className="mr-auto flex items-center gap-3">
           <BeastDBLogo />
         </div>
         <nav
           aria-label="Main navigation"
-          className="order-3 flex w-full gap-1 rounded-lg border border-zinc-800 bg-zinc-900/80 p-1 md:order-none md:w-auto"
+          className="order-3 flex w-full gap-1 rounded-lg border border-border bg-muted/60 p-1 md:order-none md:w-auto"
         >
           <button
             aria-current={view === "overview" ? "page" : undefined}
             onClick={() => setView("overview")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "overview" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "overview" ? "bg-primary/10 text-primary font-medium border border-primary/25 shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
           >
             <Activity size={14} />
             Overview
@@ -48,7 +48,7 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
           <button
             aria-current={view === "explorer" ? "page" : undefined}
             onClick={() => setView("explorer")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "explorer" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "explorer" ? "bg-primary/10 text-primary font-medium border border-primary/25 shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
           >
             <Database size={14} />
             Explorer
@@ -56,7 +56,7 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
           <button
             aria-current={view === "operations" ? "page" : undefined}
             onClick={() => setView("operations")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "operations" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "operations" ? "bg-primary/10 text-primary font-medium border border-primary/25 shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
           >
             <Sliders size={14} />
             Operations
@@ -70,7 +70,7 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
               onClick={onOpenTokens}
               aria-label="API Access Tokens"
               title="API Access Tokens"
-              className="text-zinc-400 hover:text-amber-400"
+              className="text-muted-foreground hover:text-amber-500"
             >
               <Key size={17} />
             </Button>
@@ -82,7 +82,7 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
             disabled={busy}
             aria-label="Refresh data"
             title="Refresh data"
-            className="text-zinc-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             <RefreshCw size={17} className={busy ? "animate-spin" : ""} />
           </Button>
@@ -92,11 +92,11 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
             onClick={theme.toggle}
             aria-label={theme.dark ? "Use light theme" : "Use dark theme"}
             title="Toggle theme"
-            className="text-zinc-400 hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             {theme.dark ? <Sun size={17} /> : <Moon size={17} />}
           </Button>
-          <div className="mx-2 hidden h-5 w-px bg-zinc-800 sm:block" />
+          <div className="mx-2 hidden h-5 w-px bg-border sm:block" />
           <div className="hidden items-center gap-2 sm:flex">
             <div
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-beast-lime text-[11px] font-bold text-black"
@@ -105,7 +105,7 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
               {(user?.username || "??").slice(0, 2).toUpperCase()}
             </div>
             <span
-              className="max-w-24 truncate text-xs font-mono text-zinc-400"
+              className="max-w-24 truncate text-xs font-mono text-muted-foreground"
               title={user?.username || "Session unavailable"}
             >
               {user?.username || "Account"}
@@ -119,7 +119,7 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
               type="submit"
               aria-label="Sign out"
               title="Sign out"
-              className="text-zinc-400 hover:text-white"
+              className="text-muted-foreground hover:text-foreground"
             >
               <LogOut size={17} />
             </Button>

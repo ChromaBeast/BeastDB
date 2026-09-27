@@ -51,14 +51,14 @@ export function EditRecordPanel({ record, onSave, onCancel, onNotice }: Props) {
   const byteLen = new TextEncoder().encode(value).length;
 
   return (
-    <div className="flex flex-col gap-4 p-5 bg-[#0c0c0e] rounded-xl">
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+    <div className="flex flex-col gap-4 p-5 bg-card text-card-foreground rounded-xl">
+      <div className="flex items-center justify-between border-b border-border pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-white">Edit Record</h2>
+            <h2 className="text-base font-bold text-foreground">Edit Record</h2>
             <Badge variant="lime">{record.prefixLabel}</Badge>
           </div>
-          <p className="mt-1 font-mono text-xs text-zinc-500 break-all">Key: {record.keyStr}</p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground break-all">Key: {record.keyStr}</p>
         </div>
         <Button variant="outline" size="sm" onClick={formatJson} className="h-7 text-xs gap-1.5" title="Prettify JSON indentation">
           <Code2 size={13} /> Prettify
@@ -66,19 +66,19 @@ export function EditRecordPanel({ record, onSave, onCancel, onNotice }: Props) {
       </div>
 
       <textarea
-        className="min-h-[320px] w-full rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 font-mono text-xs leading-5 text-zinc-200 focus:outline-none focus:ring-2 focus:ring-beast-lime"
+        className="min-h-[320px] w-full rounded-lg border border-border bg-muted/40 p-3.5 font-mono text-xs leading-5 text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         aria-label="Record payload"
         spellCheck={false}
       />
 
-      <div className="flex items-center justify-between text-xs text-zinc-500 font-mono">
+      <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
         <span>{value.length} characters · {formatBytes(byteLen)}</span>
         <span>UTF-8 Slotted Page Payload</span>
       </div>
 
-      <div className="flex justify-end gap-2 border-t border-zinc-800 pt-3">
+      <div className="flex justify-end gap-2 border-t border-border pt-3">
         <Button variant="outline" onClick={onCancel} disabled={saving} className="text-xs">
           Cancel
         </Button>

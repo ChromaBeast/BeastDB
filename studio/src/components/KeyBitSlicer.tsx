@@ -33,18 +33,18 @@ export function KeyBitSlicer({ keyStr, prefixLabel, userHash, itemHash, onNotice
   };
 
   return (
-    <div className="space-y-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 p-3.5">
+    <div className="space-y-3 rounded-lg border border-border bg-card p-3.5">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold font-mono uppercase tracking-wider text-zinc-400">
+        <span className="text-[11px] font-semibold font-mono uppercase tracking-wider text-muted-foreground">
           64-Bit Keyspace Anatomy
         </span>
-        <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => void copyBits()} title="Copy 64-bit binary">
+        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => void copyBits()} title="Copy 64-bit binary">
           <Copy size={12} />
         </Button>
       </div>
 
       {/* Visual Segmented Bit Bar */}
-      <div className="flex h-3 w-full overflow-hidden rounded bg-zinc-900 border border-zinc-800">
+      <div className="flex h-3 w-full overflow-hidden rounded bg-muted border border-border">
         <div className="h-full bg-beast-lime transition-all" style={{ width: "12.5%" }} title={`Partition Prefix: 8 bits (${prefixBits})`} />
         <div className="h-full bg-cyan-400 transition-all" style={{ width: "43.75%" }} title={`Domain/User Hash: 28 bits (${userBits})`} />
         <div className="h-full bg-purple-400 transition-all" style={{ width: "43.75%" }} title={`Item/Sequence: 28 bits (${itemBits})`} />
@@ -52,26 +52,26 @@ export function KeyBitSlicer({ keyStr, prefixLabel, userHash, itemHash, onNotice
 
       {/* Legend & Values */}
       <div className="grid grid-cols-3 gap-2 text-[11px]">
-        <div className="rounded border border-zinc-800/60 bg-zinc-900/50 p-2">
+        <div className="rounded border border-border bg-muted/40 p-2">
           <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-beast-lime" />
-            <span className="text-zinc-400 font-mono text-[10px]">PREFIX (8b)</span>
+            <span className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-muted-foreground font-mono text-[10px]">PREFIX (8b)</span>
           </div>
-          <p className="mt-1 font-mono font-medium text-beast-lime truncate">{prefixHex} {prefixLabel ? `· ${prefixLabel}` : ""}</p>
+          <p className="mt-1 font-mono font-medium text-primary truncate">{prefixHex} {prefixLabel ? `· ${prefixLabel}` : ""}</p>
         </div>
-        <div className="rounded border border-zinc-800/60 bg-zinc-900/50 p-2">
+        <div className="rounded border border-border bg-muted/40 p-2">
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-cyan-400" />
-            <span className="text-zinc-400 font-mono text-[10px]">DOMAIN (28b)</span>
+            <span className="text-muted-foreground font-mono text-[10px]">DOMAIN (28b)</span>
           </div>
-          <p className="mt-1 font-mono font-medium text-cyan-300 truncate">{userHash != null ? userHash : "—"}</p>
+          <p className="mt-1 font-mono font-medium text-cyan-600 dark:text-cyan-400 truncate">{userHash != null ? userHash : "—"}</p>
         </div>
-        <div className="rounded border border-zinc-800/60 bg-zinc-900/50 p-2">
+        <div className="rounded border border-border bg-muted/40 p-2">
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-purple-400" />
-            <span className="text-zinc-400 font-mono text-[10px]">ITEM / SEQ (28b)</span>
+            <span className="text-muted-foreground font-mono text-[10px]">ITEM / SEQ (28b)</span>
           </div>
-          <p className="mt-1 font-mono font-medium text-purple-300 truncate">{itemHash != null ? itemHash : "—"}</p>
+          <p className="mt-1 font-mono font-medium text-purple-600 dark:text-purple-400 truncate">{itemHash != null ? itemHash : "—"}</p>
         </div>
       </div>
     </div>

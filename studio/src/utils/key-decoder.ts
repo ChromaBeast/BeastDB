@@ -17,37 +17,12 @@ export interface PartitionMeta {
   description?: string;
 }
 
-// Generic defaults for well-known system prefixes — project-specific labels
-// should be supplied via GET /api/partitions (see setPartitionRegistry).
-const DEFAULT_REGISTRY: Record<number, PartitionMeta> = {
-  0x01: { label: "User Accounts", color: "emerald", description: "User profiles and authentication credentials" },
-  0x02: { label: "User by ID", color: "teal", description: "Secondary index mapping user UUIDs to emails" },
-  0x03: { label: "Game Collection", color: "purple", description: "User game library entries and progress" },
-  0x04: { label: "Movie Collection", color: "cyan", description: "User movie library entries and watchlist" },
-  0x05: { label: "Refresh Tokens", color: "amber", description: "Hashed session and API tokens" },
-  0x06: { label: "TV Collection", color: "indigo", description: "User TV show progress and episode tracking" },
-  0x07: { label: "Book Collection", color: "rose", description: "User reading status and page progress" },
-  0x08: { label: "Friendships", color: "blue", description: "Bidirectional social graph edges" },
-  0x09: { label: "Friend Requests", color: "violet", description: "Pending and accepted friend requests" },
-  0x0a: { label: "User by Username", color: "teal", description: "Secondary index mapping usernames to emails" },
-  0x0b: { label: "Inbox Requests", color: "sky", description: "Incoming friend requests by receiver" },
-  0x0c: { label: "Outbox Requests", color: "sky", description: "Outgoing friend requests by sender" },
-};
+// Names and colors come from GET /api/partitions; unknown prefixes stay generic.
+let prefixRegistry: Record<number, PartitionMeta> = {};
 
-// Mutable registry — overwritten at runtime by setPartitionRegistry.
-let prefixRegistry: Record<number, PartitionMeta> = {
-  ...DEFAULT_REGISTRY,
-};
-
-// setPartitionRegistry sets server-provided partition config over the defaults.
-// Call this once on Studio boot after fetching GET /api/partitions.
 export function setPartitionRegistry(entries: PartitionConfig[]): void {
-  if (!entries || entries.length === 0) {
-    prefixRegistry = { ...DEFAULT_REGISTRY };
-    return;
-  }
   const next: Record<number, PartitionMeta> = {};
-  for (const e of entries) {
+  for (const e of entries ?? []) {
     next[e.prefix] = { label: e.label, color: e.color, description: e.description };
   }
   prefixRegistry = next;
@@ -55,7 +30,7 @@ export function setPartitionRegistry(entries: PartitionConfig[]): void {
 
 export function getPartitionMeta(prefix: number): PartitionMeta {
   return prefixRegistry[prefix] ?? {
-    label: prefix === 0 ? "Default / Root" : `Partition 0x${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
+    label: `Partition 0x${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
     color: "slate",
   };
 }
@@ -108,4 +83,28 @@ export function formatKeyCompact(key: string): string {
   const str = String(key);
   if (str.length > 14) return str.slice(0, 5) + "..." + str.slice(-4);
   return str;
+}
+
+export function buildPartitionList(records: Array<{ prefix: number; prefixLabel: string }>, partitionCounts?: Record<string, number>) {
+  const map = new Map<number, { prefixLabel: string; count: number }>();
+  for (const r of getRegisteredPartitions()) {
+    const count = partitionCounts ? (partitionCounts[String(r.prefix)] ?? 0) : 0;
+    map.set(r.prefix, { prefixLabel: r.label, count });
+  }
+  for (const [rawPrefix, count] of Object.entries(partitionCounts ?? {})) {
+    const prefix = Number(rawPrefix);
+    if (!map.has(prefix)) {
+      map.set(prefix, { prefixLabel: getPartitionMeta(prefix).label, count });
+    }
+  }
+  for (const r of records) {
+    const existing = map.get(r.prefix);
+    if (existing) {
+      if (!partitionCounts) existing.count += 1;
+    } else {
+      const count = partitionCounts ? (partitionCounts[String(r.prefix)] ?? 1) : 1;
+      map.set(r.prefix, { prefixLabel: r.prefixLabel, count });
+    }
+  }
+  return [...map.entries()].sort(([a], [b]) => a - b).map(([prefix, g]) => ({ prefix, count: g.count, prefixLabel: g.prefixLabel }));
 }

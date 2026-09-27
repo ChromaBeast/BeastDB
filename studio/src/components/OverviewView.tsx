@@ -36,14 +36,14 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
   const cachedPages = stats?.storage?.cachedPages ?? 0;
   const isDirtyHeavy = dirtyPages > poolSize * 0.8;
   const statusLabel = !isHealthy ? "Offline" : isDirtyHeavy ? "High Dirty Load" : "Optimal (Verified)";
-  const statusColor = !isHealthy ? "bg-destructive" : isDirtyHeavy ? "bg-amber-400" : "bg-beast-lime";
+  const statusColor = !isHealthy ? "bg-destructive" : isDirtyHeavy ? "bg-amber-400" : "bg-primary";
 
   return (
     <section aria-labelledby="overview-title" className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold font-mono uppercase tracking-wider text-zinc-400">TELEMETRY & MEASURED VITALS</p>
-          <h1 id="overview-title" className="mt-1 text-2xl font-bold tracking-tight text-white">System Overview</h1>
+          <p className="text-[11px] font-semibold font-mono uppercase tracking-wider text-muted-foreground">TELEMETRY & MEASURED VITALS</p>
+          <h1 id="overview-title" className="mt-1 text-2xl font-bold tracking-tight text-foreground">System Overview</h1>
         </div>
         <Button variant="outline" size="sm" onClick={onAnalyze} className="gap-2 text-xs">
           <Binary size={15} /> Key Analyzer
@@ -61,17 +61,17 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <span className="text-[11px] font-mono uppercase text-zinc-400">ENGINE STATE</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-beast-lime/10 text-beast-lime">
+            <span className="text-[11px] font-mono uppercase text-muted-foreground">ENGINE STATE</span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
               <Activity size={15} />
             </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
               <span className={`h-2.5 w-2.5 rounded-full ${statusColor} ${isHealthy ? "animate-pulse" : ""}`} />
-              <div className="text-xl font-bold text-white">{statusLabel}</div>
+              <div className="text-xl font-bold text-foreground">{statusLabel}</div>
             </div>
-            <p className="mt-1 text-[11px] text-zinc-400 font-mono">
+            <p className="mt-1 text-[11px] text-muted-foreground font-mono">
               {stats?.storage ? `${cachedPages}/${poolSize} frames cached` : "B+ Tree 4KB · ARIES WAL"}
             </p>
           </CardContent>
@@ -79,16 +79,16 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <span className="text-[11px] font-mono uppercase text-zinc-400">BUFFER POOL</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-400/10 text-cyan-400">
+            <span className="text-[11px] font-mono uppercase text-muted-foreground">BUFFER POOL</span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-cyan-400/10 text-cyan-600 dark:text-cyan-400">
               <Database size={15} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono tracking-tight text-white">
+            <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
               {stats?.storage ? `${cachedPages} / ${poolSize}` : `${loaded.toLocaleString()}`}
             </div>
-            <p className="mt-1 text-[11px] text-zinc-400">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               {stats?.storage ? `${dirtyPages} dirty · ${stats.storage.pinnedPages} pinned` : "Active memory frames"}
             </p>
           </CardContent>
@@ -96,16 +96,16 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <span className="text-[11px] font-mono uppercase text-zinc-400">STORAGE & WAL</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-purple-400/10 text-purple-400">
+            <span className="text-[11px] font-mono uppercase text-muted-foreground">STORAGE & WAL</span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-purple-400/10 text-purple-600 dark:text-purple-400">
               <HardDrive size={15} />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold font-mono tracking-tight text-white">
+            <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
               LSN {stats?.lsn?.toLocaleString() ?? "—"}
             </div>
-            <p className="mt-1 text-[11px] text-zinc-400 font-mono">
+            <p className="mt-1 text-[11px] text-muted-foreground font-mono">
               {stats?.storage ? `${formatBytes(stats.storage.diskSizeBytes)} disk · ${formatBytes(stats.storage.walSizeBytes)} WAL` : "Log sequence number"}
             </p>
           </CardContent>
@@ -113,8 +113,8 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <span className="text-[11px] font-mono uppercase text-zinc-400">NODE TOPOLOGY</span>
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-beast-lime/10 text-beast-lime">
+            <span className="text-[11px] font-mono uppercase text-muted-foreground">NODE TOPOLOGY</span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 text-primary">
               <ShieldCheck size={15} />
             </div>
           </CardHeader>
@@ -122,7 +122,7 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
             <div className="flex items-center gap-2">
               <Badge variant="lime" className="uppercase">{stats?.role || "Standalone"}</Badge>
             </div>
-            <p className="mt-1.5 text-[11px] text-zinc-400 font-mono">v{stats?.version || "1.0.0"} · Active Pg: #{stats?.storage?.activeDataPage ?? 1}</p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground font-mono">v{stats?.version || "1.0.0"} · Active Pg: #{stats?.storage?.activeDataPage ?? 1}</p>
           </CardContent>
         </Card>
       </div>
@@ -146,21 +146,21 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader><CardTitle className="text-sm font-semibold">Engine Runtime Parameters</CardTitle></CardHeader>
-          <CardContent className="divide-y divide-zinc-800 text-xs">
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Storage Hierarchy</span><span className="font-mono text-white">4KB Slotted Pages / Slotted Array</span></div>
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Durability Model</span><span className="font-mono text-white">ARIES WAL + Append-Only tombstones</span></div>
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Index Structure</span><span className="font-mono text-white">On-Disk B+ Tree (Fanout ~200)</span></div>
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Last Telemetry Sync</span><span className="font-mono text-zinc-400">{updatedAt ? updatedAt.toLocaleTimeString() : "—"}</span></div>
+          <CardContent className="divide-y divide-border text-xs">
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Storage Hierarchy</span><span className="font-mono text-foreground">4KB Slotted Pages / Slotted Array</span></div>
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Durability Model</span><span className="font-mono text-foreground">ARIES WAL + Append-Only tombstones</span></div>
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Index Structure</span><span className="font-mono text-foreground">On-Disk B+ Tree (Fanout ~200)</span></div>
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Last Telemetry Sync</span><span className="font-mono text-muted-foreground">{updatedAt ? updatedAt.toLocaleTimeString() : "—"}</span></div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader><CardTitle className="text-sm font-semibold">Current Session Privileges</CardTitle></CardHeader>
-          <CardContent className="divide-y divide-zinc-800 text-xs">
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Authenticated Subject</span><span className="font-mono font-medium text-white">{user?.username || "Anonymous"}</span></div>
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Authorization Scope</span><Badge variant={user?.role === "admin" ? "lime" : "mono"}>{user?.role || "viewer"}</Badge></div>
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Write Operations</span><span className={user?.role === "admin" ? "text-beast-lime font-medium" : "text-zinc-500"}>{user?.role === "admin" ? "Enabled (Full I/O)" : "Disabled (Read-Only)"}</span></div>
-            <div className="flex justify-between py-2.5"><span className="text-zinc-400">Session Mode</span><span className="font-mono text-zinc-400">HMAC-Signed Cookie</span></div>
+          <CardContent className="divide-y divide-border text-xs">
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Authenticated Subject</span><span className="font-mono font-medium text-foreground">{user?.username || "Anonymous"}</span></div>
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Authorization Scope</span><Badge variant={user?.role === "admin" ? "lime" : "mono"}>{user?.role || "viewer"}</Badge></div>
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Write Operations</span><span className={user?.role === "admin" ? "text-primary font-medium" : "text-muted-foreground"}>{user?.role === "admin" ? "Enabled (Full I/O)" : "Disabled (Read-Only)"}</span></div>
+            <div className="flex justify-between py-2.5"><span className="text-muted-foreground">Session Mode</span><span className="font-mono text-muted-foreground">HMAC-Signed Cookie</span></div>
           </CardContent>
         </Card>
       </div>

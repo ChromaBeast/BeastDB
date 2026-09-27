@@ -2,7 +2,7 @@
 import { useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Wand2 } from "lucide-react";
-import { fnv1a64 } from "../utils/format";
+import { buildStructuredKey, fnv1a64 } from "../utils/format";
 import { getRegisteredPartitions } from "../utils/key-decoder";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -20,26 +20,6 @@ interface Props {
   onSave: (key: string, value: string) => Promise<void>;
   onLookup: (key: string) => Promise<unknown>;
   onNotice: (message: string, error?: boolean) => void;
-}
-
-/** Compute a 28-bit FNV-1a hash as a BigInt. */
-function fnv28(str: string): bigint {
-  let h = BigInt("0xcbf29ce484222325");
-  const prime = BigInt("0x100000001b3");
-  const mask = BigInt("0xffffffffffffffff");
-  for (let i = 0; i < str.length; i++) {
-    h ^= BigInt(str.charCodeAt(i));
-    h = (h * prime) & mask;
-  }
-  return h & BigInt("0x0fffffff");
-}
-
-/** Build a structured key: (prefix << 56) | (domain28 << 28) | item28 */
-function buildStructuredKey(prefix: number, domain: string, item: string): string {
-  const p = BigInt(prefix) << 56n;
-  const d = fnv28(domain) << 28n;
-  const it = fnv28(item);
-  return String(p | d | it);
 }
 
 export function NewRecordDialog({
@@ -122,11 +102,11 @@ export function NewRecordDialog({
         <form onSubmit={submit} className="mt-5 space-y-5">
           {/* ── Key Section ────────────────────────────────────── */}
           <div className="space-y-2">
-            <p className="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400">64-bit Key</p>
-            <div className="grid grid-cols-3 rounded-lg border border-zinc-800 bg-zinc-900/80 p-1 text-xs">
+            <p className="text-xs font-mono font-semibold uppercase tracking-wider text-muted-foreground">64-bit Key</p>
+            <div className="grid grid-cols-3 rounded-lg border border-border bg-muted/60 p-1 text-xs">
               {(["builder", "hash", "raw"] as const).map((m) => (
                 <button key={m} type="button" onClick={() => setKeyMode(m)}
-                  className={`rounded-md py-1.5 capitalize transition ${keyMode === m ? "bg-beast-lime/15 text-beast-lime border border-beast-lime/30 font-medium" : "text-zinc-400"}`}>
+                  className={`rounded-md py-1.5 capitalize transition ${keyMode === m ? "bg-primary/10 text-primary border border-primary/30 font-medium" : "text-muted-foreground hover:text-foreground"}`}>
                   {m === "builder" ? "Partition Builder" : m === "hash" ? "Hash Seed" : "Raw Decimal"}
                 </button>
               ))}
@@ -135,7 +115,7 @@ export function NewRecordDialog({
             {keyMode === "builder" && (
               <div className="space-y-2">
                 <select value={prefix} onChange={(e) => setPrefix(Number(e.target.value))}
-                  className="w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-mono text-white focus:outline-none focus:ring-1 focus:ring-beast-lime">
+                  className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
                   {partitions.map((p) => (
                     <option key={p.prefix} value={p.prefix}>
                       0x{p.prefix.toString(16).padStart(2, "0").toUpperCase()} · {p.label}
@@ -146,7 +126,7 @@ export function NewRecordDialog({
                   <Input placeholder="Domain / user hash seed" value={domain} onChange={(e) => setDomain(e.target.value)} aria-label="Domain seed" />
                   <Input placeholder="Item ID / record seed" value={itemId} onChange={(e) => setItemId(e.target.value)} aria-label="Item seed" />
                 </div>
-                <p className="text-[11px] text-zinc-500 font-mono">
+                <p className="text-[11px] text-muted-foreground font-mono">
                   key = (prefix &lt;&lt; 56) | (FNV28(domain) &lt;&lt; 28) | FNV28(item)
                 </p>
               </div>
@@ -163,10 +143,10 @@ export function NewRecordDialog({
             )}
 
             {previewKey && (
-              <div className="flex items-center gap-2 rounded-md border border-beast-lime/20 bg-beast-lime/5 px-3 py-2 text-xs font-mono">
-                <Wand2 size={12} className="text-beast-lime shrink-0" />
-                <span className="text-zinc-400">Key preview:</span>
-                <span className="text-beast-lime">{previewKey}</span>
+              <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs font-mono">
+                <Wand2 size={12} className="text-primary shrink-0" />
+                <span className="text-muted-foreground">Key preview:</span>
+                <span className="text-primary font-medium">{previewKey}</span>
               </div>
             )}
           </div>
@@ -174,10 +154,10 @@ export function NewRecordDialog({
           {/* ── Value Section ───────────────────────────────────── */}
           <Tabs.Root value={mode} onValueChange={setMode}>
             <Tabs.List aria-label="Value editor"
-              className="grid grid-cols-2 rounded-lg border border-zinc-800 bg-zinc-900/80 p-1 text-xs">
+              className="grid grid-cols-2 rounded-lg border border-border bg-muted/60 p-1 text-xs">
               {["raw", "builder"].map((m) => (
                 <Tabs.Trigger key={m} value={m}
-                  className="rounded-md py-1.5 transition data-[state=active]:bg-beast-lime/15 data-[state=active]:text-beast-lime data-[state=active]:border data-[state=active]:border-beast-lime/30 data-[state=active]:font-medium text-zinc-400">
+                  className="rounded-md py-1.5 transition data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary/30 data-[state=active]:font-medium text-muted-foreground hover:text-foreground">
                   {m === "raw" ? "Raw JSON / Payload" : "Structured Builder"}
                 </Tabs.Trigger>
               ))}
@@ -185,7 +165,7 @@ export function NewRecordDialog({
             <Tabs.Content value="raw" className="mt-3">
               <label htmlFor="record-value" className="text-sm font-medium">Value · JSON, text, or token</label>
               <textarea id="record-value" rows={7} value={raw} onChange={(e) => setRaw(e.target.value)}
-                className="mt-2 w-full rounded-md border border-zinc-800 bg-zinc-900 p-3 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-beast-lime"
+                className="mt-2 w-full rounded-md border border-border bg-card p-3 font-mono text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 placeholder='{"id": 1, "name": "beast"}' />
             </Tabs.Content>
             <Tabs.Content value="builder">
@@ -195,7 +175,7 @@ export function NewRecordDialog({
 
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
-          <div className="flex justify-end gap-2 border-t border-zinc-800 pt-4">
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy}>{busy ? "Writing to WAL…" : "Create Record"}</Button>
           </div>

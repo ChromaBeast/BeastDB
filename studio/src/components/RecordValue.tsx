@@ -1,20 +1,28 @@
+import { fieldLabel } from "../utils/display";
+
 export function RecordValue({ value }: { value: unknown }) {
   if (value === null)
     return <span className="text-muted-foreground">null</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-muted-foreground">None</span>;
+    if (value.every((item) => item === null || typeof item !== "object"))
+      return <span className="break-words">{value.map((item) => String(item ?? "null")).join(", ")}</span>;
+    return (
+      <ul className="space-y-2">
+        {value.map((item, index) => <li key={index}><RecordValue value={item} /></li>)}
+      </ul>
+    );
+  }
   if (typeof value === "object")
     return (
-      <div className="ml-2 space-y-2 border-l pl-3">
+      <dl className="divide-y divide-border/50 rounded-md border border-border/70 px-3">
         {Object.entries(value).map(([key, child]) => (
-          <div key={key}>
-            <span className="font-mono text-xs text-muted-foreground">
-              {key}
-            </span>
-            <div className="break-all text-sm">
-              <RecordValue value={child} />
-            </div>
+          <div key={key} className="grid min-w-0 grid-cols-[minmax(6rem,32%)_minmax(0,1fr)] gap-3 py-2 text-left">
+            <dt className="text-xs text-muted-foreground">{fieldLabel(key)}</dt>
+            <dd className="min-w-0 break-words text-sm"><RecordValue value={child} /></dd>
           </div>
         ))}
-      </div>
+      </dl>
     );
   if (typeof value === "boolean")
     return <span>{value ? "Yes" : "No"}</span>;

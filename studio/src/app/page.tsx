@@ -92,14 +92,16 @@ export default function StudioDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className={`${view === "explorer" ? "flex h-dvh flex-col overflow-hidden" : "min-h-screen"} bg-background text-foreground`}>
       <StudioHeader view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} onOpenTokens={() => setTokensOpen(true)} />
       {data.user?.role === "viewer" && (
         <div className="border-b bg-amber-50 dark:bg-amber-950/20 px-4 py-2 text-center text-sm text-amber-800 dark:text-amber-200">
           You have view-only access — contact an admin to make changes.
         </div>
       )}
-      <main className="mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10">
+      <main className={view === "explorer"
+        ? "mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col px-4 py-4 md:px-8 md:py-5"
+        : "mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10"}>
         {view === "explorer" && (
           <RecordsView
             records={data.records}

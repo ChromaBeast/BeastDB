@@ -53,16 +53,16 @@ export function GlobalSearchBar({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+    <div className="shrink-0 rounded-xl border border-border bg-card p-3 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-2.5">
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-zinc-900/60 p-0.5 text-xs">
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/60 p-0.5 text-xs">
           <button
             type="button"
             onClick={() => onModeChange("text")}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition ${
               mode === "text"
-                ? "bg-beast-lime/15 text-beast-lime shadow-sm"
-                : "text-zinc-400 hover:text-white"
+                ? "bg-primary/10 text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <FileSearch size={13} /> Value Text
@@ -72,8 +72,8 @@ export function GlobalSearchBar({
             onClick={() => onModeChange("exact")}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition ${
               mode === "exact"
-                ? "bg-beast-lime/15 text-beast-lime shadow-sm"
-                : "text-zinc-400 hover:text-white"
+                ? "bg-primary/10 text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Hash size={13} /> Exact Key
@@ -83,15 +83,15 @@ export function GlobalSearchBar({
             onClick={() => onModeChange("range")}
             className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition ${
               mode === "range"
-                ? "bg-beast-lime/15 text-beast-lime shadow-sm"
-                : "text-zinc-400 hover:text-white"
+                ? "bg-primary/10 text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <Binary size={13} /> Key Range
           </button>
         </div>
 
-        <span className="text-[11px] font-mono text-zinc-400">
+        <span className="text-[11px] font-mono text-muted-foreground">
           {mode === "text" && "Scans values inside B+ Tree slotted pages"}
           {mode === "exact" && "O(log N) point lookup in B+ Tree index"}
           {mode === "range" && "Sequential leaf-node range traversal"}
@@ -114,7 +114,7 @@ export function GlobalSearchBar({
               aria-label="Filter search partition"
               value={selectedPrefix}
               onChange={(e) => setSelectedPrefix(e.target.value)}
-              className="h-9 rounded-md border bg-card px-3 text-xs"
+              className="h-9 rounded-md border border-border bg-card text-foreground px-3 text-xs"
             >
               <option value="all">Entire Keyspace (All Partitions)</option>
               {partitions.map((p) => (
@@ -154,7 +154,7 @@ export function GlobalSearchBar({
               placeholder="Start Key (decimal)..."
               className="min-w-0 flex-1 font-mono text-xs"
             />
-            <span className="text-xs text-zinc-500 font-mono">to</span>
+            <span className="text-xs text-muted-foreground font-mono">to</span>
             <Input
               value={rangeEnd}
               onChange={(e) => setRangeEnd(e.target.value)}

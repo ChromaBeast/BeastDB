@@ -45,17 +45,24 @@ const REDACTED_KEYS = new Set([
   "api_token", "refresh_token",
 ]);
 
-function recordIdentity(data: Record<string, any>): string {
-  const kinds = [
-    ["movieId", "Movie"], ["gameId", "Game"], ["showId", "TV Show"], ["tvId", "TV Show"],
-    ["bookId", "Book"], ["mediaId", "Media"], ["itemId", "Item"], ["friendId", "Friend"],
-    ["receiverId", "To"], ["senderId", "From"],
-  ] as const;
-  const parts = kinds
-    .filter(([key]) => data[key] != null && data[key] !== "")
-    .map(([key, label]) => `${label} ${data[key]}`);
-  if (data.userId != null && data.userId !== "") parts.push(`User ${data.userId}`);
-  return parts.join(" · ");
+function displayText(data: Record<string, any>, names: string[]): string | undefined {
+  for (const [key, value] of Object.entries(data)) {
+    if (!names.includes(key.replace(/[_-]/g, "").toLowerCase())) continue;
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function displayName(data: Record<string, any>, depth = 0): string | undefined {
+  const direct = displayText(data, ["title", "displayname", "name", "label"]);
+  if (direct || depth >= 2) return direct;
+  for (const value of Object.values(data)) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const nested = displayName(value, depth + 1);
+      if (nested) return nested;
+    }
+  }
+  return undefined;
 }
 
 export function parseUniversalRecord(rawItem: { keyText: string; value: string }): UniversalRecord {
@@ -88,14 +95,10 @@ export function parseUniversalRecord(rawItem: { keyText: string; value: string }
         );
         coverUrl = findImage(parsed);
 
-        const name = parsed.title ?? parsed.displayName ?? parsed.name ?? parsed.label ??
-          parsed.username ?? parsed.email ?? parsed.sku;
-        const note = parsed.description ?? parsed.subtitle ?? parsed.notes;
-        const identity = recordIdentity(parsed);
-        primaryLabel = String(name ?? note ?? (identity || (parsed.id != null ? `Record ${parsed.id}` : "Untitled document")));
-        secondaryLabel = name != null
-          ? String(note ?? identity)
-          : [identity, parsed.status].filter(Boolean).join(" · ");
+        const name = displayName(parsed) ?? displayText(parsed, ["username", "email"]);
+        const note = displayText(parsed, ["description", "summary", "subtitle", "notes"]);
+        primaryLabel = name ?? note ?? (parsed.id != null ? `Record ${parsed.id}` : `Record ${decoded.raw.slice(-6)}`);
+        secondaryLabel = [parsed.status, name ? note : undefined].filter(Boolean).join(" · ");
         status = parsed.status ?? parsed.role ?? parsed.type;
         rating = parsed.rating ?? parsed.score ?? parsed.userRating;
 
@@ -112,10 +115,6 @@ export function parseUniversalRecord(rawItem: { keyText: string; value: string }
           } else if (attributes.length < 5) {
             attributes.push({ key: k, value: Array.isArray(v) ? `[${v.length}]` : String(v), type: typeof v });
           }
-        }
-        // mediaId → reference attribute for media catalog (0x10)
-        if (parsed.mediaId != null) {
-          attributes.push({ key: "mediaRef", value: String(parsed.mediaId), type: "number" });
         }
       }
     } catch {

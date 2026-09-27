@@ -37,10 +37,10 @@ export function KeyAnalyzerDialog({ open, onClose }: Props) {
         <div className="mt-4 space-y-4">
           <div>
             <div className="flex items-center justify-between">
-              <label htmlFor="analyzer-key" className="text-xs font-mono text-zinc-400">DECIMAL KEY</label>
+              <label htmlFor="analyzer-key" className="text-xs font-mono text-muted-foreground">DECIMAL KEY</label>
               <div className="flex gap-1">
                 {PRESETS.map((p) => (
-                  <button key={p.prefix} type="button" onClick={() => setKey(p.prefix)} className="text-[10px] font-mono text-zinc-500 hover:text-beast-lime underline">
+                  <button key={p.prefix} type="button" onClick={() => setKey(p.prefix)} className="text-[10px] font-mono text-muted-foreground hover:text-primary underline">
                     {p.label}
                   </button>
                 ))}
@@ -50,7 +50,7 @@ export function KeyAnalyzerDialog({ open, onClose }: Props) {
           </div>
 
           <div>
-            <label className="text-xs font-mono text-zinc-400">HASH STRING IDENTIFIER (FNV-1a)</label>
+            <label className="text-xs font-mono text-muted-foreground">HASH STRING IDENTIFIER (FNV-1a)</label>
             <div className="mt-1.5 flex gap-2">
               <Input aria-label="Identifier to hash" value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="e.g. alice@example.com or user_104" className="font-mono text-sm" />
               <Button variant="secondary" disabled={!seed.trim()} onClick={() => setKey(fnv1a64(seed.trim()))}>
@@ -69,15 +69,15 @@ export function KeyAnalyzerDialog({ open, onClose }: Props) {
             <div className="space-y-3 pt-2">
               <KeyBitSlicer keyStr={decoded.raw} prefixLabel={decoded.prefixLabel} userHash={decoded.userHash} itemHash={decoded.itemHash} />
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2.5">
-                  <span className="text-[10px] font-mono text-zinc-400">HEXADECIMAL</span>
-                  <p className="mt-1 font-mono text-white font-medium">{decoded.hex}</p>
+                <div className="rounded border border-border bg-muted/40 p-2.5">
+                  <span className="text-[10px] font-mono text-muted-foreground">HEXADECIMAL</span>
+                  <p className="mt-1 font-mono text-foreground font-medium">{decoded.hex}</p>
                 </div>
-                <div className="rounded border border-zinc-800 bg-zinc-900/50 p-2.5">
-                  <span className="text-[10px] font-mono text-zinc-400">PARTITION METADATA</span>
+                <div className="rounded border border-border bg-muted/40 p-2.5">
+                  <span className="text-[10px] font-mono text-muted-foreground">PARTITION METADATA</span>
                   <div className="mt-1 flex items-center gap-1.5">
                     <Badge variant="lime">{decoded.prefixHex}</Badge>
-                    <span className="truncate text-zinc-300 font-medium">{decoded.prefixLabel}</span>
+                    <span className="truncate text-foreground font-medium">{decoded.prefixLabel}</span>
                   </div>
                 </div>
               </div>

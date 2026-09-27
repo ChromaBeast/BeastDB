@@ -13,7 +13,7 @@ export function BeastDBLogo() {
         aria-hidden="true"
         className="hidden h-8 w-auto dark:block"
       />
-      <span className="ml-2.5 rounded border border-zinc-800 bg-zinc-900/80 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
+      <span className="ml-2.5 rounded border border-border bg-muted/80 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
         Studio
       </span>
     </div>

@@ -1,4 +1,4 @@
-import { Folder, Key } from "lucide-react";
+import { Folder } from "lucide-react";
 import { getPartitionMeta } from "../utils/key-decoder";
 
 const COLOR_BORDER: Record<string, string> = {
@@ -18,23 +18,20 @@ interface Props {
   hasMore: boolean;
   hasFullCounts?: boolean;
   onSelect: (value: string) => void;
-  onOpenTokens?: () => void;
 }
 
-export function PartitionRail({ partitions, selected, total, hasMore, hasFullCounts, onSelect, onOpenTokens }: Props) {
+export function PartitionRail({ partitions, selected, total, hasMore, hasFullCounts, onSelect }: Props) {
   return (
-    <aside aria-label="Partitions" className="flex min-h-0 flex-col border-r border-border">
+    <aside aria-label="Collections" className="flex min-h-0 flex-col border-r border-border">
       <div className="border-b border-border px-5 py-5">
-        <p className="text-[11px] font-semibold font-mono uppercase tracking-wider text-zinc-400">BeastDB</p>
-        <h2 className="mt-1 text-base font-semibold">Partitions</h2>
-        <p className="mt-1 text-xs text-zinc-400">Keyspace segments (0x00 - 0xFF)</p>
+        <h2 className="text-base font-semibold">Collections</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{total} records</p>
       </div>
-      <nav aria-label="Partition list" className="flex-1 space-y-1 overflow-y-auto p-2">
+      <nav aria-label="Collection list" className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
         {partitions.map(({ prefix, count, prefixLabel }) => {
           const meta = getPartitionMeta(prefix);
-          const borderClass = COLOR_BORDER[meta.color] ?? "border-zinc-500";
+          const borderClass = COLOR_BORDER[meta.color] ?? "border-muted-foreground";
           const isSelected = selected === String(prefix);
-          const hexPrefix = `0x${prefix.toString(16).padStart(2, "0").toUpperCase()}`;
           return (
             <button
               key={prefix}
@@ -43,42 +40,20 @@ export function PartitionRail({ partitions, selected, total, hasMore, hasFullCou
               aria-current={isSelected ? "page" : undefined}
               className={`flex w-full items-center gap-2.5 rounded-md border-l-4 px-3 py-2.5 text-left text-sm transition ${
                 isSelected
-                  ? `${borderClass} bg-beast-lime/10 text-white font-medium shadow-sm`
-                  : "border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60"
+                  ? `${borderClass} bg-primary/10 text-foreground font-medium shadow-sm`
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
-              <span
-                className={`h-2 w-2 shrink-0 rounded-full transition-colors ${
-                  count > 0 ? "bg-beast-lime shadow-[0_0_6px_rgba(168,242,26,0.5)]" : "bg-zinc-600"
-                }`}
-                title={count > 0 ? `${count} records indexed` : "Empty partition"}
-              />
-              <Folder size={15} className={`shrink-0 ${isSelected ? "text-beast-lime" : "text-zinc-400"}`} />
+              <Folder size={15} className={`shrink-0 ${isSelected ? "text-primary" : "text-muted-foreground"}`} />
               <span className="min-w-0 flex-1 truncate" title={prefixLabel}>{prefixLabel}</span>
-              <span className="text-[10px] font-mono px-1 rounded bg-zinc-800/80 text-zinc-400">{hexPrefix}</span>
-              <span className="text-xs font-mono tabular-nums text-zinc-500">{count}</span>
+              <span className="text-xs font-mono tabular-nums text-muted-foreground">{count}</span>
             </button>
           );
         })}
       </nav>
-      {onOpenTokens && (
-        <div className="border-t border-border p-2">
-          <button
-            type="button"
-            onClick={onOpenTokens}
-            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60 transition group"
-          >
-            <Key size={15} className="shrink-0 text-amber-400 group-hover:scale-110 transition-transform" />
-            <span className="min-w-0 flex-1 truncate font-medium">API Tokens</span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">0x05</span>
-          </button>
-        </div>
+      {!hasFullCounts && hasMore && (
+        <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">More records may be available.</p>
       )}
-      <p className="border-t border-border px-4 py-3 text-[11px] font-mono text-zinc-500">
-        {hasFullCounts
-          ? "All registered partitions across keyspace."
-          : `Counts reflect loaded records${hasMore ? "; more are available" : ""}.`}
-      </p>
     </aside>
   );
 }

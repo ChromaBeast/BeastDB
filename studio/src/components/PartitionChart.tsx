@@ -37,11 +37,11 @@ export function PartitionChart({ data }: { data: DataItem[] }) {
             const hex = COLOR_HEX[d.color] ?? COLOR_HEX.slate;
             return <path key={i} d={describeArc(cx, cy, r, startAngle, Math.max(endAngle, startAngle + 0.1))} fill={hex} />;
           })}
-          <circle cx={cx} cy={cy} r={inner} className="fill-[#09090b]" />
-          <text x={cx} y={cy - 4} textAnchor="middle" className="fill-white font-mono text-base font-bold" fontSize={16} fontWeight={700}>
+          <circle cx={cx} cy={cy} r={inner} className="fill-card" />
+          <text x={cx} y={cy - 4} textAnchor="middle" className="fill-foreground font-mono text-base font-bold" fontSize={16} fontWeight={700}>
             {total.toLocaleString()}
           </text>
-          <text x={cx} y={cy + 13} textAnchor="middle" fontSize={10} className="fill-zinc-500 font-mono uppercase tracking-wider">
+          <text x={cx} y={cy + 13} textAnchor="middle" fontSize={10} className="fill-muted-foreground font-mono uppercase tracking-wider">
             records
           </text>
         </svg>
@@ -51,14 +51,14 @@ export function PartitionChart({ data }: { data: DataItem[] }) {
           const pct = ((d.count / total) * 100).toFixed(1);
           const colorHex = COLOR_HEX[d.color] ?? COLOR_HEX.slate;
           return (
-            <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800/70 bg-zinc-900/40 px-3 py-2 text-xs">
+            <div key={i} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-xs">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorHex }} />
-                <span className="truncate text-zinc-300 font-medium">{d.label}</span>
+                <span className="truncate text-foreground font-medium">{d.label}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-zinc-400 tabular-nums">{d.count.toLocaleString()}</span>
-                <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">{pct}%</span>
+                <span className="font-mono text-muted-foreground tabular-nums">{d.count.toLocaleString()}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{pct}%</span>
               </div>
             </div>
           );

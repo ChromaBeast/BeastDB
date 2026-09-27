@@ -9,7 +9,7 @@ import { Breadcrumb } from "./Breadcrumb";
 import { RecordDetails } from "./RecordDetails";
 import { GlobalSearchBar, SearchMode } from "./GlobalSearchBar";
 import { SearchCoverageBanner } from "./SearchCoverageBanner";
-import { getRegisteredPartitions } from "../utils/key-decoder";
+import { buildPartitionList } from "../utils/key-decoder";
 
 interface Props {
   records: UniversalRecord[];
@@ -45,24 +45,10 @@ export function RecordsView(p: Props) {
   const [searchResults, setSearchResults] = useState<UniversalRecord[] | null>(null);
   const [searchMeta, setSearchMeta] = useState<SearchResponse & { query: string } | null>(null);
 
-  const partitions = useMemo(() => {
-    const registered = getRegisteredPartitions();
-    const map = new Map<number, { prefixLabel: string; count: number }>();
-    for (const r of registered) {
-      const count = p.partitionCounts ? (p.partitionCounts[String(r.prefix)] ?? 0) : 0;
-      map.set(r.prefix, { prefixLabel: r.label, count });
-    }
-    for (const r of p.records) {
-      const existing = map.get(r.prefix);
-      if (existing) {
-        if (!p.partitionCounts) existing.count += 1;
-      } else {
-        const count = p.partitionCounts ? (p.partitionCounts[String(r.prefix)] ?? 1) : 1;
-        map.set(r.prefix, { prefixLabel: r.prefixLabel, count });
-      }
-    }
-    return [...map.entries()].sort(([a], [b]) => a - b).map(([prefix, g]) => ({ prefix, count: g.count, prefixLabel: g.prefixLabel }));
-  }, [p.records, p.partitionCounts]);
+  const partitions = useMemo(
+    () => buildPartitionList(p.records, p.partitionCounts),
+    [p.records, p.partitionCounts]
+  );
 
   const [partition, setPartition] = useState<string>("1");
 
@@ -159,7 +145,7 @@ export function RecordsView(p: Props) {
   const partitionTitle = partitions.find((g) => String(g.prefix) === partition)?.prefixLabel || `Partition 0x${Number(partition).toString(16).padStart(2, "0").toUpperCase()}`;
 
   return (
-    <section aria-labelledby="records-title" className="space-y-3">
+    <section aria-labelledby="records-title" className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Breadcrumb partitionLabel={partitionTitle} recordLabel={p.selected?.primaryLabel} onBack={() => setPane("partitions")} />
@@ -199,9 +185,9 @@ export function RecordsView(p: Props) {
         </div>
       )}
 
-      <div className="grid min-h-[660px] overflow-hidden rounded-xl border bg-card shadow-sm lg:grid-cols-[220px_minmax(320px,1fr)_minmax(380px,1.4fr)]">
+      <div className="grid min-h-0 flex-1 overflow-hidden rounded-xl border bg-card shadow-sm lg:grid-cols-[220px_minmax(320px,1fr)_minmax(380px,1.4fr)]">
         <div className={`${pane !== "partitions" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
-          <PartitionRail partitions={partitions} selected={partition} total={totalCount} hasMore={p.hasMore} hasFullCounts={Boolean(p.partitionCounts)} onSelect={choosePartition} onOpenTokens={p.onOpenTokens} />
+          <PartitionRail partitions={partitions} selected={partition} total={totalCount} hasMore={p.hasMore} hasFullCounts={Boolean(p.partitionCounts)} onSelect={choosePartition} />
         </div>
         <div className={`${pane !== "documents" ? "hidden lg:flex" : "flex"} min-h-0 flex-col`}>
           <DocumentList records={activeRecords} selected={p.selected} loading={p.loading} loadingMore={p.loadingMore} hasMore={p.hasMore} title={isSearchMode ? "Search Results" : partitionTitle} shownCount={activeRecords.length} onLoadMore={p.onLoadMore} onSelect={(r) => { p.onSelect(r); setPane("details"); }} onBack={() => setPane("partitions")} canWrite={p.canWrite} onNew={p.onNew} />
@@ -212,7 +198,7 @@ export function RecordsView(p: Props) {
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
               <div className="rounded-xl border bg-muted p-4"><FileText size={24} className="text-muted-foreground" /></div>
-              <h2 className="mt-4 font-medium text-white">Select a record</h2>
+              <h2 className="mt-4 font-medium text-foreground">Select a record</h2>
               <p className="mt-1 max-w-xs text-sm text-muted-foreground">Choose a record from the list to view its fields, raw payload, and key breakdown.</p>
             </div>
           )}

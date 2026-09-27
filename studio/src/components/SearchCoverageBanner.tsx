@@ -30,19 +30,19 @@ export function SearchCoverageBanner({
     : "Entire Keyspace";
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-beast-lime/30 bg-beast-lime/5 px-4 py-2.5 text-xs text-zinc-200">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-xs text-foreground">
       <div className="flex items-center gap-2">
-        <CheckCircle2 size={16} className="text-beast-lime shrink-0" />
+        <CheckCircle2 size={16} className="text-primary shrink-0" />
         <div>
-          <span className="font-semibold text-white">
+          <span className="font-semibold text-foreground">
             {count} {count === 1 ? "match" : "matches"} found
           </span>
-          <span className="text-zinc-400"> for &ldquo;{query}&rdquo; · </span>
-          <span className="font-mono text-zinc-300">
+          <span className="text-muted-foreground"> for &ldquo;{query}&rdquo; · </span>
+          <span className="font-mono text-foreground">
             {scannedCount.toLocaleString()} keys inspected in {scopeText}
           </span>
           {hasMore && (
-            <span className="ml-1 text-amber-400">
+            <span className="ml-1 text-amber-600 dark:text-amber-400">
               (More uninspected keys remain in database)
             </span>
           )}
@@ -56,7 +56,7 @@ export function SearchCoverageBanner({
             variant="outline"
             onClick={onContinueScan}
             disabled={loadingMore}
-            className="h-7 text-xs gap-1 border-beast-lime/40 text-beast-lime hover:bg-beast-lime/10"
+            className="h-7 text-xs gap-1 border-primary/40 text-primary hover:bg-primary/10"
           >
             {loadingMore ? (
               <RefreshCw size={12} className="animate-spin" />
@@ -70,7 +70,7 @@ export function SearchCoverageBanner({
           size="sm"
           variant="ghost"
           onClick={onClear}
-          className="h-7 text-xs gap-1 text-zinc-400 hover:text-white"
+          className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
         >
           <X size={13} />
           Clear Results

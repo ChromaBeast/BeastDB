@@ -51,3 +51,21 @@ export function formatKey(key: number | string): string {
   }
   return str;
 }
+
+export function fnv28(str: string): bigint {
+  let h = BigInt("0xcbf29ce484222325");
+  const prime = BigInt("0x100000001b3");
+  const mask = BigInt("0xffffffffffffffff");
+  for (let i = 0; i < str.length; i++) {
+    h ^= BigInt(str.charCodeAt(i));
+    h = (h * prime) & mask;
+  }
+  return h & BigInt("0x0fffffff");
+}
+
+export function buildStructuredKey(prefix: number, domain: string, item: string): string {
+  const p = BigInt(prefix) << 56n;
+  const d = fnv28(domain) << 28n;
+  const it = fnv28(item);
+  return String(p | d | it);
+}
