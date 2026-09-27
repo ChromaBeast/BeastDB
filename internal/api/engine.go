@@ -111,14 +111,22 @@ func (e *Engine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	_ = e.updateMeta(func(m *storage.MetaData) {
+	var firstErr error
+	recordErr := func(err error) {
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	recordErr(e.updateMeta(func(m *storage.MetaData) {
 		m.LastCheckpointLSN = e.wal.CurrentLSN()
 		m.ActiveDataPageID = e.activeDataPage
 		m.RootPageID = e.tree.RootPageID()
-	})
-	_ = e.bpm.FlushAll()
-	_ = e.wal.Close()
-	return e.disk.Close()
+	}))
+	recordErr(e.bpm.FlushAll())
+	recordErr(e.wal.Close())
+	recordErr(e.disk.Close())
+	return firstErr
 }
 
 // Checkpoint flushes all dirty pages to disk, then rotates the WAL file.
@@ -128,13 +136,15 @@ func (e *Engine) Checkpoint() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	_ = e.updateMeta(func(m *storage.MetaData) {
+	if err := e.updateMeta(func(m *storage.MetaData) {
 		m.LastCheckpointLSN = e.wal.CurrentLSN()
 		m.ActiveDataPageID = e.activeDataPage
 		m.RootPageID = e.tree.RootPageID()
-	})
+	}); err != nil {
+		return fmt.Errorf("checkpoint update meta: %w", err)
+	}
 	if err := e.bpm.FlushAll(); err != nil {
-		return err
+		return fmt.Errorf("checkpoint flush dirty pages: %w", err)
 	}
 	return e.wal.Checkpoint()
 }

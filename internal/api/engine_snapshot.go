@@ -35,13 +35,15 @@ func (e *Engine) CreateSnapshot(destDir string) (string, error) {
 	defer e.mu.Unlock()
 
 	// 1. Force all dirty buffer pool frames to disk and update Meta Page
-	_ = e.updateMeta(func(m *storage.MetaData) {
+	if err := e.updateMeta(func(m *storage.MetaData) {
 		m.LastCheckpointLSN = e.wal.CurrentLSN()
 		m.ActiveDataPageID = e.activeDataPage
 		m.RootPageID = e.tree.RootPageID()
-	})
+	}); err != nil {
+		return "", fmt.Errorf("snapshot update meta: %w", err)
+	}
 	if err := e.bpm.FlushAll(); err != nil {
-		return "", err
+		return "", fmt.Errorf("snapshot flush dirty pages: %w", err)
 	}
 
 	// 2. Perform physical file clone of the flushed .bin file

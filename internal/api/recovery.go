@@ -31,15 +31,16 @@ func (e *Engine) recoverFromWAL(lastCheckpointLSN uint64) error {
 	}
 
 	if replayedCount > 0 {
-		if err := e.bpm.FlushAll(); err != nil {
-			return err
-		}
-		_ = e.updateMeta(func(m *storage.MetaData) {
+		if err := e.updateMeta(func(m *storage.MetaData) {
 			m.LastCheckpointLSN = highestReplayedLSN
 			m.ActiveDataPageID = e.activeDataPage
 			m.RootPageID = e.tree.RootPageID()
-		})
-		_ = e.bpm.FlushPage(storage.MetaPageID)
+		}); err != nil {
+			return err
+		}
+		if err := e.bpm.FlushAll(); err != nil {
+			return err
+		}
 	}
 
 	return nil

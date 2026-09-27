@@ -109,8 +109,11 @@ func (e *Engine) applyPutInMemory(key uint64, value []byte) error {
 		if err != nil {
 			return err
 		}
+		if err := e.updateMetaActiveData(newID); err != nil {
+			_ = e.bpm.UnpinPage(newID, false)
+			return err
+		}
 		e.activeDataPage = newID
-		e.updateMetaActiveData(newID)
 		slotID, err = newPage.InsertTuple(value)
 		if err != nil {
 			_ = e.bpm.UnpinPage(newID, false)

@@ -36,15 +36,15 @@ func (e *Engine) updateMeta(fn func(m *storage.MetaData)) error {
 }
 
 // updateMetaRoot persists a new B+ Tree root page ID to Page 0.
-func (e *Engine) updateMetaRoot(newRootID uint64) {
-	_ = e.updateMeta(func(m *storage.MetaData) {
+func (e *Engine) updateMetaRoot(newRootID uint64) error {
+	return e.updateMeta(func(m *storage.MetaData) {
 		m.RootPageID = newRootID
 	})
 }
 
 // updateMetaActiveData persists the active slotted data page ID to Page 0.
-func (e *Engine) updateMetaActiveData(pageID uint64) {
-	_ = e.updateMeta(func(m *storage.MetaData) {
+func (e *Engine) updateMetaActiveData(pageID uint64) error {
+	return e.updateMeta(func(m *storage.MetaData) {
 		m.ActiveDataPageID = pageID
 	})
 }
