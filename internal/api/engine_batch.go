@@ -129,6 +129,9 @@ func (e *Engine) applyPutInMemory(key uint64, value []byte) error {
 
 func (e *Engine) applyDeleteInMemory(key uint64) error {
 	rid, err := e.tree.Find(key)
+	if err == index.ErrKeyNotFound {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

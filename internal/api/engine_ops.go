@@ -119,7 +119,8 @@ func (e *Engine) Delete(key uint64) error {
 
 	rid, err := e.tree.Find(key)
 	if err == index.ErrKeyNotFound {
-		return index.ErrKeyNotFound
+		e.notifyCommit(lsn, wal.OpDelete, keyBytes[:], nil)
+		return nil
 	}
 	if err != nil {
 		return err
