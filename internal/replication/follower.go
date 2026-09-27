@@ -2,6 +2,8 @@ package replication
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -9,6 +11,11 @@ import (
 	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"google.golang.org/grpc"
+)
+
+var (
+	// ErrReplicationGap indicates a non-contiguous LSN was received.
+	ErrReplicationGap = errors.New("replication gap detected: non-contiguous LSN")
 )
 
 const (
@@ -64,14 +71,24 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 			return err
 		}
 
+		f.mu.Lock()
+		expectedLSN := f.lastAppliedLSN + 1
+		if msg.Lsn > expectedLSN {
+			f.mu.Unlock()
+			return fmt.Errorf("%w: expected %d, got %d", ErrReplicationGap, expectedLSN, msg.Lsn)
+		}
+		if msg.Lsn <= f.lastAppliedLSN {
+			f.mu.Unlock()
+			continue
+		}
+		f.mu.Unlock()
+
 		if err := f.engine.ApplyReplicatedRecord(byte(msg.OpType), msg.Key, msg.Value); err != nil {
 			return err
 		}
 
 		f.mu.Lock()
-		if msg.Lsn > f.lastAppliedLSN {
-			f.lastAppliedLSN = msg.Lsn
-		}
+		f.lastAppliedLSN = msg.Lsn
 		f.mu.Unlock()
 
 		count++

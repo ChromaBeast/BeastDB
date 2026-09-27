@@ -51,9 +51,13 @@ func (s *LeaderServer) OnCommit(lsn uint64, opType byte, key, value []byte) {
 
 // StreamWAL streams historical WAL replay followed by real-time committed WAL frames.
 func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.ServerStreamingServer[beastv1.WALRecordMessage]) error {
+	// 1. Subscribe FIRST before reading WAL from disk to eliminate the live-handoff race gap.
+	ch, unsubscribe := s.broadcaster.Subscribe(req.ReplicaId, 1024)
+	defer unsubscribe()
+
 	var maxReplayedLSN uint64
 
-	// 1. Catch-up Phase: Replay historical records from local WAL file
+	// 2. Catch-up Phase: Replay historical records from local WAL file
 	_, err := wal.Replay(s.walPath, func(rec *wal.Record) error {
 		if rec.LSN >= req.FromLsn {
 			msg := &beastv1.WALRecordMessage{
@@ -65,7 +69,9 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 			if err := stream.Send(msg); err != nil {
 				return err
 			}
-			maxReplayedLSN = rec.LSN
+			if rec.LSN > maxReplayedLSN {
+				maxReplayedLSN = rec.LSN
+			}
 		}
 		return nil
 	})
@@ -73,22 +79,21 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 		return status.Errorf(codes.Internal, "wal replay error: %v", err)
 	}
 
-	// 2. Real-time Phase: Subscribe to live committed records
-	ch, unsubscribe := s.broadcaster.Subscribe(req.ReplicaId, 128)
-	defer unsubscribe()
-
+	// 3. Real-time Phase: Drain live committed records, skipping any already replayed
+	lastSentLSN := maxReplayedLSN
 	for {
 		select {
 		case <-stream.Context().Done():
 			return stream.Context().Err()
 		case msg, ok := <-ch:
 			if !ok {
-				return nil
+				return status.Errorf(codes.ResourceExhausted, "replica lagged behind buffer capacity")
 			}
-			if msg.Lsn > maxReplayedLSN {
+			if msg.Lsn > lastSentLSN {
 				if err := stream.Send(msg); err != nil {
 					return err
 				}
+				lastSentLSN = msg.Lsn
 			}
 		}
 	}

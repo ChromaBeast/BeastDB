@@ -24,29 +24,38 @@ func (b *Broadcaster) Subscribe(replicaID string, bufSize int) (<-chan *beastv1.
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	if oldCh, exists := b.subscribers[replicaID]; exists {
+		delete(b.subscribers, replicaID)
+		close(oldCh)
+	}
+
 	ch := make(chan *beastv1.WALRecordMessage, bufSize)
 	b.subscribers[replicaID] = ch
 
 	unsubscribe := func() {
 		b.mu.Lock()
 		defer b.mu.Unlock()
-		delete(b.subscribers, replicaID)
-		close(ch)
+		if cur, ok := b.subscribers[replicaID]; ok && cur == ch {
+			delete(b.subscribers, replicaID)
+			close(ch)
+		}
 	}
 
 	return ch, unsubscribe
 }
 
 // Broadcast dispatches a new WAL record to all active follower subscriber channels.
+// If a consumer's channel is full, it is evicted and closed so the follower fails visibly and resyncs.
 func (b *Broadcaster) Broadcast(msg *beastv1.WALRecordMessage) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-	for _, ch := range b.subscribers {
+	for id, ch := range b.subscribers {
 		select {
 		case ch <- msg:
 		default:
-			// Non-blocking drop or buffer full to protect primary from slow consumers
+			delete(b.subscribers, id)
+			close(ch)
 		}
 	}
 }
