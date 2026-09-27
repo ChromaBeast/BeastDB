@@ -19,10 +19,10 @@ type GRPCServer struct {
 }
 
 // NewGRPCServer initializes a new gRPC service wrapping the engine.
-func NewGRPCServer(engine *Engine) *GRPCServer {
+func NewGRPCServer(engine *Engine, opts ...grpc.ServerOption) *GRPCServer {
 	s := &GRPCServer{
 		engine:     engine,
-		grpcServer: grpc.NewServer(),
+		grpcServer: grpc.NewServer(opts...),
 	}
 	beastv1.RegisterBeastDBServiceServer(s.grpcServer, s)
 	return s

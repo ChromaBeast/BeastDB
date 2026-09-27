@@ -44,18 +44,28 @@ func sessionPayload(username string, role Role, expiry time.Time) string {
 
 // IssueSessionCookie signs a session payload and sets it as an HttpOnly cookie.
 func (sm *SessionManager) IssueSessionCookie(w http.ResponseWriter, u *User) {
+	sm.IssueSessionCookieForRequest(w, nil, u)
+}
+
+// IssueSessionCookieForRequest signs a session payload and configures Secure flag based on HTTPS/TLS.
+func (sm *SessionManager) IssueSessionCookieForRequest(w http.ResponseWriter, r *http.Request, u *User) {
 	expiry := time.Now().UTC().Add(sessionTTL)
 	payload := sessionPayload(u.Username, u.Role, expiry)
 	sig := sm.sign(payload)
 	value := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sig
+
+	secure := false
+	if r != nil {
+		secure = r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	}
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    value,
 		Path:     "/",
 		Expires:  expiry,
-		HttpOnly: true,               // JS cannot read this cookie
-		Secure:   true,               // Only sent over HTTPS
+		HttpOnly: true,                    // JS cannot read this cookie
+		Secure:   secure,                  // Sent over HTTPS or secure context
 		SameSite: http.SameSiteStrictMode, // CSRF protection
 	})
 }

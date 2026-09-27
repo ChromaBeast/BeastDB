@@ -48,6 +48,13 @@ func LogoutHandler(d *Deps) http.HandlerFunc {
 
 // handleLoginPost validates credentials, issues a session cookie, then redirects.
 func handleLoginPost(w http.ResponseWriter, r *http.Request, d *Deps) {
+	ip := ClientIP(r)
+	if d.RateLimiter != nil && !d.RateLimiter.Allow(ip) {
+		http.Error(w, "Too many login attempts. Please wait a moment.", http.StatusTooManyRequests)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10) // 64KB max body
 	var req LoginRequest
 
 	ct := r.Header.Get("Content-Type")
@@ -58,7 +65,7 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request, d *Deps) {
 		}
 	} else {
 		// Support HTML form and FormData submission
-		_ = r.ParseMultipartForm(32 << 20)
+		_ = r.ParseMultipartForm(64 << 10)
 		_ = r.ParseForm()
 		req.Username = r.FormValue("username")
 		req.Password = r.FormValue("password")
@@ -71,11 +78,14 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request, d *Deps) {
 
 	user, err := d.Users.Authenticate(req.Username, req.Password)
 	if err != nil {
+		if d.RateLimiter != nil {
+			d.RateLimiter.RecordFailure(ip)
+		}
 		// Return 401 without revealing whether the user exists
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	d.Sessions.IssueSessionCookie(w, user)
+	d.Sessions.IssueSessionCookieForRequest(w, r, user)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

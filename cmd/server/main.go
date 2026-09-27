@@ -24,21 +24,24 @@ import (
 const Version = "0.1.0-release"
 
 func main() {
-	role              := flag.String("role", "leader", "Node cluster role: leader or follower")
-	port              := flag.Int("port", 50051, "Port for gRPC service")
-	leaderAddr        := flag.String("leader-addr", "127.0.0.1:50051", "Leader node address for replication")
-	dataDir           := flag.String("data-dir", "./data", "Directory to store data and WAL files")
-	poolSize          := flag.Int("pool-size", 128, "Buffer pool frame capacity (4KB blocks)")
-	replicaID         := flag.String("replica-id", "replica-1", "Unique identifier for this replica node")
-	webAddr           := flag.String("web-addr", "127.0.0.1:8080", "Address for the web admin console (empty to disable)")
-	adminPassword     := flag.String("admin-password", "admin", "Initial admin user password (used only on first run)")
-	partitionConfig   := flag.String("partition-config", "", "Path to partitions.json defining Studio partition labels (optional)")
+	role              := flag.String("role", getEnv("BEASTDB_ROLE", "leader"), "Node cluster role: leader or follower")
+	port              := flag.Int("port", getEnvInt("BEASTDB_PORT", 50051), "Port for gRPC service")
+	leaderAddr        := flag.String("leader-addr", getEnv("BEASTDB_LEADER_ADDR", "127.0.0.1:50051"), "Leader node address for replication")
+	dataDir           := flag.String("data-dir", getEnv("BEASTDB_DATA_DIR", "./data"), "Directory to store data and WAL files")
+	poolSize          := flag.Int("pool-size", getEnvInt("BEASTDB_POOL_SIZE", 128), "Buffer pool frame capacity (4KB blocks)")
+	replicaID         := flag.String("replica-id", getEnv("BEASTDB_REPLICA_ID", "replica-1"), "Unique identifier for this replica node")
+	webAddr           := flag.String("web-addr", getEnv("BEASTDB_WEB_ADDR", "127.0.0.1:8080"), "Address for the web admin console (empty to disable)")
+	adminPassword     := flag.String("admin-password", getEnv("BEASTDB_ADMIN_PASSWORD", "admin"), "Initial admin user password (or BEASTDB_ADMIN_PASSWORD)")
+	partitionConfig   := flag.String("partition-config", getEnv("BEASTDB_PARTITION_CONFIG", ""), "Path to partitions.json defining Studio partition labels (optional)")
+	apiToken          := flag.String("api-token", getEnv("BEASTDB_API_TOKEN", ""), "Bearer token for gRPC authentication (or BEASTDB_API_TOKEN)")
 	devMode           := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	flag.Parse()
 
 	if *devMode {
 		cleanup := setupDevMode(dataDir, webAddr, adminPassword, *port)
 		defer cleanup()
+	} else if *adminPassword == "admin" {
+		log.Println("⚠️  SECURITY WARNING: Using default password 'admin'. Set BEASTDB_ADMIN_PASSWORD in production!")
 	}
 
 	log.Printf("Starting BeastDB v%s [Role: %s] on port :%d...", Version, *role, *port)
@@ -55,7 +58,19 @@ func main() {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
 
-	grpcServer := api.NewGRPCServer(engine)
+	var grpcOpts []grpc.ServerOption
+	if *apiToken != "" {
+		authInterceptor := api.NewAuthInterceptor(*apiToken)
+		grpcOpts = append(grpcOpts,
+			grpc.UnaryInterceptor(authInterceptor.Unary()),
+			grpc.StreamInterceptor(authInterceptor.Stream()),
+		)
+		log.Printf("🔐 gRPC service protected with Bearer token authentication.")
+	} else if !*devMode {
+		log.Printf("⚠️  SECURITY NOTICE: gRPC running without api-token. Set BEASTDB_API_TOKEN to require Bearer auth.")
+	}
+
+	grpcServer := api.NewGRPCServer(engine, grpcOpts...)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -94,9 +109,9 @@ func main() {
 
 	// Start embedded web admin console if an address is configured.
 	if *webAddr != "" {
-		secret, secretErr := auth.GenerateSecret()
+		secret, secretErr := loadOrGenerateSessionSecret(*dataDir)
 		if secretErr != nil {
-			log.Fatalf("Failed to generate session secret: %v", secretErr)
+			log.Fatalf("Failed to initialize session secret: %v", secretErr)
 		}
 
 		webSrv, webErr := web.NewServer(*webAddr, engine, secret, *role, Version, partitions)

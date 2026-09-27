@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
@@ -37,8 +38,14 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 	sessions := auth.NewSessionManager(secret)
 	users := auth.NewUserStore(engine)
 	apiH := handler.NewAPIHandler(engine, sessions, role, version, partitions)
+	rateLimiter := handler.NewLoginRateLimiter(5, 30*time.Second)
 
-	deps := &handler.Deps{Users: users, Sessions: sessions, StaticFS: staticFS}
+	deps := &handler.Deps{
+		Users:       users,
+		Sessions:    sessions,
+		StaticFS:    staticFS,
+		RateLimiter: rateLimiter,
+	}
 
 	mux := http.NewServeMux()
 
@@ -86,10 +93,20 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: securityHeaders(mux),
 	}
 
 	return &Server{httpServer: srv}, nil
+}
+
+// securityHeaders injects defense-in-depth headers into all web and API responses.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Serve starts the HTTP server — call this in a goroutine.

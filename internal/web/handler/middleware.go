@@ -9,9 +9,10 @@ import (
 
 // Deps holds shared dependencies injected into all HTTP handlers.
 type Deps struct {
-	Users    *auth.UserStore
-	Sessions *auth.SessionManager
-	StaticFS fs.FS
+	Users       *auth.UserStore
+	Sessions    *auth.SessionManager
+	StaticFS    fs.FS
+	RateLimiter *LoginRateLimiter
 }
 
 // AuthMiddleware rejects unauthenticated requests to protected routes.
