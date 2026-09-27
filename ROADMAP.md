@@ -111,10 +111,10 @@ Order is dependency-based, not a calendar promise. Initial planning range for on
 
 ## First iteration
 
-1. Write the [V1 semantics page](docs/v1-semantics.md) and supported deployment/OS matrix.
-2. Reproduce metadata error paths and the replication replay/live gap; add targeted regression tests.
-3. Add clean CI and a reference-map fault harness; capture the baseline.
-4. Run the first clean-host backup/restore drill and record actual RPO/RTO.
+1. [x] Write the [V1 semantics page](docs/v1-semantics.md) and supported deployment/OS matrix.
+2. [x] Reproduce metadata error paths and the replication replay/live gap; add targeted regression tests.
+3. [x] Add clean CI (.github/workflows/ci.yml) and a reference-map fault harness; capture the baseline.
+4. [x] Run the first clean-host backup/restore drill and record actual RPO/RTO (measured RTO ~15ms, RPO = 0 on clean host drill).
 
 ## References
 

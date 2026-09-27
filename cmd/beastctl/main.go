@@ -19,6 +19,9 @@ func printUsage() {
 	fmt.Println("  export             Export database or specific partition records to a JSON file")
 	fmt.Println("  import             Bulk load records from an exported JSON file")
 	fmt.Println("  seed               Seed database with fixture data and display partition stats")
+	fmt.Println("  backup             Create an atomic physical database backup bundle with checksum")
+	fmt.Println("  verify             Validate manifest and checksums of a backup bundle")
+	fmt.Println("  restore            Restore database bundle to target directory with safe overwrite checks")
 	fmt.Println("  get                Retrieve a record value by its 64-bit key")
 	fmt.Println("  put                Store or update a key-value record")
 	fmt.Println("  delete             Tombstone/delete a record by its 64-bit key")
@@ -103,6 +106,29 @@ func main() {
 		key := fs.Uint64("key", 0, "64-bit record key")
 		_ = fs.Parse(args)
 		handleErr(runDelete(*addr, *key))
+
+	case "backup":
+		fs := flag.NewFlagSet("backup", flag.ExitOnError)
+		db := fs.String("db", "beast.bin", "Path to source database file")
+		wal := fs.String("wal", "beast.wal", "Path to source WAL file")
+		out := fs.String("out", "./backup", "Output directory for backup bundle")
+		_ = fs.Parse(args)
+		handleErr(runBackup(*db, *wal, *out))
+
+	case "verify":
+		fs := flag.NewFlagSet("verify", flag.ExitOnError)
+		backupDir := fs.String("backup", "./backup", "Path to backup directory")
+		_ = fs.Parse(args)
+		handleErr(runVerify(*backupDir))
+
+	case "restore":
+		fs := flag.NewFlagSet("restore", flag.ExitOnError)
+		backupDir := fs.String("backup", "./backup", "Path to backup directory")
+		dest := fs.String("dest", "./restored", "Destination directory")
+		force := fs.Bool("force", false, "Overwrite existing files in destination directory")
+		_ = fs.Parse(args)
+		_, err := runRestore(*backupDir, *dest, *force)
+		handleErr(err)
 
 	case "version":
 		fmt.Printf("beastctl v%s\n", Version)
