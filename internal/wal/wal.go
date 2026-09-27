@@ -34,8 +34,20 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 		_ = file.Close()
 		return nil, err
 	}
-	w.currentLSN = lastLSN
 
+	// If active WAL is empty (e.g. immediately following a checkpoint rotation),
+	// check the archived WAL generation to prevent LSN regression across restarts.
+	if lastLSN == 0 {
+		archivePath := path + ".bak"
+		if archFile, err := os.Open(archivePath); err == nil {
+			if archLSN, err := findHighestLSN(archFile); err == nil && archLSN > lastLSN {
+				lastLSN = archLSN
+			}
+			_ = archFile.Close()
+		}
+	}
+
+	w.currentLSN = lastLSN
 	return w, nil
 }
 
@@ -78,6 +90,15 @@ func (w *WAL) CurrentLSN() uint64 {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.currentLSN
+}
+
+// SetCurrentLSN advances currentLSN to at least targetLSN to preserve monotonicity.
+func (w *WAL) SetCurrentLSN(targetLSN uint64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if targetLSN > w.currentLSN {
+		w.currentLSN = targetLSN
+	}
 }
 
 // Path returns the physical path of the WAL file.

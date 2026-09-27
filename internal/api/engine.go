@@ -75,6 +75,7 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 		return nil, err
 	}
 
+	w.SetCurrentLSN(meta.LastCheckpointLSN)
 	tree := index.OpenBPlusTree(meta.RootPageID, bpm)
 	return newEngineInstance(disk, bpm, tree, w, meta.ActiveDataPageID, meta.LastCheckpointLSN)
 }
