@@ -58,13 +58,23 @@ function nameFromFields(f: Record<string, unknown>): { label: string; confidence
 }
 
 export function inferCollectionName(records: UniversalRecord[]): string | undefined {
-  const scores = new Map<string, number>();
+  const scores = new Map<string, { score: number; count: number; confidence: number }>();
+  let readable = 0;
   for (const record of records) {
     if (!record.fields) continue;
+    readable++;
     const candidate = nameFromFields(record.fields);
-    if (candidate) scores.set(candidate.label, (scores.get(candidate.label) ?? 0) + candidate.confidence);
+    if (!candidate) continue;
+    const current = scores.get(candidate.label) ?? { score: 0, count: 0, confidence: 0 };
+    scores.set(candidate.label, {
+      score: current.score + candidate.confidence,
+      count: current.count + 1,
+      confidence: Math.max(current.confidence, candidate.confidence),
+    });
   }
-  return [...scores].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const best = [...scores].sort((a, b) => b[1].score - a[1].score)[0];
+  if (!best || (best[1].confidence <= 2 && best[1].count !== readable)) return undefined;
+  return best[0];
 }
 
 export function inferPartitionMeta(records: UniversalRecord[], prefix: number): PartitionMeta {

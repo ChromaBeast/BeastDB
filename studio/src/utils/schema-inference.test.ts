@@ -70,6 +70,19 @@ test("relationship IDs do not mislabel records as users or senders", () => {
   expect(inferCollectionName([request])).toBeUndefined();
 });
 
+test("explicit collection and nested subject outrank generic relationship fields", () => {
+  const explicit = parseUniversalRecord({
+    keyText: "648518346341351426",
+    value: JSON.stringify({ collection: "friend_request", senderId: "u-1", receiverId: "u-2" }),
+  });
+  const nested = parseUniversalRecord({
+    keyText: "216172782113783810",
+    value: JSON.stringify({ user: { id: "u-1", name: "Alice" }, game: { id: "g-1", title: "Brawlhalla" } }),
+  });
+  expect(inferCollectionName([explicit])).toBe("Friend Requests");
+  expect(inferCollectionName([nested])).toBe("Games");
+});
+
 test("a sampled partition is named even when absent from the loaded page", () => {
   setPartitionRegistry([]);
   setInferredPartitionRegistry({ 9: inferPartitionMeta([
