@@ -20,20 +20,18 @@ export interface PartitionMeta {
 // Generic defaults for well-known system prefixes — project-specific labels
 // should be supplied via GET /api/partitions (see setPartitionRegistry).
 const DEFAULT_REGISTRY: Record<number, PartitionMeta> = {
-  0x01: { label: "User Account", color: "emerald", description: "User profiles and authentication credentials" },
-  0x02: { label: "Index", color: "teal", description: "Secondary index mapping user IDs" },
-  0x03: { label: "Games", color: "purple" },
-  0x04: { label: "Movies", color: "cyan" },
-  0x05: { label: "Auth Token", color: "amber", description: "Short-lived session and API tokens" },
-  0x06: { label: "TV Shows", color: "indigo" },
-  0x07: { label: "Books", color: "rose" },
-  0x08: { label: "Relationship", color: "blue", description: "Bidirectional social graph edges" },
-  0x09: { label: "Pending Request", color: "violet", description: "Pending friend/follow requests" },
-  0x0a: { label: "Name Index", color: "teal" },
-  0x0b: { label: "Inbox", color: "sky" },
-  0x0c: { label: "Outbox", color: "sky" },
-  0x10: { label: "Media Catalog", color: "orange", description: "Shared media metadata (movies, games, books)" },
-  0x51: { label: "System", color: "fuchsia" },
+  0x01: { label: "User Accounts", color: "emerald", description: "User profiles and authentication credentials" },
+  0x02: { label: "User by ID", color: "teal", description: "Secondary index mapping user UUIDs to emails" },
+  0x03: { label: "Game Collection", color: "purple", description: "User game library entries and progress" },
+  0x04: { label: "Movie Collection", color: "cyan", description: "User movie library entries and watchlist" },
+  0x05: { label: "Refresh Tokens", color: "amber", description: "Hashed session and API tokens" },
+  0x06: { label: "TV Collection", color: "indigo", description: "User TV show progress and episode tracking" },
+  0x07: { label: "Book Collection", color: "rose", description: "User reading status and page progress" },
+  0x08: { label: "Friendships", color: "blue", description: "Bidirectional social graph edges" },
+  0x09: { label: "Friend Requests", color: "violet", description: "Pending and accepted friend requests" },
+  0x0a: { label: "User by Username", color: "teal", description: "Secondary index mapping usernames to emails" },
+  0x0b: { label: "Inbox Requests", color: "sky", description: "Incoming friend requests by receiver" },
+  0x0c: { label: "Outbox Requests", color: "sky", description: "Outgoing friend requests by sender" },
 };
 
 // Mutable registry — overwritten at runtime by setPartitionRegistry.
@@ -41,10 +39,14 @@ let prefixRegistry: Record<number, PartitionMeta> = {
   ...DEFAULT_REGISTRY,
 };
 
-// setPartitionRegistry merges server-provided partition config over the defaults.
+// setPartitionRegistry sets server-provided partition config over the defaults.
 // Call this once on Studio boot after fetching GET /api/partitions.
 export function setPartitionRegistry(entries: PartitionConfig[]): void {
-  const next: Record<number, PartitionMeta> = { ...DEFAULT_REGISTRY };
+  if (!entries || entries.length === 0) {
+    prefixRegistry = { ...DEFAULT_REGISTRY };
+    return;
+  }
+  const next: Record<number, PartitionMeta> = {};
   for (const e of entries) {
     next[e.prefix] = { label: e.label, color: e.color, description: e.description };
   }

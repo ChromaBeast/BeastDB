@@ -24,6 +24,7 @@ function findImage(obj: any): string | undefined {
   if (!obj || typeof obj !== "object") return undefined;
   const candidates = [
     obj.coverUrl, obj.posterUrl, obj.avatarUrl,
+    obj.cover_url, obj.poster_url, obj.avatar_url, obj.avatar,
     obj.thumbnail, obj.image, obj.icon, obj.photo,
   ];
   for (const c of candidates) {
@@ -38,14 +39,17 @@ function findImage(obj: any): string | undefined {
 }
 
 const REDACTED_KEYS = new Set([
-  "passwordHash", "password", "salt", "token", "secret",
-  "apiKey", "apiSecret", "privateKey", "sessionToken",
+  "passwordHash", "password_hash", "password", "salt", "password_salt",
+  "token", "secret", "apiKey", "api_key", "apiSecret", "api_secret",
+  "privateKey", "private_key", "sessionToken", "session_secret",
+  "api_token", "refresh_token",
 ]);
 
 function recordIdentity(data: Record<string, any>): string {
   const kinds = [
-    ["movieId", "Movie"], ["gameId", "Game"], ["tvId", "TV show"],
-    ["bookId", "Book"], ["mediaId", "Media"], ["itemId", "Item"],
+    ["movieId", "Movie"], ["gameId", "Game"], ["showId", "TV Show"], ["tvId", "TV Show"],
+    ["bookId", "Book"], ["mediaId", "Media"], ["itemId", "Item"], ["friendId", "Friend"],
+    ["receiverId", "To"], ["senderId", "From"],
   ] as const;
   const parts = kinds
     .filter(([key]) => data[key] != null && data[key] !== "")
