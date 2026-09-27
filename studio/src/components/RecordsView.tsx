@@ -70,7 +70,7 @@ export function RecordsView(p: Props) {
 
   const filteredRecords = useMemo(() => {
     if (statusFilter === "all") return activeRecords;
-    return activeRecords.filter((r) => String(r.status ?? "").toLowerCase() === statusFilter);
+    return activeRecords.filter((r) => String(r.status ?? "").trim().toLowerCase() === statusFilter);
   }, [activeRecords, statusFilter]);
 
   const choosePartition = (val: string) => {

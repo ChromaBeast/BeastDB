@@ -78,12 +78,18 @@ export function ExplorerContent(p: Props) {
           <RecordTableView
             records={p.records}
             selectedKey={p.selected?.keyStr}
+            hasMore={p.hasMore}
+            loadingMore={p.loadingMore}
+            onLoadMore={p.onLoadMore}
             onSelect={(r) => { p.onSelect(r); p.onSetPane("details"); }}
           />
         ) : (
           <RecordGridView
             records={p.records}
             selectedKey={p.selected?.keyStr}
+            hasMore={p.hasMore}
+            loadingMore={p.loadingMore}
+            onLoadMore={p.onLoadMore}
             onSelect={(r) => { p.onSelect(r); p.onSetPane("details"); }}
           />
         )}
