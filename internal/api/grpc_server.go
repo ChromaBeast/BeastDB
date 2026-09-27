@@ -117,3 +117,38 @@ func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingS
 	}
 	return nil
 }
+
+// BatchWrite executes an atomic batch of put/delete mutations.
+func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequest) (*beastv1.BatchWriteResponse, error) {
+	if len(req.Operations) == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "operations list cannot be empty")
+	}
+
+	ops := make([]BatchOperation, len(req.Operations))
+	for i, op := range req.Operations {
+		var opType BatchOpType
+		switch op.OpType {
+		case beastv1.BatchOpType_BATCH_OP_TYPE_PUT:
+			opType = BatchOpPut
+		case beastv1.BatchOpType_BATCH_OP_TYPE_DELETE:
+			opType = BatchOpDelete
+		default:
+			return nil, status.Errorf(codes.InvalidArgument, "unsupported operation type: %v", op.OpType)
+		}
+
+		ops[i] = BatchOperation{
+			Type:  opType,
+			Key:   op.Key,
+			Value: op.Value,
+		}
+	}
+
+	if err := s.engine.BatchWrite(ops); err != nil {
+		return nil, status.Errorf(codes.Internal, "batch write failed: %v", err)
+	}
+
+	return &beastv1.BatchWriteResponse{
+		Success:      true,
+		AppliedCount: uint32(len(ops)),
+	}, nil
+}

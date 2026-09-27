@@ -6,6 +6,7 @@ import {
   LogOut,
   Moon,
   RefreshCw,
+  Sliders,
   Sun,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -14,9 +15,11 @@ import { SessionUser } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { RoleBadge } from "./RoleBadge";
 
+export type StudioView = "overview" | "explorer" | "operations";
+
 interface Props {
-  view: "records" | "overview";
-  setView: (view: "records" | "overview") => void;
+  view: StudioView;
+  setView: (view: StudioView) => void;
   user: SessionUser | null;
   busy: boolean;
   onRefresh: () => void;
@@ -35,20 +38,28 @@ export function StudioHeader({ view, setView, user, busy, onRefresh, onOpenToken
           className="order-3 flex w-full gap-1 rounded-lg border border-zinc-800 bg-zinc-900/80 p-1 md:order-none md:w-auto"
         >
           <button
-            aria-current={view === "records" ? "page" : undefined}
-            onClick={() => setView("records")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-1.5 text-sm transition md:flex-none ${view === "records" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
-          >
-            <Database size={15} />
-            Records
-          </button>
-          <button
             aria-current={view === "overview" ? "page" : undefined}
             onClick={() => setView("overview")}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-1.5 text-sm transition md:flex-none ${view === "overview" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "overview" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
           >
-            <Activity size={15} />
+            <Activity size={14} />
             Overview
+          </button>
+          <button
+            aria-current={view === "explorer" ? "page" : undefined}
+            onClick={() => setView("explorer")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "explorer" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
+          >
+            <Database size={14} />
+            Explorer
+          </button>
+          <button
+            aria-current={view === "operations" ? "page" : undefined}
+            onClick={() => setView("operations")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-1.5 text-xs transition md:flex-none ${view === "operations" ? "bg-beast-lime/15 text-beast-lime font-medium border border-beast-lime/30 shadow-sm" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50"}`}
+          >
+            <Sliders size={14} />
+            Operations
           </button>
         </nav>
         <div className="flex items-center gap-1 md:ml-auto">

@@ -10,6 +10,7 @@ service BeastDBService {
   rpc Put (PutRequest) returns (PutResponse);
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   rpc Scan (ScanRequest) returns (stream KeyValueResponse);
+  rpc BatchWrite (BatchWriteRequest) returns (BatchWriteResponse);
 }
 
 // ReplicationService handles physical WAL streaming from Leader to Followers.
@@ -74,4 +75,25 @@ message ReplicationAck {
 
 message AckResponse {
   bool success = 1;
+}
+
+enum BatchOpType {
+  BATCH_OP_TYPE_UNSPECIFIED = 0;
+  BATCH_OP_TYPE_PUT = 1;
+  BATCH_OP_TYPE_DELETE = 2;
+}
+
+message BatchOperation {
+  BatchOpType op_type = 1;
+  uint64 key = 2;
+  bytes value = 3;
+}
+
+message BatchWriteRequest {
+  repeated BatchOperation operations = 1;
+}
+
+message BatchWriteResponse {
+  bool success = 1;
+  uint32 applied_count = 2;
 }

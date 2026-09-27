@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/replication"
@@ -81,6 +82,7 @@ func main() {
 	if *role == "leader" {
 		repServer := replication.NewLeaderServer(engine.WALPath())
 		repServer.RegisterService(grpcServer.RawServer())
+		engine.SetCommitObserver(repServer)
 		log.Printf("Leader node initialized with replication service.")
 	} else {
 		log.Printf("Follower node connecting to leader at %s...", *leaderAddr)
@@ -92,8 +94,15 @@ func main() {
 
 		followerClient := replication.NewFollowerClient(*replicaID, engine, conn)
 		go func() {
-			if err := followerClient.SyncLoop(ctx); err != nil && ctx.Err() == nil {
-				log.Printf("Follower sync loop error: %v", err)
+			for ctx.Err() == nil {
+				if err := followerClient.SyncLoop(ctx); err != nil && ctx.Err() == nil {
+					log.Printf("Follower sync stream dropped: %v. Reconnecting in 1s...", err)
+					select {
+					case <-time.After(time.Second):
+					case <-ctx.Done():
+						return
+					}
+				}
 			}
 		}()
 	}

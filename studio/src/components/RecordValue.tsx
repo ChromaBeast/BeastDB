@@ -17,7 +17,12 @@ export function RecordValue({ value }: { value: unknown }) {
       </div>
     );
   if (typeof value === "boolean")
-    return <span>{value ? "true" : "false"}</span>;
+    return <span>{value ? "Yes" : "No"}</span>;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime()))
+      return <time dateTime={value} title={value}>{date.toLocaleString()}</time>;
+  }
   if (typeof value === "string" && /^https?:\/\//.test(value))
     return (
       <div className="space-y-2">
@@ -38,5 +43,5 @@ export function RecordValue({ value }: { value: unknown }) {
         </a>
       </div>
     );
-  return <span className="whitespace-pre-wrap break-all">{String(value)}</span>;
+  return <span className="whitespace-pre-wrap break-words">{String(value)}</span>;
 }

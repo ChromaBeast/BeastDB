@@ -44,6 +44,11 @@ func (s *LeaderServer) Broadcast(lsn uint64, opType byte, key, value []byte) {
 	})
 }
 
+// OnCommit satisfies api.CommitObserver for live replication broadcasting.
+func (s *LeaderServer) OnCommit(lsn uint64, opType byte, key, value []byte) {
+	s.Broadcast(lsn, opType, key, value)
+}
+
 // StreamWAL streams historical WAL replay followed by real-time committed WAL frames.
 func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.ServerStreamingServer[beastv1.WALRecordMessage]) error {
 	var maxReplayedLSN uint64

@@ -16,10 +16,11 @@ var (
 // epoch is bumped on every structural mutation (split, merge, delete) so that
 // live cursors can detect concurrent modifications via ErrConcurrentModification.
 type BPlusTree struct {
-	rootPageID uint64
-	bpm        *storage.BufferPoolManager
-	mu         sync.RWMutex
-	epoch      atomic.Uint64
+	rootPageID   uint64
+	bpm          *storage.BufferPoolManager
+	mu           sync.RWMutex
+	epoch        atomic.Uint64
+	onRootChange func(newRootID uint64)
 }
 
 // CreateBPlusTree initializes a new B+ Tree with an empty root leaf node.
@@ -53,6 +54,13 @@ func (t *BPlusTree) RootPageID() uint64 {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.rootPageID
+}
+
+// SetOnRootChange registers a callback invoked whenever root splitting migrates the root page.
+func (t *BPlusTree) SetOnRootChange(fn func(newRootID uint64)) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.onRootChange = fn
 }
 
 // Find binary-searches the B+ Tree for key and returns its physical RID.

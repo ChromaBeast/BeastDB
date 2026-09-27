@@ -152,3 +152,14 @@ func findHighestLSN(file *os.File) (uint64, error) {
 	}
 	return highest, nil
 }
+
+// FileSize returns the current byte size of the WAL file on disk.
+func (w *WAL) FileSize() int64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if info, err := w.file.Stat(); err == nil {
+		return info.Size()
+	}
+	return 0
+}
+

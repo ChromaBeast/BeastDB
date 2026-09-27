@@ -1,9 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { StudioHeader } from "../components/StudioHeader";
+import { StudioHeader, StudioView } from "../components/StudioHeader";
 import { RecordsView } from "../components/RecordsView";
 import { OverviewView } from "../components/OverviewView";
+import { OperationsView } from "../components/OperationsView";
 import { NewRecordDialog } from "../components/NewRecordDialog";
 import { KeyAnalyzerDialog } from "../components/KeyAnalyzerDialog";
 import { DeleteUserDialog } from "../components/DeleteUserDialog";
@@ -24,7 +25,7 @@ import { useStudioData } from "../hooks/useStudioData";
 
 export default function StudioDashboard() {
   const data = useStudioData();
-  const [view, setView] = useState<"records" | "overview">("records");
+  const [view, setView] = useState<StudioView>("explorer");
   const [selected, setSelected] = useState<UniversalRecord | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [tokensOpen, setTokensOpen] = useState(false);
@@ -41,6 +42,28 @@ export default function StudioDashboard() {
     const timer = window.setTimeout(() => setNotice(null), 5000);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const key = params.get("key");
+    if (key) {
+      void data.lookup(key).then((rec) => {
+        if (rec) setSelected(rec);
+      }).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (selected) {
+      url.searchParams.set("key", selected.keyStr);
+    } else {
+      url.searchParams.delete("key");
+    }
+    window.history.replaceState({}, "", url.toString());
+  }, [selected]);
 
   const remove = async () => {
     if (!deleteKey) return;
@@ -77,7 +100,7 @@ export default function StudioDashboard() {
         </div>
       )}
       <main className="mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10">
-        {view === "records" ? (
+        {view === "explorer" && (
           <RecordsView
             records={data.records}
             selected={selected}
@@ -95,12 +118,14 @@ export default function StudioDashboard() {
             onNew={() => setNewOpen(true)}
             onLookup={data.lookup}
             onSearch={data.search}
+            onScanRange={data.scanRange}
             partitionCounts={data.stats?.partitionCounts}
             onLoadPartition={data.loadPartition}
             onNotice={showNotice}
             onOpenTokens={() => setTokensOpen(true)}
           />
-        ) : (
+        )}
+        {view === "overview" && (
           <OverviewView
             stats={data.stats}
             statsError={data.statsError}
@@ -111,6 +136,14 @@ export default function StudioDashboard() {
             updatedAt={data.updatedAt}
             onRetry={() => void data.refresh()}
             onAnalyze={() => setAnalyzerOpen(true)}
+          />
+        )}
+        {view === "operations" && (
+          <OperationsView
+            stats={data.stats}
+            user={data.user}
+            onNotice={showNotice}
+            onRefresh={() => void data.refresh()}
           />
         )}
       </main>

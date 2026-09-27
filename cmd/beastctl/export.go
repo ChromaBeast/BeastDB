@@ -53,7 +53,26 @@ func runExport(addr, outPath, partitionStr, format string) error {
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
-	var records []DumpRecord
+	var out io.Writer
+	var closeOut func() error
+	if outPath == "" || outPath == "-" {
+		out = os.Stdout
+		closeOut = func() error { return nil }
+	} else {
+		f, err := os.Create(outPath)
+		if err != nil {
+			return fmt.Errorf("failed to create output file: %w", err)
+		}
+		out = f
+		closeOut = f.Close
+	}
+	defer closeOut()
+
+	if _, err := io.WriteString(out, "[\n"); err != nil {
+		return err
+	}
+
+	count := 0
 	t0 := time.Now()
 
 	for {
@@ -65,6 +84,12 @@ func runExport(addr, outPath, partitionStr, format string) error {
 			return fmt.Errorf("error reading stream: %w", err)
 		}
 
+		if count > 0 {
+			if _, err := io.WriteString(out, ",\n"); err != nil {
+				return err
+			}
+		}
+
 		val := resp.Value
 		var raw json.RawMessage
 		if json.Valid(val) {
@@ -74,26 +99,29 @@ func runExport(addr, outPath, partitionStr, format string) error {
 			raw = json.RawMessage(quoted)
 		}
 
-		records = append(records, DumpRecord{
+		rec := DumpRecord{
 			Key:       resp.Key,
 			KeyHex:    fmt.Sprintf("0x%016X", resp.Key),
 			Partition: uint8(resp.Key >> 56),
 			Value:     raw,
-		})
-	}
-
-	data, err := json.MarshalIndent(records, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to encode records: %w", err)
-	}
-
-	if outPath == "" || outPath == "-" {
-		fmt.Println(string(data))
-	} else {
-		if err := os.WriteFile(outPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write output file: %w", err)
 		}
-		fmt.Printf("✅ Exported %d records to %s (in %v)\n", len(records), outPath, time.Since(t0).Round(time.Millisecond))
+
+		itemData, err := json.MarshalIndent(rec, "  ", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to encode record: %w", err)
+		}
+		if _, err := out.Write(append([]byte("  "), itemData...)); err != nil {
+			return err
+		}
+		count++
+	}
+
+	if _, err := io.WriteString(out, "\n]\n"); err != nil {
+		return err
+	}
+
+	if outPath != "" && outPath != "-" {
+		fmt.Printf("✅ Streamed %d records to %s (in %v)\n", count, outPath, time.Since(t0).Round(time.Millisecond))
 	}
 
 	return nil

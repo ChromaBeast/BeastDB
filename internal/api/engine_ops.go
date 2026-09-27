@@ -33,10 +33,10 @@ func (e *Engine) PutIfAbsent(key uint64, value []byte) error {
 }
 
 func (e *Engine) putLocked(key uint64, value []byte) error {
-
 	var keyBytes [8]byte
 	binary.LittleEndian.PutUint64(keyBytes[:], key)
-	if _, err := e.wal.Write(wal.OpPut, keyBytes[:], value); err != nil {
+	lsn, err := e.wal.Write(wal.OpPut, keyBytes[:], value)
+	if err != nil {
 		return err
 	}
 
@@ -53,6 +53,7 @@ func (e *Engine) putLocked(key uint64, value []byte) error {
 			return err
 		}
 		e.activeDataPage = newID
+		e.updateMetaActiveData(newID)
 		slotID, err = newPage.InsertTuple(value)
 		if err != nil {
 			_ = e.bpm.UnpinPage(newID, false)
@@ -63,7 +64,13 @@ func (e *Engine) putLocked(key uint64, value []byte) error {
 	_ = e.bpm.UnpinPage(e.activeDataPage, true)
 
 	rid := storage.RID{PageID: e.activeDataPage, SlotID: slotID}
-	return e.tree.Insert(key, rid)
+	if err := e.tree.Insert(key, rid); err != nil {
+		return err
+	}
+
+	e.indexValueLocked(key, value)
+	e.notifyCommit(lsn, wal.OpPut, keyBytes[:], value)
+	return nil
 }
 
 // Get finds key in B+ Tree and reads tuple bytes from the slotted page.
@@ -102,7 +109,8 @@ func (e *Engine) Delete(key uint64) error {
 
 	var keyBytes [8]byte
 	binary.LittleEndian.PutUint64(keyBytes[:], key)
-	if _, err := e.wal.Write(wal.OpDelete, keyBytes[:], nil); err != nil {
+	lsn, err := e.wal.Write(wal.OpDelete, keyBytes[:], nil)
+	if err != nil {
 		return err
 	}
 
@@ -120,7 +128,13 @@ func (e *Engine) Delete(key uint64) error {
 		_ = e.bpm.UnpinPage(rid.PageID, true)
 	}
 
-	return e.tree.Delete(key)
+	if err := e.tree.Delete(key); err != nil {
+		return err
+	}
+
+	e.unindexValueLocked(key)
+	e.notifyCommit(lsn, wal.OpDelete, keyBytes[:], nil)
+	return nil
 }
 
 // Scan returns a streaming cursor iterator over the requested key range.

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -18,7 +19,11 @@ type EngineReader interface {
 	CurrentLSN() uint64
 	ScanRecords(startKey uint64, limit int) ([]api.RecordItem, error)
 	ScanRecordsPaginated(startKey uint64, limit int) ([]api.RecordItem, uint64, bool, error)
+	ScanRecordsBounded(startKey, endKey uint64, limit int) ([]api.RecordItem, uint64, bool, error)
+	ScanSearchChunk(startKey, endKey uint64, maxScan, limit int, query string) ([]api.RecordItem, int, uint64, bool, error)
 	ScanPartitionCounts() (map[uint8]int, error)
+	Search(query string, limit int, prefix uint8) ([]api.RecordItem, error)
+	StorageMetrics() api.StorageMetrics
 }
 
 // APIHandler handles data access routes under /api/.
@@ -41,7 +46,7 @@ func (h *APIHandler) SetTokenStore(ts *auth.TokenStore) {
 	h.tokens = ts
 }
 
-// GetRecords handles GET /api/records?start=<uint64>&limit=<int>.
+// GetRecords handles GET /api/records?start=<uint64>&end=<uint64>&limit=<int>.
 func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -55,6 +60,13 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	endKey := uint64(math.MaxUint64)
+	if e := r.URL.Query().Get("end"); e != "" {
+		if k, err := strconv.ParseUint(e, 10, 64); err == nil {
+			endKey = k
+		}
+	}
+
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 {
@@ -62,7 +74,7 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	records, nextKey, hasMore, err := h.engine.ScanRecordsPaginated(startKey, limit)
+	records, nextKey, hasMore, err := h.engine.ScanRecordsBounded(startKey, endKey, limit)
 	if err != nil {
 		http.Error(w, "Engine scan error", http.StatusInternalServerError)
 		return

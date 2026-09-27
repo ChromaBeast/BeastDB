@@ -16,6 +16,7 @@ const (
 	OpPut        byte = 0x01
 	OpDelete     byte = 0x02
 	OpCheckpoint byte = 0x03
+	OpBatch      byte = 0x04
 )
 
 var (

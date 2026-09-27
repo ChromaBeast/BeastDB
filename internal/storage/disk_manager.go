@@ -115,3 +115,10 @@ func (d *DiskManager) Close() error {
 	}
 	return d.file.Close()
 }
+
+// Path returns the physical filesystem path of the database file.
+func (d *DiskManager) Path() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.file.Name()
+}

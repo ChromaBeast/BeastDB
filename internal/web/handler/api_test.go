@@ -36,8 +36,20 @@ func (e *precisionEngine) ScanRecordsPaginated(start uint64, limit int) ([]api.R
 	e.start = start
 	return []api.RecordItem{{Key: largeKey, KeyText: "18446744073709551615", Value: "value"}}, largeKey, true, nil
 }
+func (e *precisionEngine) ScanRecordsBounded(start, end uint64, limit int) ([]api.RecordItem, uint64, bool, error) {
+	return e.ScanRecordsPaginated(start, limit)
+}
+func (e *precisionEngine) ScanSearchChunk(start, end uint64, maxScan, limit int, query string) ([]api.RecordItem, int, uint64, bool, error) {
+	return nil, 0, 0, false, nil
+}
 func (e *precisionEngine) ScanPartitionCounts() (map[uint8]int, error) {
 	return nil, nil
+}
+func (e *precisionEngine) Search(query string, limit int, prefix uint8) ([]api.RecordItem, error) {
+	return nil, nil
+}
+func (e *precisionEngine) StorageMetrics() api.StorageMetrics {
+	return api.StorageMetrics{TotalPages: 10, PoolSize: 64}
 }
 
 func TestPreciseKeysInRecordPage(t *testing.T) {

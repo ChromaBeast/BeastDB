@@ -1,35 +1,18 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { PartitionConfig, SessionUser, TelemetryStats, UniversalRecord } from "../types";
+import {
+  PartitionConfig,
+  SearchResponse,
+  SessionUser,
+  TelemetryStats,
+  UniversalRecord,
+} from "../types";
 import { parseUniversalRecord } from "../utils/data-parser";
 import { setPartitionRegistry } from "../utils/key-decoder";
+import { api } from "../lib/api-client";
 
 type RawRecord = { keyText: string; value: string };
 type Page = { records: RawRecord[]; nextKeyText: string; hasMore: boolean };
-
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(url, init);
-  } catch {
-    throw new Error("Cannot reach BeastDB. Check your connection and retry.");
-  }
-  if (response.status === 401)
-    throw new Error("Your session expired. Sign in again.");
-  if (response.status === 403)
-    throw new Error("Your account cannot make this change.");
-  if (response.status === 404)
-    throw new Error(
-      url.startsWith("/api/key?")
-        ? "That record was not found."
-        : "Data endpoint unavailable.",
-    );
-  if (!response.ok)
-    throw new Error((await response.text()).trim() || "Request failed.");
-  return response.status === 204 || response.status === 201
-    ? (undefined as T)
-    : response.json();
-}
 
 export function useStudioData() {
   const [stats, setStats] = useState<TelemetryStats | null>(null);
@@ -41,6 +24,7 @@ export function useStudioData() {
   const [statsError, setStatsError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextKey, setNextKey] = useState("0");
+  const [activePartition, setActivePartition] = useState<number | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const fetchStats = useCallback(async (includeCounts = false) => {
@@ -55,6 +39,25 @@ export function useStudioData() {
     }
   }, []);
 
+  const loadPartition = useCallback(async (prefix: number): Promise<void> => {
+    setLoading(true);
+    setError(null);
+    setActivePartition(prefix);
+    const startKey = (BigInt(prefix) << 56n).toString();
+    const endKey = (((BigInt(prefix) + 1n) << 56n) - 1n).toString();
+    try {
+      const page = await api<Page>(`/api/records?start=${startKey}&end=${endKey}&limit=100`);
+      setRecords(page.records.map(parseUniversalRecord));
+      setHasMore(page.hasMore);
+      setNextKey(page.nextKeyText);
+      setUpdatedAt(new Date());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -63,8 +66,6 @@ export function useStudioData() {
       api<SessionUser>("/api/me"),
       api<PartitionConfig[]>("/api/partitions"),
     ]);
-    // Apply partition registry FIRST — decodeKey must see correct labels
-    // before parseUniversalRecord is called below.
     if (partitionsResult.status === "fulfilled") {
       setPartitionRegistry(partitionsResult.value);
     }
@@ -88,6 +89,7 @@ export function useStudioData() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       void fetchStats(false);
@@ -99,14 +101,15 @@ export function useStudioData() {
     if (!hasMore || loadingMore) return;
     setLoadingMore(true);
     try {
-      const page = await api<Page>(`/api/records?start=${nextKey}&limit=100`);
-      setRecords((current) => [
-        ...current,
-        ...page.records.map(parseUniversalRecord),
-      ]);
+      let url = `/api/records?start=${nextKey}&limit=100`;
+      if (activePartition !== null) {
+        const endKey = (((BigInt(activePartition) + 1n) << 56n) - 1n).toString();
+        url += `&end=${endKey}`;
+      }
+      const page = await api<Page>(url);
+      setRecords((current) => [...current, ...page.records.map(parseUniversalRecord)]);
       setHasMore(page.hasMore);
       setNextKey(page.nextKeyText);
-      setError(null);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -117,6 +120,37 @@ export function useStudioData() {
   const lookup = async (key: string): Promise<UniversalRecord> => {
     const item = await api<RawRecord>(`/api/key?k=${encodeURIComponent(key)}`);
     return parseUniversalRecord(item);
+  };
+
+  const scanRange = async (startKey: string, endKey: string): Promise<UniversalRecord[]> => {
+    const page = await api<Page>(`/api/records?start=${encodeURIComponent(startKey)}&end=${encodeURIComponent(endKey)}&limit=100`);
+    return page.records.map(parseUniversalRecord);
+  };
+
+  const search = async (
+    q: string,
+    options?: { prefix?: number; start?: string; maxScan?: number },
+  ): Promise<SearchResponse> => {
+    const params = new URLSearchParams({ q, limit: "50" });
+    if (options?.prefix) params.set("prefix", String(options.prefix));
+    if (options?.start) params.set("start", options.start);
+    if (options?.maxScan) params.set("maxScan", String(options.maxScan));
+    const result = await api<{
+      records: RawRecord[];
+      count: number;
+      scannedCount: number;
+      nextKey?: string;
+      hasMore: boolean;
+      prefix?: number;
+    }>(`/api/search?${params}`);
+    return {
+      records: result.records.map(parseUniversalRecord),
+      count: result.count,
+      scannedCount: result.scannedCount,
+      nextKey: result.nextKey,
+      hasMore: result.hasMore,
+      prefix: result.prefix,
+    };
   };
 
   const save = async (key: string, value: string): Promise<void> => {
@@ -138,37 +172,14 @@ export function useStudioData() {
   };
 
   const remove = async (key: string): Promise<void> => {
-    await api<void>(`/api/key?k=${encodeURIComponent(key)}`, {
-      method: "DELETE",
-    });
+    await api<void>(`/api/key?k=${encodeURIComponent(key)}`, { method: "DELETE" });
     await refresh();
   };
 
   const removeUser = async (userHash: number): Promise<{ deleted: number }> => {
-    const res = await api<{ deleted: number }>(`/api/user?userHash=${userHash}`, {
-      method: "DELETE",
-    });
+    const res = await api<{ deleted: number }>(`/api/user?userHash=${userHash}`, { method: "DELETE" });
     await refresh();
     return res;
-  };
-
-  const search = async (q: string, prefix?: number): Promise<UniversalRecord[]> => {
-    const params = new URLSearchParams({ q, limit: "50" });
-    if (prefix) params.set("prefix", String(prefix));
-    const result = await api<{ records: RawRecord[]; count: number }>(`/api/search?${params}`);
-    return result.records.map(parseUniversalRecord);
-  };
-
-  const loadPartition = async (prefix: number): Promise<void> => {
-    const startKey = (BigInt(prefix) << 56n).toString();
-    try {
-      const page = await api<Page>(`/api/records?start=${startKey}&limit=100`);
-      setRecords((current) => {
-        const existingKeys = new Set(current.map((r) => r.keyStr));
-        const newRecs = page.records.map(parseUniversalRecord).filter((r) => !existingKeys.has(r.keyStr));
-        return [...current, ...newRecs];
-      });
-    } catch {}
   };
 
   return {
@@ -180,11 +191,13 @@ export function useStudioData() {
     error,
     statsError,
     hasMore,
+    activePartition,
     updatedAt,
     refresh,
     loadMore,
     loadPartition,
     lookup,
+    scanRange,
     save,
     update,
     remove,

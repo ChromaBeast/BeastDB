@@ -3,14 +3,12 @@ package replication
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"net"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
-	"github.com/ChromaBeast/beastdb/internal/wal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -30,6 +28,7 @@ func TestLeaderFollowerReplication(t *testing.T) {
 	leaderRepServer := NewLeaderServer(leaderEngine.WALPath())
 	grpcServer := grpc.NewServer()
 	leaderRepServer.RegisterService(grpcServer)
+	leaderEngine.SetCommitObserver(leaderRepServer)
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -82,16 +81,12 @@ func TestLeaderFollowerReplication(t *testing.T) {
 		}
 	}
 
-	// 3. Test Real-time streaming replication
+	// 3. Test Real-time streaming replication (automatic via CommitObserver)
 	liveKey := uint64(999)
 	liveVal := []byte("val-live-replicated")
 	if err := leaderEngine.Put(liveKey, liveVal); err != nil {
 		t.Fatalf("leader live put failed: %v", err)
 	}
-
-	var liveKeyBytes [8]byte
-	binary.LittleEndian.PutUint64(liveKeyBytes[:], liveKey)
-	leaderRepServer.Broadcast(leaderEngine.CurrentLSN(), wal.OpPut, liveKeyBytes[:], liveVal)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -119,11 +114,10 @@ func TestLeaderFollowerReplication(t *testing.T) {
 		t.Fatalf("unexpected follower scan results: %+v", scanned)
 	}
 
-	// 5. Test Delete replication
-	_ = leaderEngine.Delete(20)
-	var delKeyBytes [8]byte
-	binary.LittleEndian.PutUint64(delKeyBytes[:], 20)
-	leaderRepServer.Broadcast(leaderEngine.CurrentLSN(), wal.OpDelete, delKeyBytes[:], nil)
+	// 5. Test Delete replication (automatic via CommitObserver)
+	if err := leaderEngine.Delete(20); err != nil {
+		t.Fatalf("leader delete failed: %v", err)
+	}
 
 	time.Sleep(100 * time.Millisecond)
 

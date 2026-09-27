@@ -19,6 +19,7 @@ func (h *APIHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		"role":    h.role,
 		"mode":    "B+ Tree (4KB)",
 		"version": h.version,
+		"storage": h.engine.StorageMetrics(),
 	}
 
 	if r.URL.Query().Get("counts") == "true" {

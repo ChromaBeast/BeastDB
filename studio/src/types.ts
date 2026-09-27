@@ -36,12 +36,25 @@ export interface UniversalRecord {
   raw: string;
 }
 
+export interface StorageMetrics {
+  totalPages: number;
+  diskSizeBytes: number;
+  poolSize: number;
+  cachedPages: number;
+  pinnedPages: number;
+  dirtyPages: number;
+  walSizeBytes: number;
+  currentLSN: number;
+  activeDataPage: number;
+}
+
 export interface TelemetryStats {
   lsn: number;
   role: string;
   mode: string;
   version: string;
   partitionCounts?: Record<string, number>;
+  storage?: StorageMetrics;
 }
 
 export interface SessionUser {
@@ -75,4 +88,14 @@ export interface APITokenItem {
   created_at: string;
   created_by: string;
 }
+
+export interface SearchResponse {
+  records: UniversalRecord[];
+  count: number;
+  scannedCount: number;
+  nextKey?: string;
+  hasMore: boolean;
+  prefix?: number;
+}
+
 

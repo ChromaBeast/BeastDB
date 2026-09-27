@@ -16,6 +16,8 @@ type Engine struct {
 	tree           *index.BPlusTree
 	wal            *wal.WAL
 	activeDataPage uint64
+	observer       CommitObserver
+	secIndex       *index.SecondaryIndex
 	mu             sync.RWMutex
 }
 
@@ -35,8 +37,16 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 
 	var tree *index.BPlusTree
 	var activeDataPage uint64
+	var lastCheckpointLSN uint64
 
 	if disk.NumPages() == 0 {
+		metaPage, metaID, err := bpm.NewPage()
+		if err != nil {
+			_ = disk.Close()
+			_ = w.Close()
+			return nil, err
+		}
+
 		tree, err = index.CreateBPlusTree(bpm)
 		if err != nil {
 			_ = disk.Close()
@@ -50,20 +60,65 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 			_ = w.Close()
 			return nil, err
 		}
+
+		storage.EncodeMeta(metaPage.Data(), storage.MetaData{
+			Magic:             storage.MetaMagic,
+			Version:           storage.MetaVersion,
+			RootPageID:        tree.RootPageID(),
+			ActiveDataPageID:  dataID,
+			LastCheckpointLSN: 0,
+		})
+		_ = bpm.UnpinPage(metaID, true)
 		_ = bpm.UnpinPage(dataID, true)
+		if err := bpm.FlushAll(); err != nil {
+			_ = disk.Close()
+			_ = w.Close()
+			return nil, err
+		}
 		activeDataPage = dataID
 	} else {
-		tree = index.OpenBPlusTree(0, bpm)
-		activeDataPage = 1
+		metaPage, err := bpm.FetchPage(storage.MetaPageID)
+		if err != nil {
+			_ = disk.Close()
+			_ = w.Close()
+			return nil, err
+		}
+		meta, err := storage.DecodeMeta(metaPage.Data())
+		_ = bpm.UnpinPage(storage.MetaPageID, false)
+		if err != nil {
+			_ = disk.Close()
+			_ = w.Close()
+			return nil, err
+		}
+
+		tree = index.OpenBPlusTree(meta.RootPageID, bpm)
+		activeDataPage = meta.ActiveDataPageID
+		lastCheckpointLSN = meta.LastCheckpointLSN
 	}
 
-	return &Engine{
+	engine := &Engine{
 		disk:           disk,
 		bpm:            bpm,
 		tree:           tree,
 		wal:            w,
 		activeDataPage: activeDataPage,
-	}, nil
+		secIndex:       index.NewSecondaryIndex(),
+	}
+
+	tree.SetOnRootChange(func(newRootID uint64) {
+		engine.updateMetaRoot(newRootID)
+	})
+
+	if disk.NumPages() > 0 {
+		_ = engine.rebuildSecondaryIndex()
+	}
+
+	if err := engine.recoverFromWAL(lastCheckpointLSN); err != nil {
+		_ = engine.Close()
+		return nil, err
+	}
+
+	return engine, nil
 }
 
 // CurrentLSN returns the latest Log Sequence Number in the engine's WAL.
@@ -99,6 +154,11 @@ func (e *Engine) Close() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	_ = e.updateMeta(func(m *storage.MetaData) {
+		m.LastCheckpointLSN = e.wal.CurrentLSN()
+		m.ActiveDataPageID = e.activeDataPage
+		m.RootPageID = e.tree.RootPageID()
+	})
 	_ = e.bpm.FlushAll()
 	_ = e.wal.Close()
 	return e.disk.Close()
@@ -111,6 +171,11 @@ func (e *Engine) Checkpoint() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	_ = e.updateMeta(func(m *storage.MetaData) {
+		m.LastCheckpointLSN = e.wal.CurrentLSN()
+		m.ActiveDataPageID = e.activeDataPage
+		m.RootPageID = e.tree.RootPageID()
+	})
 	if err := e.bpm.FlushAll(); err != nil {
 		return err
 	}

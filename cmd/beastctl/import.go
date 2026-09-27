@@ -43,22 +43,31 @@ func runImport(addr, filePath string, isSeed bool) error {
 	partitionCounts := make(map[uint8]int)
 	ctx := context.Background()
 
-	for i, item := range items {
-		valBytes := []byte(item.Value)
-		// If the JSON raw message is a quoted string, unquote it if needed or store as is
-		resp, err := client.Service().Put(ctx, &beastv1.PutRequest{
-			Key:   item.Key,
-			Value: valBytes,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to put key %d (index %d): %w", item.Key, i, err)
-		}
-		if !resp.Success {
-			return fmt.Errorf("server rejected key %d (index %d)", item.Key, i)
+	const batchSize = 100
+	for i := 0; i < len(items); i += batchSize {
+		end := i + batchSize
+		if end > len(items) {
+			end = len(items)
 		}
 
-		p := uint8(item.Key >> 56)
-		partitionCounts[p]++
+		ops := make([]*beastv1.BatchOperation, end-i)
+		for j := i; j < end; j++ {
+			ops[j-i] = &beastv1.BatchOperation{
+				OpType: beastv1.BatchOpType_BATCH_OP_TYPE_PUT,
+				Key:    items[j].Key,
+				Value:  []byte(items[j].Value),
+			}
+			p := uint8(items[j].Key >> 56)
+			partitionCounts[p]++
+		}
+
+		resp, err := client.Service().BatchWrite(ctx, &beastv1.BatchWriteRequest{Operations: ops})
+		if err != nil {
+			return fmt.Errorf("failed to batch write at offset %d: %w", i, err)
+		}
+		if !resp.Success {
+			return fmt.Errorf("server rejected batch at offset %d", i)
+		}
 	}
 
 	duration := time.Since(t0)

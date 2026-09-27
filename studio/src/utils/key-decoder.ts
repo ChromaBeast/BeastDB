@@ -22,7 +22,11 @@ export interface PartitionMeta {
 const DEFAULT_REGISTRY: Record<number, PartitionMeta> = {
   0x01: { label: "User Account", color: "emerald", description: "User profiles and authentication credentials" },
   0x02: { label: "Index", color: "teal", description: "Secondary index mapping user IDs" },
+  0x03: { label: "Games", color: "purple" },
+  0x04: { label: "Movies", color: "cyan" },
   0x05: { label: "Auth Token", color: "amber", description: "Short-lived session and API tokens" },
+  0x06: { label: "TV Shows", color: "indigo" },
+  0x07: { label: "Books", color: "rose" },
   0x08: { label: "Relationship", color: "blue", description: "Bidirectional social graph edges" },
   0x09: { label: "Pending Request", color: "violet", description: "Pending friend/follow requests" },
   0x0a: { label: "Name Index", color: "teal" },

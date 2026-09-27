@@ -49,6 +49,9 @@ func (t *BPlusTree) createNewRoot(leftChildID uint64, splitKey uint64, rightChil
 	t.setParent(rightChildID, newRootID, false)
 
 	t.rootPageID = newRootID
+	if t.onRootChange != nil {
+		t.onRootChange(newRootID)
+	}
 	return t.bpm.UnpinPage(newRootID, true)
 }
 

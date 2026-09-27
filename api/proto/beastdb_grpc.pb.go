@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BeastDBService_Get_FullMethodName    = "/beastdb.v1.BeastDBService/Get"
-	BeastDBService_Put_FullMethodName    = "/beastdb.v1.BeastDBService/Put"
-	BeastDBService_Delete_FullMethodName = "/beastdb.v1.BeastDBService/Delete"
-	BeastDBService_Scan_FullMethodName   = "/beastdb.v1.BeastDBService/Scan"
+	BeastDBService_Get_FullMethodName        = "/beastdb.v1.BeastDBService/Get"
+	BeastDBService_Put_FullMethodName        = "/beastdb.v1.BeastDBService/Put"
+	BeastDBService_Delete_FullMethodName     = "/beastdb.v1.BeastDBService/Delete"
+	BeastDBService_Scan_FullMethodName       = "/beastdb.v1.BeastDBService/Scan"
+	BeastDBService_BatchWrite_FullMethodName = "/beastdb.v1.BeastDBService/BatchWrite"
 )
 
 // BeastDBServiceClient is the client API for BeastDBService service.
@@ -35,6 +36,7 @@ type BeastDBServiceClient interface {
 	Put(ctx context.Context, in *PutRequest, opts ...grpc.CallOption) (*PutResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	Scan(ctx context.Context, in *ScanRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[KeyValueResponse], error)
+	BatchWrite(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error)
 }
 
 type beastDBServiceClient struct {
@@ -94,6 +96,16 @@ func (c *beastDBServiceClient) Scan(ctx context.Context, in *ScanRequest, opts .
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BeastDBService_ScanClient = grpc.ServerStreamingClient[KeyValueResponse]
 
+func (c *beastDBServiceClient) BatchWrite(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BatchWriteResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_BatchWrite_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BeastDBServiceServer is the server API for BeastDBService service.
 // All implementations must embed UnimplementedBeastDBServiceServer
 // for forward compatibility.
@@ -104,6 +116,7 @@ type BeastDBServiceServer interface {
 	Put(context.Context, *PutRequest) (*PutResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	Scan(*ScanRequest, grpc.ServerStreamingServer[KeyValueResponse]) error
+	BatchWrite(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error)
 	mustEmbedUnimplementedBeastDBServiceServer()
 }
 
@@ -125,6 +138,9 @@ func (UnimplementedBeastDBServiceServer) Delete(context.Context, *DeleteRequest)
 }
 func (UnimplementedBeastDBServiceServer) Scan(*ScanRequest, grpc.ServerStreamingServer[KeyValueResponse]) error {
 	return status.Error(codes.Unimplemented, "method Scan not implemented")
+}
+func (UnimplementedBeastDBServiceServer) BatchWrite(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method BatchWrite not implemented")
 }
 func (UnimplementedBeastDBServiceServer) mustEmbedUnimplementedBeastDBServiceServer() {}
 func (UnimplementedBeastDBServiceServer) testEmbeddedByValue()                        {}
@@ -212,6 +228,24 @@ func _BeastDBService_Scan_Handler(srv interface{}, stream grpc.ServerStream) err
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type BeastDBService_ScanServer = grpc.ServerStreamingServer[KeyValueResponse]
 
+func _BeastDBService_BatchWrite_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BatchWriteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).BatchWrite(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_BatchWrite_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).BatchWrite(ctx, req.(*BatchWriteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BeastDBService_ServiceDesc is the grpc.ServiceDesc for BeastDBService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -230,6 +264,10 @@ var BeastDBService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _BeastDBService_Delete_Handler,
+		},
+		{
+			MethodName: "BatchWrite",
+			Handler:    _BeastDBService_BatchWrite_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

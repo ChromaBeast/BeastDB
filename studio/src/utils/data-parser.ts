@@ -42,6 +42,18 @@ const REDACTED_KEYS = new Set([
   "apiKey", "apiSecret", "privateKey", "sessionToken",
 ]);
 
+function recordIdentity(data: Record<string, any>): string {
+  const kinds = [
+    ["movieId", "Movie"], ["gameId", "Game"], ["tvId", "TV show"],
+    ["bookId", "Book"], ["mediaId", "Media"], ["itemId", "Item"],
+  ] as const;
+  const parts = kinds
+    .filter(([key]) => data[key] != null && data[key] !== "")
+    .map(([key, label]) => `${label} ${data[key]}`);
+  if (data.userId != null && data.userId !== "") parts.push(`User ${data.userId}`);
+  return parts.join(" · ");
+}
+
 export function parseUniversalRecord(rawItem: { keyText: string; value: string }): UniversalRecord {
   const decoded = decodeKey(rawItem.keyText);
   const rawStr = rawItem.value ?? "";
@@ -60,7 +72,7 @@ export function parseUniversalRecord(rawItem: { keyText: string; value: string }
 
   if (!trimmed) {
     format = "empty";
-    primaryLabel = `[Empty Record ${decoded.prefixHex}]`;
+    primaryLabel = "Empty record";
   } else if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     try {
       const parsed = JSON.parse(trimmed);
@@ -72,16 +84,20 @@ export function parseUniversalRecord(rawItem: { keyText: string; value: string }
         );
         coverUrl = findImage(parsed);
 
-        primaryLabel = String(
-          parsed.title ?? parsed.name ?? parsed.username ??
-          parsed.email ?? parsed.id ?? `Entity ${decoded.prefixHex}`
-        );
-        secondaryLabel = String(parsed.description ?? parsed.subtitle ?? parsed.notes ?? "");
+        const name = parsed.title ?? parsed.displayName ?? parsed.name ?? parsed.label ??
+          parsed.username ?? parsed.email ?? parsed.sku;
+        const note = parsed.description ?? parsed.subtitle ?? parsed.notes;
+        const identity = recordIdentity(parsed);
+        primaryLabel = String(name ?? note ?? (identity || (parsed.id != null ? `Record ${parsed.id}` : "Untitled document")));
+        secondaryLabel = name != null
+          ? String(note ?? identity)
+          : [identity, parsed.status].filter(Boolean).join(" · ");
         status = parsed.status ?? parsed.role ?? parsed.type;
         rating = parsed.rating ?? parsed.score ?? parsed.userRating;
 
         // Collect top summary attributes
         for (const [k, v] of Object.entries(parsed)) {
+          if (REDACTED_KEYS.has(k)) continue;
           if (["coverUrl", "posterUrl", "avatarUrl", "description"].includes(k)) continue;
           if (typeof v === "object" && v !== null && !Array.isArray(v)) {
             for (const [subK, subV] of Object.entries(v)) {
