@@ -39,9 +39,12 @@ Benchmarks are executed via `go test -v ./internal/api -run TestEngineSystemWork
 ## 3. Microbenchmarks (Component Breakdown)
 
 Measured on 12th Gen Intel(R) Core(TM) i5-12450HX:
-- **Point Read (`BenchmarkEnginePointRead`):**
-  - **300.8 ns/op** | 48 B/op | 1 alloc/op
+- **Point Read with Cache (`BenchmarkEnginePointRead`):**
+  - **298.7 ns/op** | 48 B/op | 1 alloc/op
   - Direct B+ tree index lookup and slotted page record extraction. Hot-path reads bypass disk I/O entirely when cached in the buffer pool, delivering sub-microsecond retrieval.
+- **Point Read without Cache (`BenchmarkEnginePointReadWithoutCache`):**
+  - **543.4 ns/op** | 391 B/op | 0 allocs/op
+  - Measured across 2,500 records with a constrained 2-frame buffer pool to force frequent clock-sweep page eviction and disk re-reads. Zero heap allocations on the eviction and lookup path.
 - **Point Write (`BenchmarkEnginePointWrite`):**
   - **4.02 ms/op** (with synchronous disk sync) | 600 B/op | 5 allocs/op
   - CRC32-checked WAL append, atomic LSN increment, B+ tree key insertion, and slotted page tuple allocation. Writes achieve predictable durability without unbounded heap allocation.

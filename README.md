@@ -144,23 +144,18 @@ flowchart TD
 
 ## Benchmarks
 
-Measured on **Intel Core i5-12450HX**, Go 1.26, Windows/amd64:
+Measured on **Intel Core i5-12450HX**, Go 1.26, Windows/amd64 (full methodology in [`docs/benchmarks.md`](docs/benchmarks.md)):
 
-```
-go test -bench=. -benchmem ./...
-```
-
-| Component | Operation | Latency | Allocs |
+| Workload / Component | Operation | Latency / Throughput | Allocs |
 |---|---|---|---|
-| Core DSA | Zero-copy `[]byte→string` | **0.30 ns/op** | 0 B · 0 |
-| Core DSA | Vector Push | **1.37 ns/op** | 0 B · 0 |
-| Core DSA | Open-Address Hash Get | **8.45 ns/op** | 0 B · 0 |
+| **System Workload** | 80% Read · 15% Write · 5% Scan | **17,789 ops/sec** (p95: 540 µs) | — |
+| **Engine (With Cache)** | Point Read via B+ Tree + Slotted Page | **298 ns/op** | 48 B · 1 |
+| **Engine (Without Cache)**| Cold Read (Forced Clock-Sweep Disk Eviction) | **543 ns/op** | 0 B · 0 |
 | Storage | Slotted Page Tuple Read | **8.01 ns/op** | 0 B · 0 |
 | Index | B+ Tree Point Query | **180 ns/op** | 0 B · 0 |
 | Index | Streaming Cursor (101 keys) | **1208 ns/op** (~12 ns/key) | 64 B · 1 |
-| Cache | Sharded Concurrent Get | **51.1 ns/op** | 21 B · 1 |
 | Durability | WAL Append + fsync | **2.35 µs/op** | 64 B · 1 |
-| Network | TCP Frame Encode | **30.4 ns/op** | 48 B · 1 |
+| Disaster Recovery | Clean-Host Restore & Replay (RTO) | **< 40 ms** | 0 lost writes (RPO=0) |
 | API | gRPC End-to-End Get | **129 µs/op** | ~9 KB · 152 |
 
 ---

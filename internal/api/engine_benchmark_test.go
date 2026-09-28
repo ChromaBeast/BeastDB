@@ -134,3 +134,25 @@ func BenchmarkEnginePointWrite(b *testing.B) {
 		_ = engine.Put(uint64(i+1), payload)
 	}
 }
+
+func BenchmarkEnginePointReadWithoutCache(b *testing.B) {
+	dir := b.TempDir()
+	// Constrained 2-frame buffer pool across 2,500 keys forces clock-sweep eviction and physical disk reads
+	engine, err := NewEngine(filepath.Join(dir, "bench.bin"), filepath.Join(dir, "bench.wal"), 2)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer engine.Close()
+
+	payload := []byte(`{"name":"benchmark-record","val":12345}`)
+	const numKeys = 2500
+	for i := uint64(1); i <= numKeys; i++ {
+		_ = engine.Put(i, payload)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		key := uint64(((i * 73) % numKeys) + 1)
+		_, _, _ = engine.Get(key)
+	}
+}
