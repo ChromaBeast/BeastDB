@@ -119,9 +119,24 @@ func main() {
 	}
 
 	var partitions []handler.PartitionEntry
-	if *partitionConfig != "" {
-		if data, err := os.ReadFile(*partitionConfig); err == nil {
-			_ = json.Unmarshal(data, &partitions)
+	cfgPath := *partitionConfig
+	if cfgPath == "" {
+		for _, c := range []string{"partitions.json", "beastdb-partitions.json", filepath.Join(*dataDir, "partitions.json")} {
+			if _, err := os.Stat(c); err == nil {
+				cfgPath = c
+				break
+			}
+		}
+	}
+	if cfgPath != "" {
+		if data, err := os.ReadFile(cfgPath); err == nil {
+			if err := json.Unmarshal(data, &partitions); err == nil {
+				log.Printf("[Studio] Loaded %d partition definitions from %s", len(partitions), cfgPath)
+			} else {
+				log.Printf("[Studio] Warning: failed to parse %s: %v", cfgPath, err)
+			}
+		} else {
+			log.Printf("[Studio] Warning: failed to read %s: %v", cfgPath, err)
 		}
 	}
 

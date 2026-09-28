@@ -19,8 +19,6 @@ bin/
 .DS_Store
 Thumbs.db
 
-# Agent configuration
-GEMINI.md
 
 # Build caches & temp
 *.tsbuildinfo

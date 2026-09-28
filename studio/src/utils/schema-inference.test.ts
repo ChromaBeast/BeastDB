@@ -75,7 +75,7 @@ test("relationship IDs do not mislabel records as users or senders", () => {
     value: JSON.stringify({ senderId: "u-1", receiverId: "u-2", status: "pending" }),
   });
   expect(inferCollectionName([game])).toBe("Games");
-  expect(inferCollectionName([request])).toBe("Friend Requests");
+  expect(inferCollectionName([request])).toBeUndefined();
 });
 
 test("explicit collection and nested subject outrank generic relationship fields", () => {
@@ -89,14 +89,6 @@ test("explicit collection and nested subject outrank generic relationship fields
   });
   expect(inferCollectionName([explicit])).toBe("Friend Requests");
   expect(inferCollectionName([nested])).toBe("Games");
-});
-
-test("infers Friendships from friendship records with userId and friendId", () => {
-  const rec = parseUniversalRecord({
-    keyText: "576460752303423488",
-    value: JSON.stringify({ userId: "u-demo-1", friendId: "u-2", addedAt: "2026-09-28T00:00:00Z" }),
-  });
-  expect(inferCollectionName([rec])).toBe("Friendships");
 });
 
 test("infers Tokens from token payloads and strings", () => {

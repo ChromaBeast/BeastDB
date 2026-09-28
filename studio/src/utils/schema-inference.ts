@@ -46,15 +46,11 @@ function nameFromFields(f: Record<string, unknown>): { label: string; confidence
   }
 
   const keys = Object.keys(f);
+  // Generic domain-agnostic schema heuristics
   if (f.sku != null && f.price != null) return { label: "Products", confidence: 4 };
   if (f.sensorId != null && (f.temperature != null || f.humidity != null)) return { label: "Telemetry", confidence: 4 };
   if (f.email != null && (f.username != null || f.passwordHash != null || f.password_hash != null)) return { label: "Users", confidence: 4 };
   if (f.username != null && f.role != null && f.email == null) return { label: "System Users", confidence: 4 };
-  if (f.friendId != null || f.friend_id != null) return { label: "Friendships", confidence: 4 };
-  if ((f.senderId != null || f.sender_id != null || f.senderUsername != null || f.sender_username != null) &&
-      (f.receiverId != null || f.receiver_id != null || f.receiverUsername != null || f.receiver_username != null)) {
-    return { label: "Friend Requests", confidence: 4 };
-  }
   if (f.token != null || f.tokenHash != null || f.token_hash != null || f.refreshToken != null || f.refresh_token != null) {
     return { label: "Tokens", confidence: 4 };
   }
