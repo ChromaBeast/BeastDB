@@ -9,6 +9,8 @@ export interface PartitionMeta {
 const PALETTE = ["emerald", "purple", "cyan", "blue", "indigo", "rose", "amber", "teal", "violet", "sky", "orange"];
 const RELATION_IDS = new Set(["user", "owner", "sender", "receiver", "actor", "target", "friend", "parent", "createdby", "updatedby"]);
 const GENERIC_OBJECTS = new Set(["data", "payload", "metadata", "details", "attributes", "fields"]);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_HEX_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{32,64}$/i;
 
 export function getDeterministicColor(prefix: number): string {
   return PALETTE[prefix % PALETTE.length];
@@ -44,10 +46,18 @@ function nameFromFields(f: Record<string, unknown>): { label: string; confidence
   }
 
   const keys = Object.keys(f);
-  // Field combinations are hints; no key prefix is bound to a domain.
   if (f.sku != null && f.price != null) return { label: "Products", confidence: 4 };
   if (f.sensorId != null && (f.temperature != null || f.humidity != null)) return { label: "Telemetry", confidence: 4 };
-  if (f.email != null && (f.username != null || f.passwordHash != null)) return { label: "Users", confidence: 4 };
+  if (f.email != null && (f.username != null || f.passwordHash != null || f.password_hash != null)) return { label: "Users", confidence: 4 };
+  if (f.username != null && f.role != null && f.email == null) return { label: "System Users", confidence: 4 };
+  if (f.friendId != null || f.friend_id != null) return { label: "Friendships", confidence: 4 };
+  if ((f.senderId != null || f.sender_id != null || f.senderUsername != null || f.sender_username != null) &&
+      (f.receiverId != null || f.receiver_id != null || f.receiverUsername != null || f.receiver_username != null)) {
+    return { label: "Friend Requests", confidence: 4 };
+  }
+  if (f.token != null || f.tokenHash != null || f.token_hash != null || f.refreshToken != null || f.refresh_token != null) {
+    return { label: "Tokens", confidence: 4 };
+  }
 
   const ids = keys.map((key) => key.match(/^(.+?)(?:Id|_id)$/i)?.[1]).filter((name): name is string => Boolean(name));
   const subjects = ids.filter((name) => !RELATION_IDS.has(name.toLowerCase()) && name.toLowerCase() !== "item");
@@ -57,13 +67,26 @@ function nameFromFields(f: Record<string, unknown>): { label: string; confidence
   return undefined;
 }
 
+function nameFromRecord(record: UniversalRecord): { label: string; confidence: number } | undefined {
+  if (record.fields) return nameFromFields(record.fields);
+  if (record.format === "token" || (record.format === "string" && record.raw.includes("|") && record.raw.length < 250)) {
+    return { label: "Tokens", confidence: 3 };
+  }
+  if (record.format === "string") {
+    const raw = record.raw.trim();
+    if (EMAIL_RE.test(raw)) return { label: "User Index", confidence: 3 };
+    if (UUID_HEX_RE.test(raw)) return { label: "Index Pointers", confidence: 2 };
+  }
+  return undefined;
+}
+
 export function inferCollectionName(records: UniversalRecord[]): string | undefined {
   const scores = new Map<string, { score: number; count: number; confidence: number }>();
   let readable = 0;
   for (const record of records) {
-    if (!record.fields) continue;
+    if (record.format === "empty" || !record.raw?.trim()) continue;
     readable++;
-    const candidate = nameFromFields(record.fields);
+    const candidate = nameFromRecord(record);
     if (!candidate) continue;
     const current = scores.get(candidate.label) ?? { score: 0, count: 0, confidence: 0 };
     scores.set(candidate.label, {

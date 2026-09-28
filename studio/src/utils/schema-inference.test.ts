@@ -11,6 +11,14 @@ test("infers Users collection from user records", () => {
   expect(inferCollectionName([rec])).toBe("Users");
 });
 
+test("infers System Users from internal user record without email", () => {
+  const rec = parseUniversalRecord({
+    keyText: "5836657920172081152",
+    value: JSON.stringify({ username: "admin", role: "admin", created_at: "2026-01-01T00:00:00Z" }),
+  });
+  expect(inferCollectionName([rec])).toBe("System Users");
+});
+
 test("infers Products collection from SKU and price", () => {
   const rec = parseUniversalRecord({
     keyText: "144115188075855873",
@@ -67,7 +75,7 @@ test("relationship IDs do not mislabel records as users or senders", () => {
     value: JSON.stringify({ senderId: "u-1", receiverId: "u-2", status: "pending" }),
   });
   expect(inferCollectionName([game])).toBe("Games");
-  expect(inferCollectionName([request])).toBeUndefined();
+  expect(inferCollectionName([request])).toBe("Friend Requests");
 });
 
 test("explicit collection and nested subject outrank generic relationship fields", () => {
@@ -81,6 +89,36 @@ test("explicit collection and nested subject outrank generic relationship fields
   });
   expect(inferCollectionName([explicit])).toBe("Friend Requests");
   expect(inferCollectionName([nested])).toBe("Games");
+});
+
+test("infers Friendships from friendship records with userId and friendId", () => {
+  const rec = parseUniversalRecord({
+    keyText: "576460752303423488",
+    value: JSON.stringify({ userId: "u-demo-1", friendId: "u-2", addedAt: "2026-09-28T00:00:00Z" }),
+  });
+  expect(inferCollectionName([rec])).toBe("Friendships");
+});
+
+test("infers Tokens from token payloads and strings", () => {
+  const tokenRec = parseUniversalRecord({
+    keyText: "360287970189639680",
+    value: "u-demo-1|1738291029",
+  });
+  expect(inferCollectionName([tokenRec])).toBe("Tokens");
+
+  const jsonToken = parseUniversalRecord({
+    keyText: "360287970189639681",
+    value: JSON.stringify({ tokenHash: "abc12345", expiresAt: 1738291029 }),
+  });
+  expect(inferCollectionName([jsonToken])).toBe("Tokens");
+});
+
+test("infers User Index from raw email pointer strings", () => {
+  const emailIndex = parseUniversalRecord({
+    keyText: "144115188075855872",
+    value: "alice@example.com",
+  });
+  expect(inferCollectionName([emailIndex])).toBe("User Index");
 });
 
 test("a sampled partition is named even when absent from the loaded page", () => {
