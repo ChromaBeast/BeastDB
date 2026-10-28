@@ -26,17 +26,17 @@ func TestEngineRecordSizeLimit(t *testing.T) {
 	}
 	defer engine.Close()
 
-	// Exactly 4000 bytes should succeed
-	validPayload := bytes.Repeat([]byte("A"), 4000)
+	// Exactly MaxValueSize bytes should succeed (chained beyond MaxRecordSize)
+	validPayload := bytes.Repeat([]byte("A"), MaxValueSize)
 	if err := engine.Put(1, validPayload); err != nil {
-		t.Fatalf("expected 4000 byte put to succeed, got: %v", err)
+		t.Fatalf("expected MaxValueSize put to succeed, got: %v", err)
 	}
 
-	// 4001 bytes must fail with ErrRecordTooLarge
-	tooLargePayload := bytes.Repeat([]byte("B"), 4001)
+	// One byte more must fail with ErrRecordTooLarge
+	tooLargePayload := bytes.Repeat([]byte("B"), MaxValueSize+1)
 	err = engine.Put(2, tooLargePayload)
 	if !errors.Is(err, ErrRecordTooLarge) {
-		t.Fatalf("expected ErrRecordTooLarge for 4001 bytes, got: %v", err)
+		t.Fatalf("expected ErrRecordTooLarge for MaxValueSize+1 bytes, got: %v", err)
 	}
 
 	// BatchWrite with oversized record must also fail
@@ -134,7 +134,7 @@ func TestGRPCReadOnlyAndSizeValidation(t *testing.T) {
 
 	// Disable read-only to test payload size rejection
 	engine.SetReadOnly(false)
-	_, err = client.Put(ctx, &beastv1.PutRequest{Key: 1, Value: bytes.Repeat([]byte("X"), 4001)})
+	_, err = client.Put(ctx, &beastv1.PutRequest{Key: 1, Value: bytes.Repeat([]byte("X"), MaxValueSize+1)})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("expected InvalidArgument on oversized Put, got: %v", err)
 	}

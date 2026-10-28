@@ -12,6 +12,10 @@ const (
 	// RecLen (4B) + LSN (8B) + Type (1B) + KeyLen (2B) + ValLen (4B) + CRC32 (4B) = 23 Bytes.
 	HeaderSize = 23
 
+	// MaxFrameSize bounds one encoded record. The engine caps batches at 8 MiB
+	// of values, so anything larger on disk can only be a torn or corrupt header.
+	MaxFrameSize = 32 << 20
+
 	// Operation Types
 	OpPut        byte = 0x01
 	OpDelete     byte = 0x02
@@ -23,6 +27,7 @@ var (
 	ErrTornWrite       = errors.New("wal: torn write or CRC32 checksum mismatch")
 	ErrRecordTooSmall  = errors.New("wal: record length smaller than header")
 	ErrPayloadTooLarge = errors.New("wal: record payload exceeds max limit")
+	ErrFrameTooLarge   = errors.New("wal: encoded record exceeds MaxFrameSize")
 )
 
 // Record represents a single state mutation logged for durability.
@@ -69,6 +74,10 @@ func DecodeRecord(r io.Reader) (*Record, error) {
 	recLen := binary.LittleEndian.Uint32(header[0:4])
 	if recLen < HeaderSize {
 		return nil, ErrRecordTooSmall
+	}
+	if recLen > MaxFrameSize {
+		// A torn header can claim up to 4 GiB; treat it as a torn tail instead of allocating.
+		return nil, ErrTornWrite
 	}
 
 	lsn := binary.LittleEndian.Uint64(header[4:12])
