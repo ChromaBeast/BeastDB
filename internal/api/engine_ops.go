@@ -18,8 +18,8 @@ var (
 	ErrRecordExists = errors.New("record already exists")
 	// ErrRecordTooLarge indicates a value exceeds MaxValueSize (2 MiB).
 	ErrRecordTooLarge = errors.New("record value exceeds maximum supported size of 2 MiB")
-	// ErrBatchTooLarge indicates a batch's values sum to more than MaxBatchBytes (8 MiB).
-	ErrBatchTooLarge = errors.New("batch values exceed maximum supported total of 8 MiB")
+	// ErrBatchTooLarge indicates a batch's encoded WAL frame exceeds MaxBatchBytes (8 MiB).
+	ErrBatchTooLarge = errors.New("batch exceeds maximum supported size of 8 MiB (values plus 15 bytes per operation)")
 	// ErrReadOnlyReplica indicates mutation attempts on a read-only replica node.
 	ErrReadOnlyReplica = errors.New("writes are not permitted on read-only replica")
 )

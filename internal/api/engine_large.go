@@ -17,7 +17,7 @@ import (
 const (
 	// MaxValueSize is the largest value accepted by Put, PutIf and BatchWrite.
 	MaxValueSize = 2 << 20
-	// MaxBatchBytes bounds the summed value bytes of one BatchWrite.
+	// MaxBatchBytes bounds one BatchWrite's encoded WAL frame: its values plus 15 bytes per operation.
 	MaxBatchBytes = 8 << 20
 
 	largeSlotFlag = 0x8000
@@ -156,8 +156,10 @@ func (e *Engine) readValue(rid storage.RID) ([]byte, error) {
 	return out, nil
 }
 
-// freeValue releases the tuples behind rid. A chain that fails validation is
-// left in place rather than risk tombstoning tuples that belong to other keys.
+// freeValue releases the tuples behind rid. A chain that fails any check,
+// including its length and CRC, is left in place: a mis-linked chain can end
+// cleanly after the right number of chunks while running through another
+// key's tuples, and freeing it would destroy that key's value.
 func (e *Engine) freeValue(rid storage.RID) {
 	if !isLargeRID(rid) {
 		e.freeTuple(rid)
@@ -168,29 +170,17 @@ func (e *Engine) freeValue(rid storage.RID) {
 		return
 	}
 	var chunks []storage.RID
-	if e.walkChain(m, func(r storage.RID, _ []byte) { chunks = append(chunks, r) }) != nil {
+	size, crc := 0, uint32(0)
+	visit := func(r storage.RID, p []byte) {
+		chunks = append(chunks, r)
+		size += len(p)
+		crc = crc32.Update(crc, crc32.IEEETable, p)
+	}
+	if e.walkChain(m, visit) != nil || uint32(size) != m.length || crc != m.crc {
 		return
 	}
 	for _, r := range chunks {
 		e.freeTuple(r)
 	}
 	e.freeTuple(manifestOf(rid))
-}
-
-// checkValueSizes enforces per-value and per-batch limits before anything is logged.
-func checkValueSizes(ops []BatchOperation) error {
-	total := 0
-	for _, op := range ops {
-		if op.Type != BatchOpPut {
-			continue
-		}
-		if len(op.Value) > MaxValueSize {
-			return ErrRecordTooLarge
-		}
-		total += len(op.Value)
-	}
-	if total > MaxBatchBytes {
-		return ErrBatchTooLarge
-	}
-	return nil
 }

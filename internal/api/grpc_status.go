@@ -8,8 +8,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// MaxGRPCMessageSize is the gRPC message limit servers and clients should use
-// so a maximal batch (MaxBatchBytes of values plus keys and framing) fits.
+// MaxGRPCMessageSize is the gRPC message limit servers and clients should use.
+// A committed batch's WAL frame is at most MaxBatchBytes, so the 1 MiB margin
+// covers the replication message around it; a client request with protobuf
+// framing near the limit is rejected by gRPC before anything is written.
 const MaxGRPCMessageSize = MaxBatchBytes + 1<<20
 
 // MessageSizeServerOptions raises gRPC's 4 MiB default to MaxGRPCMessageSize.
