@@ -57,9 +57,15 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 
 	var maxReplayedLSN uint64
 
-	// 2. Catch-up Phase: Replay historical records from local WAL file
-	_, err := wal.Replay(s.walPath, func(rec *wal.Record) error {
-		if rec.LSN >= req.FromLsn {
+	// 2. Catch-up Phase: replay the archived WAL generation (kept by checkpoint
+	// rotation) and then the active WAL, so a follower that is behind by less than
+	// one checkpoint still catches up. Anything older surfaces as a gap on the
+	// follower, which fails loudly rather than diverging silently.
+	for _, path := range []string{s.walPath + ".bak", s.walPath} {
+		_, err := wal.Replay(path, func(rec *wal.Record) error {
+			if rec.LSN < req.FromLsn || rec.LSN <= maxReplayedLSN {
+				return nil
+			}
 			msg := &beastv1.WALRecordMessage{
 				Lsn:    rec.LSN,
 				OpType: uint32(rec.Type),
@@ -69,14 +75,12 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 			if err := stream.Send(msg); err != nil {
 				return err
 			}
-			if rec.LSN > maxReplayedLSN {
-				maxReplayedLSN = rec.LSN
-			}
+			maxReplayedLSN = rec.LSN
+			return nil
+		})
+		if err != nil {
+			return status.Errorf(codes.Internal, "wal replay error: %v", err)
 		}
-		return nil
-	})
-	if err != nil {
-		return status.Errorf(codes.Internal, "wal replay error: %v", err)
 	}
 
 	// 3. Real-time Phase: Drain live committed records, skipping any already replayed

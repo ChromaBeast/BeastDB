@@ -3,6 +3,7 @@ package wal
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -17,7 +18,7 @@ type WAL struct {
 
 // OpenWAL opens an existing WAL file or creates a new one at the specified path.
 func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
@@ -139,14 +140,19 @@ func (w *WAL) Checkpoint() error {
 	}
 
 	// Open a fresh log file for subsequent writes.
-	newFile, err := os.OpenFile(w.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	newFile, err := os.OpenFile(w.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return err
 	}
 	w.file = newFile
+
+	// Persist the rename and the new file's directory entry.
+	if dir, err := os.Open(filepath.Dir(w.path)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
 	return nil
 }
-
 
 func findHighestLSN(file *os.File) (uint64, error) {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
@@ -183,4 +189,3 @@ func (w *WAL) FileSize() int64 {
 	}
 	return 0
 }
-
