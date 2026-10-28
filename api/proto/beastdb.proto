@@ -32,6 +32,8 @@ message GetResponse {
 message PutRequest {
   uint64 key = 1;
   bytes value = 2;
+  // Optional precondition on the key's current state, checked atomically with the write.
+  Condition condition = 3;
 }
 
 message PutResponse {
@@ -40,6 +42,8 @@ message PutResponse {
 
 message DeleteRequest {
   uint64 key = 1;
+  // Optional precondition on the key's current state, checked atomically with the delete.
+  Condition condition = 2;
 }
 
 message DeleteResponse {
@@ -49,6 +53,9 @@ message DeleteResponse {
 message ScanRequest {
   uint64 start_key = 1;
   uint64 end_key = 2;
+  // Maximum records to return; 0 means no limit. To resume a limited scan,
+  // pass last returned key + 1 as start_key.
+  uint32 limit = 3;
 }
 
 message KeyValueResponse {
@@ -91,9 +98,30 @@ message BatchOperation {
 
 message BatchWriteRequest {
   repeated BatchOperation operations = 1;
+  // Preconditions evaluated before any operation applies; if any fails the
+  // whole batch is rejected with ABORTED and nothing is written.
+  repeated KeyCondition conditions = 2;
 }
 
 message BatchWriteResponse {
   bool success = 1;
   uint32 applied_count = 2;
+}
+
+// ConditionKind selects the check a conditional write applies to a key.
+enum ConditionKind {
+  CONDITION_KIND_NONE = 0;          // no check
+  CONDITION_KIND_ABSENT = 1;        // key must not exist
+  CONDITION_KIND_PRESENT = 2;       // key must exist
+  CONDITION_KIND_VALUE_EQUALS = 3;  // key must exist with exactly `value`
+}
+
+message Condition {
+  ConditionKind kind = 1;
+  bytes value = 2;  // used by CONDITION_KIND_VALUE_EQUALS
+}
+
+message KeyCondition {
+  uint64 key = 1;
+  Condition condition = 2;
 }

@@ -69,7 +69,14 @@ func (s *GRPCServer) Put(ctx context.Context, req *beastv1.PutRequest) (*beastv1
 	if len(req.Value) > MaxRecordSize {
 		return nil, status.Errorf(codes.InvalidArgument, "record value exceeds max 4000 bytes: %d bytes provided", len(req.Value))
 	}
-	if err := s.engine.Put(req.Key, req.Value); err != nil {
+	cond, err := conditionFromProto(req.GetCondition())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.engine.PutIf(req.Key, req.Value, cond); err != nil {
+		if errors.Is(err, ErrConditionFailed) {
+			return nil, status.Errorf(codes.Aborted, "precondition failed")
+		}
 		if errors.Is(err, ErrReadOnlyReplica) {
 			return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 		}
@@ -86,7 +93,14 @@ func (s *GRPCServer) Delete(ctx context.Context, req *beastv1.DeleteRequest) (*b
 	if s.engine.IsReadOnly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
-	err := s.engine.Delete(req.Key)
+	cond, err := conditionFromProto(req.GetCondition())
+	if err != nil {
+		return nil, err
+	}
+	err = s.engine.DeleteIf(req.Key, cond)
+	if errors.Is(err, ErrConditionFailed) {
+		return nil, status.Errorf(codes.Aborted, "precondition failed")
+	}
 	if errors.Is(err, ErrReadOnlyReplica) {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
@@ -104,7 +118,8 @@ func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingS
 	}
 	defer cursor.Close()
 
-	for {
+	var sent uint32
+	for req.Limit == 0 || sent < req.Limit {
 		if stream.Context().Err() != nil {
 			return stream.Context().Err()
 		}
@@ -129,6 +144,7 @@ func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingS
 		if err := stream.Send(resp); err != nil {
 			return err
 		}
+		sent++
 	}
 	return nil
 }
@@ -162,7 +178,19 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
 
-	if err := s.engine.BatchWrite(ops); err != nil {
+	conds := make([]KeyCondition, 0, len(req.Conditions))
+	for _, kc := range req.Conditions {
+		cond, err := conditionFromProto(kc.GetCondition())
+		if err != nil {
+			return nil, err
+		}
+		conds = append(conds, KeyCondition{Key: kc.GetKey(), Cond: cond})
+	}
+
+	if err := s.engine.BatchWriteIf(ops, conds); err != nil {
+		if errors.Is(err, ErrConditionFailed) {
+			return nil, status.Errorf(codes.Aborted, "precondition failed")
+		}
 		if errors.Is(err, ErrReadOnlyReplica) {
 			return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 		}
@@ -176,4 +204,23 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 		Success:      true,
 		AppliedCount: uint32(len(ops)),
 	}, nil
+}
+
+// conditionFromProto converts a wire Condition (nil means no check) to an engine Condition.
+func conditionFromProto(c *beastv1.Condition) (Condition, error) {
+	if c == nil {
+		return Condition{}, nil
+	}
+	switch c.Kind {
+	case beastv1.ConditionKind_CONDITION_KIND_NONE:
+		return Condition{}, nil
+	case beastv1.ConditionKind_CONDITION_KIND_ABSENT:
+		return Condition{Kind: CondAbsent}, nil
+	case beastv1.ConditionKind_CONDITION_KIND_PRESENT:
+		return Condition{Kind: CondPresent}, nil
+	case beastv1.ConditionKind_CONDITION_KIND_VALUE_EQUALS:
+		return Condition{Kind: CondValueEquals, Value: c.Value}, nil
+	default:
+		return Condition{}, status.Errorf(codes.InvalidArgument, "unsupported condition kind: %v", c.Kind)
+	}
 }
