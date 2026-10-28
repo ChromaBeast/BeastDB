@@ -46,10 +46,8 @@ func (e *Engine) BatchWriteIf(ops []BatchOperation, conds []KeyCondition) error 
 	if len(ops) == 0 {
 		return ErrEmptyBatchWrite
 	}
-	for _, op := range ops {
-		if op.Type == BatchOpPut && len(op.Value) > MaxRecordSize {
-			return ErrRecordTooLarge
-		}
+	if err := checkValueSizes(ops); err != nil {
+		return err
 	}
 
 	e.mu.Lock()

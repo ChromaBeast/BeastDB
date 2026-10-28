@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"errors"
 	"net"
 
 	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
@@ -66,24 +65,15 @@ func (s *GRPCServer) Put(ctx context.Context, req *beastv1.PutRequest) (*beastv1
 	if s.engine.IsReadOnly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
-	if len(req.Value) > MaxRecordSize {
-		return nil, status.Errorf(codes.InvalidArgument, "record value exceeds max 4000 bytes: %d bytes provided", len(req.Value))
+	if len(req.Value) > MaxValueSize {
+		return nil, status.Errorf(codes.InvalidArgument, "record value exceeds max %d bytes: %d bytes provided", MaxValueSize, len(req.Value))
 	}
 	cond, err := conditionFromProto(req.GetCondition())
 	if err != nil {
 		return nil, err
 	}
 	if err := s.engine.PutIf(req.Key, req.Value, cond); err != nil {
-		if errors.Is(err, ErrConditionFailed) {
-			return nil, status.Errorf(codes.Aborted, "precondition failed")
-		}
-		if errors.Is(err, ErrReadOnlyReplica) {
-			return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
-		}
-		if errors.Is(err, ErrRecordTooLarge) {
-			return nil, status.Errorf(codes.InvalidArgument, "record value exceeds max 4000 bytes")
-		}
-		return nil, status.Errorf(codes.Internal, "put error: %v", err)
+		return nil, writeStatus(err, "put")
 	}
 	return &beastv1.PutResponse{Success: true}, nil
 }
@@ -97,15 +87,8 @@ func (s *GRPCServer) Delete(ctx context.Context, req *beastv1.DeleteRequest) (*b
 	if err != nil {
 		return nil, err
 	}
-	err = s.engine.DeleteIf(req.Key, cond)
-	if errors.Is(err, ErrConditionFailed) {
-		return nil, status.Errorf(codes.Aborted, "precondition failed")
-	}
-	if errors.Is(err, ErrReadOnlyReplica) {
-		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
-	}
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "delete error: %v", err)
+	if err := s.engine.DeleteIf(req.Key, cond); err != nil {
+		return nil, writeStatus(err, "delete")
 	}
 	return &beastv1.DeleteResponse{Success: true}, nil
 }
@@ -167,11 +150,7 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported operation type: %v", op.OpType)
 		}
 
-		ops[i] = BatchOperation{
-			Type:  opType,
-			Key:   op.Key,
-			Value: op.Value,
-		}
+		ops[i] = BatchOperation{Type: opType, Key: op.Key, Value: op.Value}
 	}
 
 	if s.engine.IsReadOnly() {
@@ -188,16 +167,7 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 	}
 
 	if err := s.engine.BatchWriteIf(ops, conds); err != nil {
-		if errors.Is(err, ErrConditionFailed) {
-			return nil, status.Errorf(codes.Aborted, "precondition failed")
-		}
-		if errors.Is(err, ErrReadOnlyReplica) {
-			return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
-		}
-		if errors.Is(err, ErrRecordTooLarge) {
-			return nil, status.Errorf(codes.InvalidArgument, "batch contains record exceeding max 4000 bytes: %v", err)
-		}
-		return nil, status.Errorf(codes.Internal, "batch write failed: %v", err)
+		return nil, writeStatus(err, "batch write")
 	}
 
 	return &beastv1.BatchWriteResponse{
