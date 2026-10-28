@@ -115,3 +115,20 @@ func BenchmarkSlottedPageGet(b *testing.B) {
 		_, _ = page.GetTuple(slotID)
 	}
 }
+
+// A page filled and emptied repeatedly must keep its capacity: tombstoned slots are reused.
+func TestInsertReusesTombstonedSlots(t *testing.T) {
+	p := NewSlottedPage(1)
+	tuple := make([]byte, 4000)
+	for i := 0; i < 50; i++ {
+		slot, err := p.InsertTuple(tuple)
+		if err != nil {
+			t.Fatalf("round %d: page lost capacity: %v", i, err)
+		}
+		_ = p.DeleteTuple(slot)
+		p.Compact()
+	}
+	if h := p.Header(); h.SlotCount != 1 {
+		t.Fatalf("slot directory grew to %d entries", h.SlotCount)
+	}
+}

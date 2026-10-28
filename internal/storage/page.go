@@ -59,29 +59,39 @@ func (p *SlottedPage) FreeSpace() int {
 }
 
 // InsertTuple stores variable-length data, growing data upwards and slot downwards.
+// A tombstoned slot is reused before the directory grows, so a page that is
+// filled and emptied repeatedly keeps its full capacity.
 func (p *SlottedPage) InsertTuple(tuple []byte) (uint16, error) {
 	tupleLen := len(tuple)
-	needed := tupleLen + SlotSize
-
+	h := p.Header()
+	slotID, reuse := p.freeSlot(h)
+	needed := tupleLen
+	if !reuse {
+		needed += SlotSize
+	}
 	if p.FreeSpace() < needed {
 		return 0, ErrPageFull
 	}
 
-	h := p.Header()
 	h.Upper -= uint16(tupleLen)
 	copy(p.data[h.Upper:h.Upper+uint16(tupleLen)], tuple)
-
-	slotID := h.SlotCount
-	WriteSlot(p.data, slotID, Slot{
-		Offset: h.Upper,
-		Length: uint16(tupleLen),
-	})
-
-	h.SlotCount++
-	h.Lower += SlotSize
+	WriteSlot(p.data, slotID, Slot{Offset: h.Upper, Length: uint16(tupleLen)})
+	if !reuse {
+		h.SlotCount++
+		h.Lower += SlotSize
+	}
 	WritePageHeader(p.data, h)
-
 	return slotID, nil
+}
+
+// freeSlot returns the first tombstoned slot, or the next new slot ID.
+func (p *SlottedPage) freeSlot(h PageHeader) (uint16, bool) {
+	for i := uint16(0); i < h.SlotCount; i++ {
+		if ReadSlot(p.data, i).Offset == 0 {
+			return i, true
+		}
+	}
+	return h.SlotCount, false
 }
 
 // GetTuple retrieves the tuple bytes referenced by slotID.

@@ -22,7 +22,7 @@ type Engine struct {
 	secIndex       *index.SecondaryIndex
 	readOnly       bool
 	failed         error               // set by halt; blocks writes until restart
-	reclaim        map[uint64]struct{} // data pages holding tombstoned tuples
+	reclaim        map[uint64]int      // data page -> free bytes after compaction, or unknownFree
 	mu             sync.RWMutex
 }
 

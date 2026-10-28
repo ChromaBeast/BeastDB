@@ -2,6 +2,7 @@ package wal
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,5 +131,14 @@ func BenchmarkWALAppend(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _ = wal.Write(OpPut, key, val)
+	}
+}
+
+// A torn header claiming a huge length must read as a torn tail, not trigger a huge allocation.
+func TestDecodeRejectsOversizedFrameHeader(t *testing.T) {
+	header := make([]byte, HeaderSize)
+	binary.LittleEndian.PutUint32(header[0:4], 0xFFFFFFF0)
+	if _, err := DecodeRecord(bytes.NewReader(header)); err != ErrTornWrite {
+		t.Fatalf("expected ErrTornWrite, got %v", err)
 	}
 }

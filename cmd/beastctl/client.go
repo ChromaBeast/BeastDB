@@ -8,6 +8,7 @@ import (
 	"time"
 
 	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
+	"github.com/ChromaBeast/beastdb/internal/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -49,6 +50,7 @@ func DialWithToken(addr, token string) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(),
+		api.MessageSizeDialOption(),
 	}
 	if token != "" {
 		opts = append(opts, grpc.WithPerRPCCredentials(tokenAuth{token: token}))
