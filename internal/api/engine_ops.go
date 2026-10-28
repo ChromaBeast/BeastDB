@@ -9,13 +9,17 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
+// MaxRecordSize is the largest value stored inline in a single slotted-page
+// tuple; larger values up to MaxValueSize are chained (see engine_large.go).
 const MaxRecordSize = 4000
 
 var (
 	// ErrRecordExists indicates a key is already present during PutIfAbsent.
 	ErrRecordExists = errors.New("record already exists")
-	// ErrRecordTooLarge indicates the payload exceeds the 4,000 byte limit.
-	ErrRecordTooLarge = errors.New("record value exceeds maximum supported size of 4000 bytes")
+	// ErrRecordTooLarge indicates a value exceeds MaxValueSize (2 MiB).
+	ErrRecordTooLarge = errors.New("record value exceeds maximum supported size of 2 MiB")
+	// ErrBatchTooLarge indicates a batch's encoded WAL frame exceeds MaxBatchBytes (8 MiB).
+	ErrBatchTooLarge = errors.New("batch exceeds maximum supported size of 8 MiB (values plus 15 bytes per operation)")
 	// ErrReadOnlyReplica indicates mutation attempts on a read-only replica node.
 	ErrReadOnlyReplica = errors.New("writes are not permitted on read-only replica")
 )
@@ -25,7 +29,7 @@ func (e *Engine) Put(key uint64, value []byte) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
 	}
-	if len(value) > MaxRecordSize {
+	if len(value) > MaxValueSize {
 		return ErrRecordTooLarge
 	}
 	e.mu.Lock()
@@ -38,7 +42,7 @@ func (e *Engine) PutIfAbsent(key uint64, value []byte) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
 	}
-	if len(value) > MaxRecordSize {
+	if len(value) > MaxValueSize {
 		return ErrRecordTooLarge
 	}
 	e.mu.Lock()
@@ -85,22 +89,12 @@ func (e *Engine) Get(key uint64) ([]byte, bool, error) {
 		return nil, false, err
 	}
 
-	page, err := e.bpm.FetchPage(rid.PageID)
+	val, err := e.readValue(rid)
 	if err != nil {
 		return nil, false, err
 	}
-
-	tuple, err := page.GetTuple(rid.SlotID)
-	_ = e.bpm.UnpinPage(rid.PageID, false)
-	if err != nil {
-		return nil, false, err
-	}
-
-	val := make([]byte, len(tuple))
-	copy(val, tuple)
 	return val, true, nil
 }
-
 
 // Scan returns a streaming cursor iterator over the requested key range.
 // The engine's read lock is held for the cursor's entire lifetime and released
@@ -116,19 +110,25 @@ func (e *Engine) Scan(startKey, endKey uint64) (*index.Cursor, error) {
 	return cursor, nil
 }
 
-// ReadTuple retrieves tuple bytes directly for a given RID.
+// ReadTuple returns a copy of the value a B+ tree RID refers to, reassembling
+// chained large values.
 func (e *Engine) ReadTuple(rid storage.RID) ([]byte, error) {
+	return e.readValue(rid)
+}
+
+// readTuple copies the raw bytes of one slotted-page tuple.
+func (e *Engine) readTuple(rid storage.RID) ([]byte, error) {
 	page, err := e.bpm.FetchPage(rid.PageID)
 	if err != nil {
 		return nil, err
 	}
 	tuple, err := page.GetTuple(rid.SlotID)
-	_ = e.bpm.UnpinPage(rid.PageID, false)
 	if err != nil {
+		_ = e.bpm.UnpinPage(rid.PageID, false)
 		return nil, err
 	}
-
 	val := make([]byte, len(tuple))
 	copy(val, tuple)
+	_ = e.bpm.UnpinPage(rid.PageID, false)
 	return val, nil
 }

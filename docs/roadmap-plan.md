@@ -41,10 +41,11 @@ Order is dependency-based. Each phase ends with a runnable demo, tests and docs.
 
 ### Phase B — Scan and key ergonomics
 
-1. **Paginated scans:** `limit` on `ScanRequest` and resume by last key + 1 are **implemented**. A server-enforced maximum page size and reverse/prefix scans remain.
-2. **Reverse and prefix scans** over the uint64 range, with documented bounds semantics.
-3. **Optional wide-key mode design.** Options to evaluate and decide with a written ADR: (a) keep uint64 and ship a documented collision-safe pattern plus a client helper, or (b) add a variable-length key space. Decision gated on benchmarks and on-disk-format migration cost.
-4. **Key-layout helper library** (client side, optional convention, not required by the engine).
+1. **Large values:** values up to 2 MiB, chained across pages with CRC checks, and 8 MiB batches are **implemented** ([ADR 0001](adr/0001-large-values.md)).
+2. **Paginated scans:** `limit` on `ScanRequest` and resume by last key + 1 are **implemented**. A server-enforced maximum page size and reverse/prefix scans remain.
+3. **Reverse and prefix scans** over the uint64 range, with documented bounds semantics.
+4. **Optional wide-key mode design.** Options to evaluate and decide with a written ADR: (a) keep uint64 and ship a documented collision-safe pattern plus a client helper, or (b) add a variable-length key space. Decision gated on benchmarks and on-disk-format migration cost.
+5. **Key-layout helper library** (client side, optional convention, not required by the engine).
 
 **Exit:** a client can page through a 10M-key range with bounded memory on both sides.
 

@@ -8,7 +8,8 @@
 
 - **Key Format:** Unsigned 64-bit integer (`uint64`).
 - **Value Format:** Opaque byte slice (`[]byte`).
-- **Maximum Record Size:** 4,000 bytes per record (bounded by 4KB slotted page capacity). Payloads exceeding this limit return `ErrRecordTooLarge`.
+- **Maximum Value Size:** 2 MiB (`MaxValueSize`). Values up to 4,000 bytes (`MaxRecordSize`) are stored inline in one slotted-page tuple; larger ones are chained across pages and checked with a CRC32 on read ([ADR 0001](adr/0001-large-values.md)). Larger payloads return `ErrRecordTooLarge`.
+- **Batch Size:** the values in one `BatchWrite` may total at most 8 MiB (`MaxBatchBytes`, `ErrBatchTooLarge`). gRPC clients sending large values must raise the 4 MiB default message limit (`api.MessageSizeDialOption`).
 - **Key Partitioning Convention:** Applications may optionally pack higher-order bits for table/collection prefixing (e.g., bits 56–63 for partition ID), but the engine treats keys as scalar `uint64` values.
 
 ---
@@ -28,7 +29,7 @@
 ### `BatchWrite(puts []PutOp, deletes []DeleteOp)`
 * **Durability Guarantee:** The entire batch is serialized into a single `OpBatch` WAL frame and synced in a single I/O operation.
 * **Atomicity:** All-or-nothing. On crash recovery, uncommitted or partial batches are rolled back; fully synced batches are replayed completely.
-* **Limits:** Recommended batch limit of 1,000 operations or 2 MB aggregate payload.
+* **Limits:** Values in one batch may total at most 8 MiB; each value at most 2 MiB.
 
 ### Conditional writes: `Put`/`Delete` with `Condition`, `BatchWrite` with `conditions`
 * **Conditions:** `ABSENT` (key must not exist), `PRESENT` (key must exist), `VALUE_EQUALS` (key must exist with exactly the given bytes). Omitted or `NONE` means unconditional.

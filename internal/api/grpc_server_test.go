@@ -131,3 +131,54 @@ func BenchmarkGRPCGet(b *testing.B) {
 		_, _ = client.Get(ctx, req)
 	}
 }
+
+// Values above gRPC's 4 MiB default, batched, must round-trip with the message-size options.
+func TestGRPCLargeValuesWithMessageSizeOptions(t *testing.T) {
+	dir := t.TempDir()
+	engine, err := NewEngine(filepath.Join(dir, "big.bin"), filepath.Join(dir, "big.wal"), 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	server := NewGRPCServer(engine, MessageSizeServerOptions()...)
+	lis, _ := net.Listen("tcp", "127.0.0.1:0")
+	go func() { _ = server.Serve(lis) }()
+	defer server.Stop()
+	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()), MessageSizeDialOption())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	client := beastv1.NewBeastDBServiceClient(conn)
+	ctx := context.Background()
+
+	var ops []*beastv1.BatchOperation
+	for k := uint64(1); k <= 3; k++ {
+		ops = append(ops, &beastv1.BatchOperation{OpType: beastv1.BatchOpType_BATCH_OP_TYPE_PUT, Key: k, Value: bytes.Repeat([]byte{byte(k)}, MaxValueSize)})
+	}
+	if _, err := client.BatchWrite(ctx, &beastv1.BatchWriteRequest{Operations: ops}); err != nil {
+		t.Fatalf("6 MiB batch: %v", err)
+	}
+	got, err := client.Get(ctx, &beastv1.GetRequest{Key: 2})
+	if err != nil || !bytes.Equal(got.Value, ops[1].Value) {
+		t.Fatalf("get large value: %v", err)
+	}
+	stream, err := client.Scan(ctx, &beastv1.ScanRequest{StartKey: 1, EndKey: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for {
+		kv, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil || len(kv.Value) != MaxValueSize {
+			t.Fatalf("scan large value: %v", err)
+		}
+		n++
+	}
+	if n != 3 {
+		t.Fatalf("scan returned %d values", n)
+	}
+}

@@ -75,7 +75,7 @@ func (e *Engine) PutIf(key uint64, value []byte, cond Condition) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
 	}
-	if len(value) > MaxRecordSize {
+	if len(value) > MaxValueSize {
 		return ErrRecordTooLarge
 	}
 	e.mu.Lock()
