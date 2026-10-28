@@ -66,6 +66,10 @@ func (w *WAL) Write(opType byte, key, value []byte) (uint64, error) {
 	}
 
 	encoded := EncodeRecord(rec)
+	if len(encoded) > MaxFrameSize {
+		w.currentLSN--
+		return 0, ErrFrameTooLarge
+	}
 	if _, err := w.file.Write(encoded); err != nil {
 		return 0, err
 	}

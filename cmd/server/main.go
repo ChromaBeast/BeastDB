@@ -73,7 +73,7 @@ func main() {
 	engine.StartAutoCheckpoint(ckptCtx, 10*time.Second, int64(*walCheckpointMB)<<20)
 
 	tokenStore := initTokenStore(engine)
-	var grpcOpts []grpc.ServerOption
+	grpcOpts := api.MessageSizeServerOptions()
 	if *tlsCert != "" && *tlsKey != "" {
 		creds, err := loadServerTLS(*tlsCert, *tlsKey, *tlsCA)
 		if err != nil {
@@ -103,7 +103,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to initialize follower client TLS: %v", err)
 		}
-		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(clientCreds))
+		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption())
 		if err != nil {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}

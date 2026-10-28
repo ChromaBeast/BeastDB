@@ -34,10 +34,12 @@ func (e *Engine) insertTuple(value []byte) (storage.RID, error) {
 		_ = e.bpm.UnpinPage(e.activeDataPage, true)
 		return storage.RID{PageID: e.activeDataPage, SlotID: slotID}, nil
 	}
+	leftover := page.FreeSpace()
 	_ = e.bpm.UnpinPage(e.activeDataPage, true)
 	if err != storage.ErrPageFull {
 		return storage.RID{}, err
 	}
+	oldActive := e.activeDataPage
 
 	newPage, newID, err := e.nextDataPage(len(value))
 	if err != nil {
@@ -48,6 +50,9 @@ func (e *Engine) insertTuple(value []byte) (storage.RID, error) {
 		return storage.RID{}, err
 	}
 	e.activeDataPage = newID
+	if leftover >= minTrackedFree {
+		e.trackFree(oldActive, leftover)
+	}
 	slotID, err = newPage.InsertTuple(value)
 	_ = e.bpm.UnpinPage(newID, err == nil)
 	if err != nil {
@@ -56,30 +61,58 @@ func (e *Engine) insertTuple(value []byte) (storage.RID, error) {
 	return storage.RID{PageID: newID, SlotID: slotID}, nil
 }
 
-// nextDataPage returns a pinned page with room for size bytes: a compacted page
-// with dead tuples if one fits, otherwise a freshly allocated page.
+const (
+	// unknownFree marks a page whose tuples were tombstoned since it was last measured.
+	unknownFree = -1
+	// minTrackedFree drops pages too full to be worth revisiting.
+	minTrackedFree = 64
+)
+
+// nextDataPage returns a pinned page with room for size bytes: a known page
+// with enough free space if one exists, otherwise a freshly allocated page.
+// Pages that are too full for this request stay tracked for smaller ones.
 func (e *Engine) nextDataPage(size int) (*storage.SlottedPage, uint64, error) {
-	for id := range e.reclaim {
-		delete(e.reclaim, id)
+	need := size + storage.SlotSize
+	for id, free := range e.reclaim {
 		if id == e.activeDataPage {
+			delete(e.reclaim, id)
+			continue
+		}
+		if free != unknownFree && free < need {
 			continue
 		}
 		p, err := e.bpm.FetchPage(id)
 		if err != nil {
+			delete(e.reclaim, id)
 			continue
 		}
 		p.Compact()
-		if p.FreeSpace() >= size+storage.SlotSize {
-			_ = e.bpm.UnpinPage(id, true)
-			p, err = e.bpm.FetchPage(id)
-			if err == nil {
+		got := p.FreeSpace()
+		_ = e.bpm.UnpinPage(id, true)
+		if got >= need {
+			delete(e.reclaim, id)
+			if p, err = e.bpm.FetchPage(id); err == nil {
 				return p, id, nil
 			}
 			continue
 		}
-		_ = e.bpm.UnpinPage(id, true)
+		if got < minTrackedFree {
+			delete(e.reclaim, id)
+		} else {
+			e.reclaim[id] = got
+		}
 	}
 	return e.bpm.NewPage()
+}
+
+// trackFree remembers a page's free space for later inserts.
+func (e *Engine) trackFree(id uint64, free int) {
+	if e.reclaim == nil {
+		e.reclaim = make(map[uint64]int)
+	}
+	if cur, ok := e.reclaim[id]; free == unknownFree || !ok || cur != unknownFree {
+		e.reclaim[id] = free
+	}
 }
 
 // freeTuple tombstones the tuple at rid and queues its page for space reuse.
@@ -91,10 +124,7 @@ func (e *Engine) freeTuple(rid storage.RID) {
 	_ = page.DeleteTuple(rid.SlotID)
 	_ = e.bpm.UnpinPage(rid.PageID, true)
 	if rid.PageID != e.activeDataPage {
-		if e.reclaim == nil {
-			e.reclaim = make(map[uint64]struct{})
-		}
-		e.reclaim[rid.PageID] = struct{}{}
+		e.trackFree(rid.PageID, unknownFree)
 	}
 }
 
@@ -106,7 +136,7 @@ func (e *Engine) applyPutInMemory(key uint64, value []byte) error {
 	if err != nil && err != index.ErrKeyNotFound {
 		return err
 	}
-	rid, err := e.insertTuple(value)
+	rid, err := e.insertValue(value)
 	if err != nil {
 		return err
 	}
@@ -114,7 +144,7 @@ func (e *Engine) applyPutInMemory(key uint64, value []byte) error {
 		return err
 	}
 	if hadOld {
-		e.freeTuple(oldRID)
+		e.freeValue(oldRID)
 	}
 	return nil
 }
@@ -127,6 +157,6 @@ func (e *Engine) applyDeleteInMemory(key uint64) error {
 	if err != nil {
 		return err
 	}
-	e.freeTuple(rid)
+	e.freeValue(rid)
 	return e.tree.Delete(key)
 }

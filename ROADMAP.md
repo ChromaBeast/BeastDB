@@ -122,7 +122,7 @@ Order is dependency-based, not a calendar promise. Initial planning range for on
 
 ## Beyond V1 gates
 
-See the [roadmap plan](docs/roadmap-plan.md) for post-gate phases. Shipped so far: conditional writes (`ABSENT`/`PRESENT`/`VALUE_EQUALS` on Put, Delete and BatchWrite) and limit-based scan pagination.
+See the [roadmap plan](docs/roadmap-plan.md) for post-gate phases. Shipped so far: conditional writes (`ABSENT`/`PRESENT`/`VALUE_EQUALS` on Put, Delete and BatchWrite), limit-based scan pagination, and values up to 2 MiB with 8 MiB batches ([ADR 0001](docs/adr/0001-large-values.md)).
 
 ## References
 
