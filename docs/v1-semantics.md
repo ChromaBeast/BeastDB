@@ -30,6 +30,13 @@
 * **Atomicity:** All-or-nothing. On crash recovery, uncommitted or partial batches are rolled back; fully synced batches are replayed completely.
 * **Limits:** Recommended batch limit of 1,000 operations or 2 MB aggregate payload.
 
+### Conditional writes: `Put`/`Delete` with `Condition`, `BatchWrite` with `conditions`
+* **Conditions:** `ABSENT` (key must not exist), `PRESENT` (key must exist), `VALUE_EQUALS` (key must exist with exactly the given bytes). Omitted or `NONE` means unconditional.
+* **Atomicity:** The check and the write happen under the same exclusive engine lock, so no other writer can interleave. For batches, every condition is evaluated before any operation applies: all hold and the whole batch commits, or none is written.
+* **Failure:** gRPC status `ABORTED` ("precondition failed"); the caller should re-read and retry. Read-only replicas still return `FAILED_PRECONDITION`.
+* **Durability and replication:** Only the resulting mutation is logged (a normal `OpPut`/`OpDelete`/`OpBatch` frame). Preconditions are never re-evaluated on recovery or on followers.
+* **Scope:** Single node, single leader. A compare-and-swap loop (`Get`, then `Put` with `VALUE_EQUALS`) is safe across any number of client processes writing to the same leader.
+
 ### `Get(key uint64) ([]byte, bool, error)`
 * **Consistency:** Read-your-own-writes on the leader.
 * **Return Values:** Returns `(value, true, nil)` if found, or `(nil, false, nil)` if missing. Returns a non-nil error only upon hardware/storage failure.
@@ -37,6 +44,7 @@
 ### `Scan(startKey, endKey uint64) (*Cursor, error)`
 * **Ordering:** Strictly ascending numerical order along the B+ Tree leaf chain.
 * **Bounds:** Inclusive `[startKey, endKey]`.
+* **Pagination (gRPC):** `ScanRequest.limit` caps the records returned (0 = unlimited). To resume, pass last returned key + 1 as `start_key`.
 * **Resource Safety:** Cursors hold buffer pool page pins during traversal and **must** be closed via `cursor.Close()`.
 
 ---

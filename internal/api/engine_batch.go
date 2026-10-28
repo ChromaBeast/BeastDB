@@ -32,6 +32,14 @@ type BatchOperation struct {
 // All operations are logged in a single WAL record with a single CRC32 checksum, ensuring
 // that all operations commit together or none do.
 func (e *Engine) BatchWrite(ops []BatchOperation) error {
+	return e.BatchWriteIf(ops, nil)
+}
+
+// BatchWriteIf is BatchWrite gated by preconditions: every condition is evaluated
+// under the same exclusive lock before any operation applies, so either all
+// conditions hold and the whole batch commits, or ErrConditionFailed is returned
+// and nothing is written.
+func (e *Engine) BatchWriteIf(ops []BatchOperation, conds []KeyCondition) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
 	}
@@ -48,6 +56,11 @@ func (e *Engine) BatchWrite(ops []BatchOperation) error {
 	defer e.mu.Unlock()
 	if e.failed != nil {
 		return e.failed
+	}
+	for _, c := range conds {
+		if err := e.checkConditionLocked(c.Key, c.Cond); err != nil {
+			return err
+		}
 	}
 
 	// 1. Serialize all operations into a single atomic WAL batch payload

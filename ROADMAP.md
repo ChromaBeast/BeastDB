@@ -120,6 +120,10 @@ Order is dependency-based, not a calendar promise. Initial planning range for on
 7. [x] Operational probes: public `/healthz` and `/readyz` endpoints with [operator guide](docs/runbooks/operator-guide.md) and [disaster recovery runbook](docs/runbooks/disaster-recovery.md).
 8. [x] Studio pagination in Table/Gallery views, whitespace-safe status filtering, and reproducible system benchmarks ([docs/benchmarks.md](docs/benchmarks.md)).
 
+## Beyond V1 gates
+
+See the [roadmap plan](docs/roadmap-plan.md) for post-gate phases. Shipped so far: conditional writes (`ABSENT`/`PRESENT`/`VALUE_EQUALS` on Put, Delete and BatchWrite) and limit-based scan pagination.
+
 ## References
 
 - [PostgreSQL WAL archiving and recovery](https://www.postgresql.org/docs/17/continuous-archiving.html) — backup/restore design reference, not a BeastDB feature claim.
