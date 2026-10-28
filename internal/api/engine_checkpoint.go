@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/storage"
 )
@@ -46,5 +49,32 @@ func (e *Engine) Checkpoint() error {
 	if err := e.bpm.FlushAll(); err != nil {
 		return fmt.Errorf("checkpoint flush dirty pages: %w", err)
 	}
+	// Dirty pages (and any file extension) must be durable before the WAL that
+	// covers them is archived.
+	if err := e.disk.Sync(); err != nil {
+		return fmt.Errorf("checkpoint sync data file: %w", err)
+	}
 	return e.wal.Checkpoint()
+}
+
+// StartAutoCheckpoint checkpoints whenever the WAL exceeds maxWALBytes, polling every
+// interval, until ctx is cancelled. It bounds WAL size and crash-recovery time.
+func (e *Engine) StartAutoCheckpoint(ctx context.Context, interval time.Duration, maxWALBytes int64) {
+	go func() {
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if e.wal.FileSize() < maxWALBytes {
+					continue
+				}
+				if err := e.Checkpoint(); err != nil {
+					log.Printf("auto-checkpoint failed: %v", err)
+				}
+			}
+		}
+	}()
 }

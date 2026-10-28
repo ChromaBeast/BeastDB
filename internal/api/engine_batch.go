@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/ChromaBeast/beastdb/internal/index"
-	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
@@ -47,6 +46,9 @@ func (e *Engine) BatchWrite(ops []BatchOperation) error {
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.failed != nil {
+		return e.failed
+	}
 
 	// 1. Serialize all operations into a single atomic WAL batch payload
 	walOps := make([]wal.BatchOp, len(ops))
@@ -76,19 +78,19 @@ func (e *Engine) BatchWrite(ops []BatchOperation) error {
 	// 2. Commit the entire batch atomically to the WAL
 	lsn, err := e.wal.Write(wal.OpBatch, nil, payload)
 	if err != nil {
-		return err
+		return e.halt(err)
 	}
 
 	// 3. Apply each mutation to the buffer pool, B+ Tree, and secondary index
 	for _, op := range ops {
 		if op.Type == BatchOpPut {
 			if err := e.applyPutInMemory(op.Key, op.Value); err != nil {
-				return err
+				return e.halt(err)
 			}
 			e.indexValueLocked(op.Key, op.Value)
 		} else {
 			if err := e.applyDeleteInMemory(op.Key); err != nil && err != index.ErrKeyNotFound {
-				return err
+				return e.halt(err)
 			}
 			e.unindexValueLocked(op.Key)
 		}
@@ -100,53 +102,4 @@ func (e *Engine) BatchWrite(ops []BatchOperation) error {
 	}
 
 	return nil
-}
-
-func (e *Engine) applyPutInMemory(key uint64, value []byte) error {
-	page, err := e.bpm.FetchPage(e.activeDataPage)
-	if err != nil {
-		return err
-	}
-
-	slotID, err := page.InsertTuple(value)
-	if err == storage.ErrPageFull {
-		_ = e.bpm.UnpinPage(e.activeDataPage, false)
-		newPage, newID, err := e.bpm.NewPage()
-		if err != nil {
-			return err
-		}
-		if err := e.updateMetaActiveData(newID); err != nil {
-			_ = e.bpm.UnpinPage(newID, false)
-			return err
-		}
-		e.activeDataPage = newID
-		slotID, err = newPage.InsertTuple(value)
-		if err != nil {
-			_ = e.bpm.UnpinPage(newID, false)
-			return err
-		}
-		page = newPage
-	}
-	_ = e.bpm.UnpinPage(e.activeDataPage, true)
-
-	rid := storage.RID{PageID: e.activeDataPage, SlotID: slotID}
-	return e.tree.Insert(key, rid)
-}
-
-func (e *Engine) applyDeleteInMemory(key uint64) error {
-	rid, err := e.tree.Find(key)
-	if err == index.ErrKeyNotFound {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	page, err := e.bpm.FetchPage(rid.PageID)
-	if err == nil {
-		_ = page.DeleteTuple(rid.SlotID)
-		_ = e.bpm.UnpinPage(rid.PageID, true)
-	}
-
-	return e.tree.Delete(key)
 }

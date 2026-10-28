@@ -21,6 +21,8 @@ type Engine struct {
 	observer       CommitObserver
 	secIndex       *index.SecondaryIndex
 	readOnly       bool
+	failed         error               // set by halt; blocks writes until restart
+	reclaim        map[uint64]struct{} // data pages holding tombstoned tuples
 	mu             sync.RWMutex
 }
 
@@ -132,6 +134,9 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 		}
 		e.mu.Lock()
 		defer e.mu.Unlock()
+		if e.failed != nil {
+			return e.failed
+		}
 		for _, bOp := range batchOps {
 			if len(bOp.Key) < 8 {
 				continue
@@ -139,12 +144,12 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 			k := binary.LittleEndian.Uint64(bOp.Key)
 			if bOp.Type == wal.OpPut {
 				if err := e.applyPutInMemory(k, bOp.Value); err != nil {
-					return err
+					return e.halt(err)
 				}
 				e.indexValueLocked(k, bOp.Value)
 			} else if bOp.Type == wal.OpDelete {
 				if err := e.applyDeleteInMemory(k); err != nil {
-					return err
+					return e.halt(err)
 				}
 				e.unindexValueLocked(k)
 			}

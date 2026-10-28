@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/binary"
 
-	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
@@ -74,49 +73,14 @@ func (e *Engine) applyRecordLocked(rec *wal.Record) error {
 
 	switch rec.Type {
 	case wal.OpPut:
-		page, err := e.bpm.FetchPage(e.activeDataPage)
-		if err != nil {
-			return err
-		}
-
-		slotID, err := page.InsertTuple(rec.Value)
-		if err == storage.ErrPageFull {
-			_ = e.bpm.UnpinPage(e.activeDataPage, false)
-			newPage, newID, err := e.bpm.NewPage()
-			if err != nil {
-				return err
-			}
-			e.activeDataPage = newID
-			slotID, err = newPage.InsertTuple(rec.Value)
-			if err != nil {
-				_ = e.bpm.UnpinPage(newID, false)
-				return err
-			}
-			page = newPage
-		}
-		_ = e.bpm.UnpinPage(e.activeDataPage, true)
-
-		rid := storage.RID{PageID: e.activeDataPage, SlotID: slotID}
-		if err := e.tree.Insert(key, rid); err != nil {
+		if err := e.applyPutInMemory(key, rec.Value); err != nil {
 			return err
 		}
 		e.indexValueLocked(key, rec.Value)
 		return nil
 
 	case wal.OpDelete:
-		rid, err := e.tree.Find(key)
-		if err == index.ErrKeyNotFound {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		page, err := e.bpm.FetchPage(rid.PageID)
-		if err == nil {
-			_ = page.DeleteTuple(rid.SlotID)
-			_ = e.bpm.UnpinPage(rid.PageID, true)
-		}
-		if err := e.tree.Delete(key); err != nil {
+		if err := e.applyDeleteInMemory(key); err != nil {
 			return err
 		}
 		e.unindexValueLocked(key)

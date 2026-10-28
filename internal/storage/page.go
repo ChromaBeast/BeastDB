@@ -120,7 +120,7 @@ func (p *SlottedPage) Compact() {
 
 	for i := uint16(0); i < h.SlotCount; i++ {
 		slot := ReadSlot(p.data, i)
-		if slot.Offset > 0 && slot.Length > 0 {
+		if slot.Offset > 0 {
 			newUpper -= slot.Length
 			copy(temp[newUpper:newUpper+slot.Length], p.data[slot.Offset:slot.Offset+slot.Length])
 			WriteSlot(temp, i, Slot{Offset: newUpper, Length: slot.Length})

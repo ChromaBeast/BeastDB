@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -70,7 +71,7 @@ func (a *AuthInterceptor) authorize(ctx context.Context) error {
 		return status.Errorf(codes.Unauthenticated, "authorization must be Bearer token")
 	}
 	token := strings.TrimSpace(header[7:])
-	if a.staticToken != "" && token == a.staticToken {
+	if a.staticToken != "" && subtle.ConstantTimeCompare([]byte(token), []byte(a.staticToken)) == 1 {
 		return nil
 	}
 	if a.validator != nil && a.validator.Validate(token) {

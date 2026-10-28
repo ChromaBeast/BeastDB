@@ -5,13 +5,13 @@
   </picture>
 </p>
 
-<h3 align="center">High-Performance, Crash-Resilient Distributed Database — Built from Scratch in Pure Go</h3>
+<h3 align="center">Crash-Safe Embedded OLTP Database with Leader-Follower Replication — Built from Scratch in Pure Go</h3>
 
 <p align="center">
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go" alt="Go Version" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License" /></a>
   <a href="ROADMAP.md"><img src="https://img.shields.io/badge/Hot%20Paths-0%20allocs%2Fop-brightgreen" alt="Zero Allocs" /></a>
-  <img src="https://img.shields.io/badge/Tests-Passing-success" alt="Tests" />
+  <a href=".github/workflows/ci.yml"><img src="https://github.com/ChromaBeast/beastdb/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/Studio-Embedded-blueviolet" alt="Studio" />
 </p>
 
@@ -27,7 +27,7 @@ It ships as a **single static binary** that includes a full gRPC service, WAL-ba
 
 | Concern | How BeastDB addresses it |
 |---|---|
-| **Predictable latency** | B+ Tree with `O(log N)` point reads at 180 ns, 0 allocs — no compaction spikes |
+| **Predictable latency** | B+ Tree with `O(log N)` cached point reads at 180 ns, 0 allocs — no compaction spikes |
 | **Crash safety** | 23-byte ARIES WAL frames with CRC32 torn-write detection; full replay on boot |
 | **Operational simplicity** | Single binary, `go run ./cmd/server -dev` for local dev, `docker compose up` for prod |
 | **Developer ergonomics** | Embedded Studio web UI, `beastctl` CLI, partition-aware key builder, fixture seeding |

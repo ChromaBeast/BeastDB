@@ -21,7 +21,7 @@ type DiskManager struct {
 
 // OpenDiskManager opens or creates a database file for 4KB aligned page I/O.
 func OpenDiskManager(path string) (*DiskManager, error) {
-	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, err
 	}

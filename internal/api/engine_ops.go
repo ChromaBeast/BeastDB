@@ -54,42 +54,17 @@ func (e *Engine) PutIfAbsent(key uint64, value []byte) error {
 }
 
 func (e *Engine) putLocked(key uint64, value []byte) error {
+	if e.failed != nil {
+		return e.failed
+	}
 	var keyBytes [8]byte
 	binary.LittleEndian.PutUint64(keyBytes[:], key)
 	lsn, err := e.wal.Write(wal.OpPut, keyBytes[:], value)
 	if err != nil {
-		return err
+		return e.halt(err)
 	}
-
-	page, err := e.bpm.FetchPage(e.activeDataPage)
-	if err != nil {
-		return err
-	}
-
-	slotID, err := page.InsertTuple(value)
-	if err == storage.ErrPageFull {
-		_ = e.bpm.UnpinPage(e.activeDataPage, false)
-		newPage, newID, err := e.bpm.NewPage()
-		if err != nil {
-			return err
-		}
-		if err := e.updateMetaActiveData(newID); err != nil {
-			_ = e.bpm.UnpinPage(newID, false)
-			return err
-		}
-		e.activeDataPage = newID
-		slotID, err = newPage.InsertTuple(value)
-		if err != nil {
-			_ = e.bpm.UnpinPage(newID, false)
-			return err
-		}
-		page = newPage
-	}
-	_ = e.bpm.UnpinPage(e.activeDataPage, true)
-
-	rid := storage.RID{PageID: e.activeDataPage, SlotID: slotID}
-	if err := e.tree.Insert(key, rid); err != nil {
-		return err
+	if err := e.applyPutInMemory(key, value); err != nil {
+		return e.halt(err)
 	}
 
 	e.indexValueLocked(key, value)

@@ -38,6 +38,7 @@ func main() {
 	tlsCA := flag.String("tls-ca", getEnv("BEASTDB_TLS_CA", ""), "Path to TLS CA certificate file (PEM)")
 	insecureAuth := flag.Bool("insecure-auth", false, "Permit default credentials on public interfaces (unsafe, for testing only)")
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
+	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
 	flag.Parse()
 
 	grpcBind := fmt.Sprintf("%s:%d", *bindAddr, *port)
@@ -66,6 +67,10 @@ func main() {
 		engine.SetReadOnly(true)
 		log.Printf("🔒 Node running in follower mode: engine write path set to read-only.")
 	}
+
+	ckptCtx, stopCkpt := context.WithCancel(context.Background())
+	defer stopCkpt()
+	engine.StartAutoCheckpoint(ckptCtx, 10*time.Second, int64(*walCheckpointMB)<<20)
 
 	tokenStore := initTokenStore(engine)
 	var grpcOpts []grpc.ServerOption
@@ -160,6 +165,7 @@ func main() {
 	log.Printf("Received signal %s. Initiating graceful shutdown...", sig)
 
 	cancel()
+	stopCkpt()
 	grpcServer.GracefulStop()
 	if err := engine.Close(); err != nil {
 		log.Printf("Error flushing engine to disk: %v", err)
