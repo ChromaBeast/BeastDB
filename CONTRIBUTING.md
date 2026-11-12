@@ -21,6 +21,12 @@ Thank you for your interest in contributing to BeastDB! We welcome contributions
 
 ---
 
+## 🔒 Security Issues
+
+Do not report vulnerabilities in public issues or pull requests. Follow [SECURITY.md](SECURITY.md).
+
+---
+
 ## 🧪 Verification & Testing
 
 Before submitting a pull request, ensure all validations pass:
