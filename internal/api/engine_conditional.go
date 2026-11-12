@@ -78,15 +78,15 @@ func (e *Engine) PutIf(key uint64, value []byte, cond Condition) error {
 	if len(value) > MaxValueSize {
 		return ErrRecordTooLarge
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.failed != nil {
-		return e.failed
-	}
-	if err := e.checkConditionLocked(key, cond); err != nil {
-		return err
-	}
-	return e.putLocked(key, value)
+	return e.commit(func() error {
+		if e.failed != nil {
+			return e.failed
+		}
+		if err := e.checkConditionLocked(key, cond); err != nil {
+			return err
+		}
+		return e.putLocked(key, value)
+	})
 }
 
 // DeleteIf removes key only if cond holds, atomically with the check.
@@ -94,13 +94,13 @@ func (e *Engine) DeleteIf(key uint64, cond Condition) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.failed != nil {
-		return e.failed
-	}
-	if err := e.checkConditionLocked(key, cond); err != nil {
-		return err
-	}
-	return e.deleteLocked(key)
+	return e.commit(func() error {
+		if e.failed != nil {
+			return e.failed
+		}
+		if err := e.checkConditionLocked(key, cond); err != nil {
+			return err
+		}
+		return e.deleteLocked(key)
+	})
 }

@@ -4,9 +4,12 @@ These rules govern all interactions, coding, and architecture in this project.
 
 ---
 
-## 1. File Modularity & Readability (< 200 LoC)
-* **Strict File Length Limit:** In any project, if a file is not JSON or raw data, it must strictly remain readable and **< 200 Lines of Code (LoC)**.
-* **Component Decomposition:** Decompose complex systems (B+ trees, buffer pools, hash tables, page managers) into small, single-responsibility files, structs, and reusable components.
+## 1. File Modularity & Readability (guideline, not a hard limit)
+* **One responsibility per file.** Organize files by what they do. File length is a smell, not a rule: roughly **400 lines** is the point to stop and ask "does this file do more than one thing?" If yes, split it along that seam (for example sync vs. lifecycle, load vs. run). If no, leave it alone.
+* **Never split just to hit a number.** Do not cut a cohesive file into arbitrary pieces, move code without a clear responsibility boundary, or merge small files back together to satisfy a count.
+* **Exemptions:** generated code (`*.pb.go`), test files, and JSON/raw data have no size expectation.
+* **No automated gate.** Do not add CI or lint checks that fail on line count. Past about 500 lines, mention the reason in the change description or review.
+* **Component Decomposition:** Decompose complex systems (B+ trees, buffer pools, hash tables, page managers) into focused structs and reusable components.
 
 ---
 
