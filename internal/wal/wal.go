@@ -169,6 +169,18 @@ func (w *WAL) SyncIfEnabled() error {
 	return w.Sync()
 }
 
+// EnsureDurable returns once every record appended so far is fsynced. It is a
+// no-op when the log was not opened with syncOnWrite, and costs no fsync when
+// a previous sync already covers the current LSN. The buffer pool calls it
+// before writing a dirty page so a data page never reaches disk ahead of the
+// WAL records that describe it.
+func (w *WAL) EnsureDurable() error {
+	if !w.syncOnWrite {
+		return nil
+	}
+	return w.WaitDurable(w.CurrentLSN())
+}
+
 // DurableLSN returns the highest LSN known to be fsynced.
 func (w *WAL) DurableLSN() uint64 {
 	w.syncMu.Lock()
