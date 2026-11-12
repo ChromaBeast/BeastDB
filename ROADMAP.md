@@ -122,7 +122,7 @@ Order is dependency-based, not a calendar promise. Initial planning range for on
 
 ## Beyond V1 gates
 
-See the [roadmap plan](docs/roadmap-plan.md) for post-gate phases. Shipped so far: conditional writes (`ABSENT`/`PRESENT`/`VALUE_EQUALS` on Put, Delete and BatchWrite), limit-based scan pagination, and values up to 2 MiB with 8 MiB batches ([ADR 0001](docs/adr/0001-large-values.md)).
+See the [roadmap plan](docs/roadmap-plan.md) for post-gate phases and the [upgrade spec](docs/upgrade-spec.md) for the current security, usability and performance work. Shipped so far: conditional writes (`ABSENT`/`PRESENT`/`VALUE_EQUALS` on Put, Delete and BatchWrite), limit-based scan pagination, values up to 2 MiB with 8 MiB batches ([ADR 0001](docs/adr/0001-large-values.md)), WAL group commit with a write-ahead buffer-pool barrier, per-method gRPC role authorization with token expiry, a Prometheus `/metrics` endpoint, and the `beastbench` YCSB-style load generator ([benchmarking guide](docs/benchmarking.md)).
 
 ## References
 
