@@ -8,12 +8,22 @@ import (
 )
 
 // WAL manages the sequential append-only write-ahead log file.
+//
+// Durability is group-committed: Append assigns an LSN and writes the frame
+// under mu (cheap), while the fsync is performed by whichever caller reaches
+// syncMu first and covers every record appended up to that moment, so
+// concurrent writers share one fsync. Lock order is always syncMu, then mu.
 type WAL struct {
 	mu          sync.Mutex
 	file        *os.File
 	path        string
 	currentLSN  uint64
 	syncOnWrite bool
+
+	syncMu    sync.Mutex // serializes fsyncs; guards syncedLSN
+	syncedLSN uint64     // highest LSN known to be fsynced
+	errMu     sync.Mutex // guards syncErr (read by Append without syncMu)
+	syncErr   error      // sticky: after a failed fsync the log is untrustworthy
 }
 
 // OpenWAL opens an existing WAL file or creates a new one at the specified path.
@@ -49,17 +59,22 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 	}
 
 	w.currentLSN = lastLSN
+	w.syncedLSN = lastLSN // everything already on disk at open is treated as durable
 	return w, nil
 }
 
-// Write appends a state mutation record to the WAL, returning the assigned LSN.
-func (w *WAL) Write(opType byte, key, value []byte) (uint64, error) {
+// Append writes a record to the log file and assigns its LSN but does NOT
+// fsync. The record is not durable until WaitDurable(lsn) or Sync returns.
+func (w *WAL) Append(opType byte, key, value []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.currentLSN++
+	if err := w.loadSyncErr(); err != nil {
+		return 0, err
+	}
+
 	rec := &Record{
-		LSN:   w.currentLSN,
+		LSN:   w.currentLSN + 1,
 		Type:  opType,
 		Key:   key,
 		Value: value,
@@ -67,27 +82,98 @@ func (w *WAL) Write(opType byte, key, value []byte) (uint64, error) {
 
 	encoded := EncodeRecord(rec)
 	if len(encoded) > MaxFrameSize {
-		w.currentLSN--
 		return 0, ErrFrameTooLarge
 	}
 	if _, err := w.file.Write(encoded); err != nil {
 		return 0, err
 	}
+	w.currentLSN = rec.LSN
+	return rec.LSN, nil
+}
 
+// Write appends a state mutation record to the WAL, returning the assigned LSN.
+// When syncOnWrite is set it returns only after the record is fsynced; concurrent
+// callers share fsyncs (group commit).
+func (w *WAL) Write(opType byte, key, value []byte) (uint64, error) {
+	lsn, err := w.Append(opType, key, value)
+	if err != nil {
+		return 0, err
+	}
 	if w.syncOnWrite {
-		if err := w.file.Sync(); err != nil {
+		if err := w.WaitDurable(lsn); err != nil {
 			return 0, err
 		}
 	}
+	return lsn, nil
+}
 
-	return w.currentLSN, nil
+// SyncOnWrite reports whether this log was opened with fsync-per-commit semantics.
+func (w *WAL) SyncOnWrite() bool { return w.syncOnWrite }
+
+func (w *WAL) loadSyncErr() error {
+	w.errMu.Lock()
+	defer w.errMu.Unlock()
+	return w.syncErr
+}
+
+// WaitDurable blocks until the record with the given LSN has been fsynced.
+// If another caller's fsync already covered it, no further fsync is issued.
+func (w *WAL) WaitDurable(lsn uint64) error {
+	w.syncMu.Lock()
+	defer w.syncMu.Unlock()
+	if err := w.loadSyncErr(); err != nil {
+		return err
+	}
+	if w.syncedLSN >= lsn {
+		return nil
+	}
+	return w.syncLocked()
+}
+
+// syncLocked fsyncs everything appended so far. Caller holds syncMu.
+func (w *WAL) syncLocked() error {
+	w.mu.Lock()
+	target := w.currentLSN
+	f := w.file
+	w.mu.Unlock()
+
+	// Appends may proceed while fsync runs; they simply miss this sync and are
+	// covered by the next one. target only claims what was written before it.
+	if err := f.Sync(); err != nil {
+		w.errMu.Lock()
+		w.syncErr = err
+		w.errMu.Unlock()
+		return err
+	}
+	if target > w.syncedLSN {
+		w.syncedLSN = target
+	}
+	return nil
 }
 
 // Sync forces all buffered kernel writes to physical non-volatile storage.
 func (w *WAL) Sync() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.file.Sync()
+	w.syncMu.Lock()
+	defer w.syncMu.Unlock()
+	if err := w.loadSyncErr(); err != nil {
+		return err
+	}
+	return w.syncLocked()
+}
+
+// SyncIfEnabled fsyncs only when the log was opened with syncOnWrite.
+func (w *WAL) SyncIfEnabled() error {
+	if !w.syncOnWrite {
+		return nil
+	}
+	return w.Sync()
+}
+
+// DurableLSN returns the highest LSN known to be fsynced.
+func (w *WAL) DurableLSN() uint64 {
+	w.syncMu.Lock()
+	defer w.syncMu.Unlock()
+	return w.syncedLSN
 }
 
 // CurrentLSN returns the latest assigned Log Sequence Number.
@@ -115,6 +201,8 @@ func (w *WAL) Path() string {
 
 // Close flushes buffered writes and closes the log file.
 func (w *WAL) Close() error {
+	w.syncMu.Lock()
+	defer w.syncMu.Unlock()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	_ = w.file.Sync()
@@ -126,12 +214,16 @@ func (w *WAL) Close() error {
 // The caller MUST have flushed all dirty buffer pool pages to disk first so the
 // archived WAL records are no longer needed for recovery.
 func (w *WAL) Checkpoint() error {
+	w.syncMu.Lock()
+	defer w.syncMu.Unlock()
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if err := w.file.Sync(); err != nil {
 		return err
 	}
+	// Everything appended so far is now durable (and about to be archived).
+	w.syncedLSN = w.currentLSN
 	if err := w.file.Close(); err != nil {
 		return err
 	}
