@@ -23,21 +23,26 @@ type writeReq struct {
 	ok   bool // run appended a WAL record (so it depends on the batch fsync)
 }
 
-// committer is the group-commit queue. A single goroutine drains it: each pass
-// takes every queued write, runs them back to back under the exclusive engine
-// lock (appending to the WAL without fsync), issues ONE fsync for the whole
-// group, notifies the replication observer in LSN order, and only then
-// releases the lock and acknowledges the writers. Because the lock is held
-// across the fsync, readers and the observer never see a write before it is
-// durable, exactly as with fsync-per-write; the gain is that N queued writers
-// pay for one fsync instead of N.
+// committer is the group-commit queue. Writers enqueue a request; whichever
+// writer finds no commit in progress becomes the leader and runs the queued
+// group itself, on its own goroutine. This avoids a cross-goroutine wake-up
+// for an uncontended write, which costs up to a timer tick on Windows. If more
+// writers queued while the leader was busy, the leader hands the remaining work
+// to a drain goroutine and returns to its caller.
+//
+// A group runs back to back under the exclusive engine lock (appending to the
+// WAL without fsync), issues ONE fsync for the whole group, notifies the
+// replication observer in LSN order, and only then releases the lock and
+// acknowledges the writers. Because the lock is held across the fsync, readers
+// and the observer never see a write before it is durable, exactly as with
+// fsync-per-write; the gain is that N queued writers pay for one fsync.
+// Only one group runs at a time, so queue order is LSN order.
 type committer struct {
 	mu      sync.Mutex
 	queue   []*writeReq
-	started bool
+	running bool // a leader or drain goroutine owns the queue
 	closed  bool
-	wake    chan struct{}
-	done    chan struct{}
+	idle    *sync.Cond // signalled (on mu) when running becomes false
 }
 
 // commit runs fn through the group-commit pipeline and returns once its WAL
@@ -53,59 +58,80 @@ func (e *Engine) commit(fn func() error) error {
 		c.mu.Unlock()
 		return ErrEngineClosed
 	}
-	if !c.started {
-		c.started = true
-		c.wake = make(chan struct{}, 1)
-		c.done = make(chan struct{})
-		go e.commitLoop()
-	}
 	c.queue = append(c.queue, req)
+	lead := !c.running
+	if lead {
+		c.running = true
+	}
 	c.mu.Unlock()
 
-	select {
-	case c.wake <- struct{}{}:
-	default:
+	if lead {
+		e.lead()
 	}
 	<-req.done
 	return req.err
 }
 
-func (e *Engine) commitLoop() {
-	c := &e.cq
-	defer close(c.done)
-	for {
-		<-c.wake
-		for {
-			c.mu.Lock()
-			batch := c.queue
-			c.queue = nil
-			closed := c.closed
-			c.mu.Unlock()
-			if len(batch) == 0 {
-				if closed {
-					return
-				}
-				break
-			}
-			e.runBatch(batch)
+// takeBatch removes and returns the queued writes. When the queue is empty it
+// clears running (releasing leadership) and returns nil.
+func (c *committer) takeBatch() []*writeReq {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	batch := c.queue
+	c.queue = nil
+	if len(batch) == 0 {
+		c.running = false
+		if c.idle != nil {
+			c.idle.Broadcast()
 		}
+	}
+	return batch
+}
+
+// lead runs one group (which includes the leader's own request) on the
+// caller's goroutine. If more writers arrived meanwhile, a drain goroutine
+// keeps serving them so the leader's caller is not delayed.
+func (e *Engine) lead() {
+	c := &e.cq
+	e.runBatch(c.takeBatch())
+	c.mu.Lock()
+	more := len(c.queue) > 0
+	if !more {
+		c.running = false
+		if c.idle != nil {
+			c.idle.Broadcast()
+		}
+	}
+	c.mu.Unlock()
+	if more {
+		go e.drain()
 	}
 }
 
-// stopCommitter drains outstanding writes and stops the commit goroutine.
+// drain serves queued writes until the queue is empty, then releases leadership.
+func (e *Engine) drain() {
+	c := &e.cq
+	for {
+		batch := c.takeBatch()
+		if len(batch) == 0 {
+			return
+		}
+		e.runBatch(batch)
+	}
+}
+
+// stopCommitter rejects new writes and waits for in-flight ones to finish.
 func (e *Engine) stopCommitter() {
 	c := &e.cq
 	c.mu.Lock()
 	c.closed = true
-	started := c.started
-	c.mu.Unlock()
-	if started {
-		select {
-		case c.wake <- struct{}{}:
-		default:
-		}
-		<-c.done
+	if c.idle == nil {
+		c.idle = sync.NewCond(&c.mu)
 	}
+	for c.running {
+		c.idle.Wait()
+	}
+	c.mu.Unlock()
 }
 
 func (e *Engine) runBatch(batch []*writeReq) {
