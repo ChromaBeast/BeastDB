@@ -73,4 +73,4 @@ B+ Tree nodes serialized directly inside 4KB slotted pages.
 - [ ] Process recovery test: Crash during active load; re-open DB and verify 100% data consistency via WAL replay.
 - [ ] Sequential scan matches exact key ordering across 100,000 inserted keys.
 - [ ] Zero unpinned frame leaks under heavy concurrent read/write transactions.
-- [ ] All source files modularized to `< 200 LoC`.
+- [ ] Each source file has a single responsibility (guideline: review any file over about 400 lines; see [CONTRIBUTING](../CONTRIBUTING.md)).
