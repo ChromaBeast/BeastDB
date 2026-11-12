@@ -21,6 +21,13 @@ type APIToken struct {
 	Role        string    `json:"role"`
 	CreatedAt   time.Time `json:"created_at"`
 	CreatedBy   string    `json:"created_by"`
+	// ExpiresAt is optional; nil (or absent in older stored tokens) means no expiry.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// Expired reports whether the token has an expiry that is at or before now.
+func (t APIToken) Expired(now time.Time) bool {
+	return t.ExpiresAt != nil && !now.Before(*t.ExpiresAt)
 }
 
 // TokenEngine is the storage interface needed for token persistence.
@@ -67,6 +74,11 @@ func hashToken(raw string) string {
 
 // Create generates a new API token, saves it to partition 0x05, and activates it.
 func (ts *TokenStore) Create(name, role, createdBy string) (string, *APIToken, error) {
+	return ts.CreateWithExpiry(name, role, createdBy, nil)
+}
+
+// CreateWithExpiry is Create with an optional expiry time (nil = never expires).
+func (ts *TokenStore) CreateWithExpiry(name, role, createdBy string, expiresAt *time.Time) (string, *APIToken, error) {
 	idBytes := make([]byte, 4)
 	tokenBytes := make([]byte, 20)
 	if _, err := rand.Read(idBytes); err != nil {
@@ -89,6 +101,10 @@ func (ts *TokenStore) Create(name, role, createdBy string) (string, *APIToken, e
 		Role:        role,
 		CreatedAt:   time.Now().UTC(),
 		CreatedBy:   createdBy,
+	}
+	if expiresAt != nil {
+		e := expiresAt.UTC()
+		tok.ExpiresAt = &e
 	}
 
 	data, err := json.Marshal(tok)
@@ -135,11 +151,22 @@ func (ts *TokenStore) Delete(id string) error {
 
 // Validate checks whether a given raw token is valid in < 100ns without disk I/O.
 func (ts *TokenStore) Validate(raw string) bool {
+	_, ok := ts.ValidateRole(raw)
+	return ok
+}
+
+// ValidateRole returns the token's role if it exists and has not expired.
+// Lookup is by SHA-256 hash of the presented token (map lookup on a hash, so
+// no raw-secret comparison timing leak).
+func (ts *TokenStore) ValidateRole(raw string) (string, bool) {
 	th := hashToken(raw)
 	ts.mu.RLock()
-	_, exists := ts.tokenIndex[th]
+	tok, exists := ts.tokenIndex[th]
 	ts.mu.RUnlock()
-	return exists
+	if !exists || tok.Expired(time.Now()) {
+		return "", false
+	}
+	return tok.Role, true
 }
 
 // Reload repopulates the in-memory token cache from partition 0x05.
