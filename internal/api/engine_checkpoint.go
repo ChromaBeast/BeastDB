@@ -11,6 +11,7 @@ import (
 
 // Close flushes all dirty pages to physical disk and releases file handles.
 func (e *Engine) Close() error {
+	e.stopCommitter() // drain queued writes before tearing down files
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -38,6 +39,13 @@ func (e *Engine) Close() error {
 func (e *Engine) Checkpoint() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+
+	// Writes are applied in memory only inside a commit group that fsyncs before
+	// releasing e.mu, so nothing un-synced can exist here; sync anyway so data
+	// pages are never flushed ahead of their WAL records.
+	if err := e.wal.SyncIfEnabled(); err != nil {
+		return fmt.Errorf("checkpoint sync wal: %w", err)
+	}
 
 	if err := e.updateMeta(func(m *storage.MetaData) {
 		m.LastCheckpointLSN = e.wal.CurrentLSN()
