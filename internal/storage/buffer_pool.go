@@ -22,6 +22,30 @@ type BufferPoolManager struct {
 	clockHand int
 	mu        sync.RWMutex
 	pagePool  sync.Pool // Fix #6: reusable 4KB page buffers
+
+	// walBarrier, when set, is called before any dirty page is written to the
+	// data file. It must return only once every WAL record appended so far is
+	// durable, which preserves the write-ahead invariant even though writes are
+	// applied to pages before their group's fsync completes.
+	walBarrier func() error
+}
+
+// SetWALBarrier installs the write-ahead barrier. Call it before the pool is shared.
+func (bpm *BufferPoolManager) SetWALBarrier(fn func() error) {
+	bpm.mu.Lock()
+	defer bpm.mu.Unlock()
+	bpm.walBarrier = fn
+}
+
+// writeBack writes one dirty frame to the data file after the WAL barrier.
+// Caller must hold bpm.mu (write lock).
+func (bpm *BufferPoolManager) writeBack(f *Frame) error {
+	if bpm.walBarrier != nil {
+		if err := bpm.walBarrier(); err != nil {
+			return err
+		}
+	}
+	return bpm.disk.WritePage(f.PageID, f.Page.Data())
 }
 
 // NewBufferPoolManager creates a pool with a fixed number of in-memory frames.
@@ -127,7 +151,7 @@ func (bpm *BufferPoolManager) FlushPage(pageID uint64) error {
 
 	frame := bpm.frames[idx]
 	if frame.Page != nil && frame.IsDirty {
-		if err := bpm.disk.WritePage(frame.PageID, frame.Page.Data()); err != nil {
+		if err := bpm.writeBack(frame); err != nil {
 			return err
 		}
 		frame.IsDirty = false
@@ -142,7 +166,7 @@ func (bpm *BufferPoolManager) FlushAll() error {
 
 	for _, frame := range bpm.frames {
 		if frame.Page != nil && frame.IsDirty {
-			if err := bpm.disk.WritePage(frame.PageID, frame.Page.Data()); err != nil {
+			if err := bpm.writeBack(frame); err != nil {
 				return err
 			}
 			frame.IsDirty = false

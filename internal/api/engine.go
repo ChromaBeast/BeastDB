@@ -41,6 +41,10 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 		_ = disk.Close()
 		return nil, err
 	}
+	// Write-ahead barrier: no dirty data page may reach the data file before
+	// the WAL records that describe it are durable (group commit applies pages
+	// before the group's fsync).
+	bpm.SetWALBarrier(w.EnsureDurable)
 
 	if disk.NumPages() == 0 {
 		return initFreshV1(disk, bpm, w)
