@@ -3,7 +3,6 @@ package wal
 import (
 	"io"
 	"os"
-	"path/filepath"
 	"sync"
 )
 
@@ -110,84 +109,6 @@ func (w *WAL) Write(opType byte, key, value []byte) (uint64, error) {
 // SyncOnWrite reports whether this log was opened with fsync-per-commit semantics.
 func (w *WAL) SyncOnWrite() bool { return w.syncOnWrite }
 
-func (w *WAL) loadSyncErr() error {
-	w.errMu.Lock()
-	defer w.errMu.Unlock()
-	return w.syncErr
-}
-
-// WaitDurable blocks until the record with the given LSN has been fsynced.
-// If another caller's fsync already covered it, no further fsync is issued.
-func (w *WAL) WaitDurable(lsn uint64) error {
-	w.syncMu.Lock()
-	defer w.syncMu.Unlock()
-	if err := w.loadSyncErr(); err != nil {
-		return err
-	}
-	if w.syncedLSN >= lsn {
-		return nil
-	}
-	return w.syncLocked()
-}
-
-// syncLocked fsyncs everything appended so far. Caller holds syncMu.
-func (w *WAL) syncLocked() error {
-	w.mu.Lock()
-	target := w.currentLSN
-	f := w.file
-	w.mu.Unlock()
-
-	// Appends may proceed while fsync runs; they simply miss this sync and are
-	// covered by the next one. target only claims what was written before it.
-	if err := f.Sync(); err != nil {
-		w.errMu.Lock()
-		w.syncErr = err
-		w.errMu.Unlock()
-		return err
-	}
-	if target > w.syncedLSN {
-		w.syncedLSN = target
-	}
-	return nil
-}
-
-// Sync forces all buffered kernel writes to physical non-volatile storage.
-func (w *WAL) Sync() error {
-	w.syncMu.Lock()
-	defer w.syncMu.Unlock()
-	if err := w.loadSyncErr(); err != nil {
-		return err
-	}
-	return w.syncLocked()
-}
-
-// SyncIfEnabled fsyncs only when the log was opened with syncOnWrite.
-func (w *WAL) SyncIfEnabled() error {
-	if !w.syncOnWrite {
-		return nil
-	}
-	return w.Sync()
-}
-
-// EnsureDurable returns once every record appended so far is fsynced. It is a
-// no-op when the log was not opened with syncOnWrite, and costs no fsync when
-// a previous sync already covers the current LSN. The buffer pool calls it
-// before writing a dirty page so a data page never reaches disk ahead of the
-// WAL records that describe it.
-func (w *WAL) EnsureDurable() error {
-	if !w.syncOnWrite {
-		return nil
-	}
-	return w.WaitDurable(w.CurrentLSN())
-}
-
-// DurableLSN returns the highest LSN known to be fsynced.
-func (w *WAL) DurableLSN() uint64 {
-	w.syncMu.Lock()
-	defer w.syncMu.Unlock()
-	return w.syncedLSN
-}
-
 // CurrentLSN returns the latest assigned Log Sequence Number.
 func (w *WAL) CurrentLSN() uint64 {
 	w.mu.Lock()
@@ -209,57 +130,6 @@ func (w *WAL) Path() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.path
-}
-
-// Close flushes buffered writes and closes the log file.
-func (w *WAL) Close() error {
-	w.syncMu.Lock()
-	defer w.syncMu.Unlock()
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	_ = w.file.Sync()
-	return w.file.Close()
-}
-
-// Checkpoint rotates the WAL: syncs the current file, archives it as <path>.bak,
-// then opens a fresh append-only log starting from the next LSN.
-// The caller MUST have flushed all dirty buffer pool pages to disk first so the
-// archived WAL records are no longer needed for recovery.
-func (w *WAL) Checkpoint() error {
-	w.syncMu.Lock()
-	defer w.syncMu.Unlock()
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if err := w.file.Sync(); err != nil {
-		return err
-	}
-	// Everything appended so far is now durable (and about to be archived).
-	w.syncedLSN = w.currentLSN
-	if err := w.file.Close(); err != nil {
-		return err
-	}
-
-	// Archive the old WAL; keep one generation for safety.
-	archivePath := w.path + ".bak"
-	_ = os.Remove(archivePath)
-	if err := os.Rename(w.path, archivePath); err != nil {
-		return err
-	}
-
-	// Open a fresh log file for subsequent writes.
-	newFile, err := os.OpenFile(w.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
-	if err != nil {
-		return err
-	}
-	w.file = newFile
-
-	// Persist the rename and the new file's directory entry.
-	if dir, err := os.Open(filepath.Dir(w.path)); err == nil {
-		_ = dir.Sync()
-		_ = dir.Close()
-	}
-	return nil
 }
 
 func findHighestLSN(file *os.File) (uint64, error) {
