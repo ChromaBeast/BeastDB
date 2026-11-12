@@ -30,6 +30,20 @@ type EngineBackend interface {
 // partitions is the optional project-defined partition registry served to the Studio.
 // Call Serve() to start accepting connections.
 func NewServer(addr string, engine EngineBackend, secret []byte, role, version string, partitions []handler.PartitionEntry, tokenStore ...*auth.TokenStore) (*Server, error) {
+	return NewServerWithOptions(addr, engine, secret, role, version, partitions, Options{}, tokenStore...)
+}
+
+// Options carries optional settings for NewServerWithOptions.
+type Options struct {
+	// DataDir enables the disk-free metric.
+	DataDir string
+	// MetricsTokens are bearer tokens accepted by /metrics in addition to
+	// admin sessions. With none configured only admin sessions may scrape.
+	MetricsTokens []string
+}
+
+// NewServerWithOptions is NewServer plus optional settings.
+func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role, version string, partitions []handler.PartitionEntry, opts Options, tokenStore ...*auth.TokenStore) (*Server, error) {
 	staticFS, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		return nil, err
@@ -62,6 +76,12 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 	// Public operational health routes
 	mux.HandleFunc("/healthz", handler.HealthzHandler(version))
 	mux.HandleFunc("/readyz", handler.ReadyzHandler(engine, role))
+
+	// Prometheus metrics: admin session or bearer token required (never anonymous).
+	mux.Handle("/metrics", handler.MetricsHandler(engine, handler.MetricsConfig{
+		Role: role, Version: version, DataDir: opts.DataDir,
+		Tokens: opts.MetricsTokens, Sessions: sessions,
+	}))
 
 	// Public auth routes
 	mux.HandleFunc("/login", handler.LoginHandler(deps))
@@ -114,7 +134,7 @@ func NewServer(addr string, engine EngineBackend, secret []byte, role, version s
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: securityHeaders(mux),
+		Handler: securityHeaders(handler.HTTPMetrics(mux)),
 	}
 
 	return &Server{httpServer: srv}, nil
