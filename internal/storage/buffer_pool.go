@@ -33,24 +33,6 @@ type BufferPoolManager struct {
 	walBarrier func() error
 }
 
-// SetWALBarrier installs the write-ahead barrier. Call it before the pool is shared.
-func (bpm *BufferPoolManager) SetWALBarrier(fn func() error) {
-	bpm.mu.Lock()
-	defer bpm.mu.Unlock()
-	bpm.walBarrier = fn
-}
-
-// writeBack writes one dirty frame to the data file after the WAL barrier.
-// Caller must hold bpm.mu (write lock).
-func (bpm *BufferPoolManager) writeBack(f *Frame) error {
-	if bpm.walBarrier != nil {
-		if err := bpm.walBarrier(); err != nil {
-			return err
-		}
-	}
-	return bpm.disk.WritePage(f.PageID, f.Page.Data())
-}
-
 // NewBufferPoolManager creates a pool with a fixed number of in-memory frames.
 func NewBufferPoolManager(disk *DiskManager, poolSize int) *BufferPoolManager {
 	frames := make([]*Frame, poolSize)
@@ -179,27 +161,4 @@ func (bpm *BufferPoolManager) FlushAll() error {
 		}
 	}
 	return bpm.disk.Sync()
-}
-
-// HitMiss returns cumulative FetchPage cache hits and misses.
-func (bpm *BufferPoolManager) HitMiss() (hits, misses uint64) {
-	return bpm.hits.Load(), bpm.misses.Load()
-}
-
-// Stats returns operational metrics for the buffer pool.
-func (bpm *BufferPoolManager) Stats() (poolSize, cachedPages, pinnedPages, dirtyPages int) {
-	bpm.mu.RLock()
-	defer bpm.mu.RUnlock()
-
-	poolSize = bpm.poolSize
-	cachedPages = len(bpm.pageTable)
-	for _, frame := range bpm.frames {
-		if frame.PinCount() > 0 {
-			pinnedPages++
-		}
-		if frame.IsDirty {
-			dirtyPages++
-		}
-	}
-	return
 }
