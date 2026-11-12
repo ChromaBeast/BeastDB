@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
@@ -21,9 +22,14 @@ type Engine struct {
 	observer       CommitObserver
 	secIndex       *index.SecondaryIndex
 	readOnly       bool
-	failed         error               // set by halt; blocks writes until restart
-	reclaim        map[uint64]int      // data page -> free bytes after compaction, or unknownFree
+	failed         error          // set by halt; blocks writes until restart
+	reclaim        map[uint64]int // data page -> free bytes after compaction, or unknownFree
 	mu             sync.RWMutex
+	cq             committer       // group-commit queue (engine_commit.go)
+	pending        []pendingNotify // commit events awaiting the group fsync; guarded by mu
+
+	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
+	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
 }
 
 // NewEngine initializes the database engine components with recovery support.
@@ -39,6 +45,10 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 		_ = disk.Close()
 		return nil, err
 	}
+	// Write-ahead barrier: no dirty data page may reach the data file before
+	// the WAL records that describe it are durable (group commit applies pages
+	// before the group's fsync).
+	bpm.SetWALBarrier(w.EnsureDurable)
 
 	if disk.NumPages() == 0 {
 		return initFreshV1(disk, bpm, w)
@@ -114,18 +124,14 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 			return nil
 		}
 		keyUint := binary.LittleEndian.Uint64(key)
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		return e.putLocked(keyUint, value)
+		return e.commit(func() error { return e.putLocked(keyUint, value) })
 
 	case wal.OpDelete:
 		if len(key) < 8 {
 			return nil
 		}
 		keyUint := binary.LittleEndian.Uint64(key)
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		return e.deleteLocked(keyUint)
+		return e.commit(func() error { return e.deleteLocked(keyUint) })
 
 	case wal.OpBatch:
 		batchOps, err := wal.DecodeBatchPayload(value)
@@ -160,4 +166,3 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 		return nil
 	}
 }
-

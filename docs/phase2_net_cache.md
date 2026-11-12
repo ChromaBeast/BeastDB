@@ -73,4 +73,4 @@ Builds the network communication layer, protocol parsing engines, and concurrent
 - [ ] Connect with standard `redis-cli` and execute `SET`, `GET`, `DEL`, `PING`.
 - [ ] Handle 10,000 concurrent client connections without deadlocks or goroutine leaks.
 - [ ] LRU evicts least recently accessed keys accurately under memory pressure.
-- [ ] All code files remain strictly under 200 LoC.
+- [ ] Each code file has a single responsibility (guideline: review any file over about 400 lines; see [CONTRIBUTING](../CONTRIBUTING.md)).

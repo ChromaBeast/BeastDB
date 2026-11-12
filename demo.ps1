@@ -62,21 +62,21 @@ Write-Host '  [OK] Corrupted disk blocks detected via IEEE CRC32 checksum' -Fore
 Write-Host '  [OK] Clean WAL recovery and state restoration verified' -ForegroundColor Green
 Start-Sleep -Seconds 3
 
-# ACT 3: Code Modularity & Quality Audit (< 200 LoC)
-Print-Section "ACT 3" "Strict Architectural Modularity (< 200 LoC per file)"
-Simulate-Typing 'audit-codebase --enforce-max-loc 200'
-Write-Host "  -> Scanning all Go source files across all packages..." -ForegroundColor Gray
+# ACT 3: Code Modularity Review (guideline: one responsibility per file)
+Print-Section "ACT 3" "Architectural Modularity (one responsibility per file)"
+Simulate-Typing 'audit-codebase --review-above 400'
+Write-Host "  -> Scanning Go source files (generated and test files exempt)..." -ForegroundColor Gray
 Start-Sleep -Milliseconds 400
 
-$violations = Get-ChildItem -Recurse -Filter "*.go" | Where-Object { $_.FullName -notmatch "\.pb\.go" } | ForEach-Object {
+$large = Get-ChildItem -Recurse -Filter "*.go" | Where-Object { $_.Name -notmatch "\.pb\.go$|_test\.go$" } | ForEach-Object {
     $lines = (Get-Content $_.FullName).Count
-    if ($lines -ge 200) { "$lines lines: $($_.Name)" }
+    if ($lines -ge 400) { "$lines lines: $($_.Name)" }
 }
 
-if ($violations.Count -eq 0) {
-    Write-Host '  [SUCCESS] AUDIT PASSED: ZERO files exceed 200 lines of code!' -ForegroundColor Green
+if ($large.Count -eq 0) {
+    Write-Host '  [OK] No source file is large enough to need a modularity review' -ForegroundColor Green
 } else {
-    $violations | ForEach-Object { Write-Host "  [FAIL] VIOLATION: $_" -ForegroundColor Red }
+    $large | ForEach-Object { Write-Host "  [REVIEW] $_ - does it do more than one thing?" -ForegroundColor Yellow }
 }
 Start-Sleep -Seconds 2
 

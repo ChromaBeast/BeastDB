@@ -86,6 +86,30 @@ Open `http://localhost:8088` in your browser and sign in with username `admin`.
 
 ---
 
+## Design system and planned screens
+
+A redesign of Studio is specified in Figma (design only; `studio/` is unchanged). It targets people who are not database experts and follows the familiar Firebase/Supabase console layout: sidebar, collection list, records table, detail drawer.
+
+**Planned screens (10):** Table Editor, Overview, Query (visual builder that shows the equivalent `beastctl`/SDK call), Indexes, Replication, Backups, API Keys & Roles, Metrics, Logs & Audit, Settings.
+
+**Design tokens** (dark theme; Light mode is not designed):
+
+| Token | Value | Use |
+|---|---|---|
+| `accent/default` | `#A8F21A` (logo neon green; matches `brand.lime` in `tailwind.config.ts`) | primary actions, selection, lead chart line |
+| `text/on-accent` | `#0A1002` | text on neon (contrast 14.1:1) |
+| `bg/base`, `bg/panel`, `bg/raised` | `#0E120E`, `#151A15`, `#1C231B` | green-tinted dark surfaces |
+| `border/default` | `#2A342A` | borders |
+| `text/primary`, `text/muted` | `#F2F5F0`, `#93A08E` | text (16:1 and 6.4:1 on panel) |
+| `status/success` | `#2DD4BF` (teal, so it is not confused with the accent) | healthy, active |
+| `status/warning`, `status/danger`, `status/info` | `#FBBF24`, `#F87171`, `#60A5FA` | warnings, errors, info |
+
+Typography is Inter with Roboto Mono for code. Components: Button (Primary/Secondary/Danger), Status pill, Input, Nav item, Stat card, Toggle, Table row, Card.
+
+**Not yet backed by the engine:** encryption at rest, two-factor, collections/namespaces and the visual query builder, index suggestions, and a restore-to-new-database flow are shown in the design but are roadmap items (see [upgrade spec](upgrade-spec.md)). The mocks use placeholder data.
+
+---
+
 ## 🔥 Firebase-Style UI & Universal Capabilities
 
 - **3-Pane Collection Explorer**: Firebase Console style navigation: Left Partition Rail (with color-coded indicators) → Document List (with cover art/avatar badges) → Full-height Document Viewer.
