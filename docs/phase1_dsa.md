@@ -67,5 +67,5 @@ Focuses on low-level memory representation, zero-copy byte semantics, and pure G
 
 ## Success Verification
 - [ ] 0 allocations per operation on hot lookup paths.
-- [ ] All data structure files adhere to the strict `< 200 LoC` limit.
+- [ ] Each data structure file has a single responsibility (guideline: review any file over about 400 lines; see [CONTRIBUTING](../CONTRIBUTING.md)).
 - [ ] Comprehensive unit test coverage (>90%) with fuzz tests for edge cases.
