@@ -24,7 +24,7 @@ var (
 	ErrReadOnlyReplica = errors.New("writes are not permitted on read-only replica")
 )
 
-// Put logs mutation to WAL, stores tuple in slotted page, and indexes key in B+ Tree.
+// Put logs mutation (group-committed: returns once the WAL record is fsynced) to WAL, stores tuple in slotted page, and indexes key in B+ Tree.
 func (e *Engine) Put(key uint64, value []byte) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
@@ -32,9 +32,7 @@ func (e *Engine) Put(key uint64, value []byte) error {
 	if len(value) > MaxValueSize {
 		return ErrRecordTooLarge
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.putLocked(key, value)
+	return e.commit(func() error { return e.putLocked(key, value) })
 }
 
 // PutIfAbsent inserts only when key is not already present.
@@ -45,16 +43,16 @@ func (e *Engine) PutIfAbsent(key uint64, value []byte) error {
 	if len(value) > MaxValueSize {
 		return ErrRecordTooLarge
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	_, err := e.tree.Find(key)
-	if err == nil {
-		return ErrRecordExists
-	}
-	if err != index.ErrKeyNotFound {
-		return err
-	}
-	return e.putLocked(key, value)
+	return e.commit(func() error {
+		_, err := e.tree.Find(key)
+		if err == nil {
+			return ErrRecordExists
+		}
+		if err != index.ErrKeyNotFound {
+			return err
+		}
+		return e.putLocked(key, value)
+	})
 }
 
 func (e *Engine) putLocked(key uint64, value []byte) error {
@@ -63,7 +61,7 @@ func (e *Engine) putLocked(key uint64, value []byte) error {
 	}
 	var keyBytes [8]byte
 	binary.LittleEndian.PutUint64(keyBytes[:], key)
-	lsn, err := e.wal.Write(wal.OpPut, keyBytes[:], value)
+	lsn, err := e.wal.Append(wal.OpPut, keyBytes[:], value)
 	if err != nil {
 		return e.halt(err)
 	}
@@ -72,7 +70,7 @@ func (e *Engine) putLocked(key uint64, value []byte) error {
 	}
 
 	e.indexValueLocked(key, value)
-	e.notifyCommit(lsn, wal.OpPut, keyBytes[:], value)
+	e.queueNotify(lsn, wal.OpPut, keyBytes[:], value)
 	return nil
 }
 
