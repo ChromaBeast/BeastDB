@@ -23,6 +23,10 @@ When bound to non-loopback interfaces or when `BEASTDB_ENV=production`, the serv
 ### Session Secret & API Tokens
 - Web sessions are authenticated via HMAC-SHA256 signatures backed by `BEASTDB_SESSION_SECRET` or persisted to `<data-dir>/session.key` (0600 file permissions).
 - gRPC requests require Bearer token authorization when `BEASTDB_API_TOKEN` is configured or API tokens exist in the token store.
+- **Roles are enforced per gRPC method** (see [V1 Semantics §4](../v1-semantics.md)): `viewer` (read), `writer` (read and write), `admin` (everything), `replication` (replica streaming only). The static `--api-token` acts as `admin`. Give each application its own token with the smallest role it needs.
+- **Followers must authenticate with a `replication` (or `admin`) token.** A viewer or writer token is rejected with `PERMISSION_DENIED` on `StreamWAL`/`Ack`.
+- **Token expiry:** `POST /api/tokens` accepts an optional `expires_in_seconds` (0 or absent = never, maximum 10 years) and rejects an unknown `role` with HTTP 400. Studio does not yet expose an expiry field.
+- **Upgrade note:** tokens created earlier default to `admin` and keep working. Tokens whose stored role is not one of the four roles now get `PERMISSION_DENIED` on every call; recreate them.
 
 ---
 

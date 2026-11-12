@@ -52,7 +52,7 @@ A modular, zero-allocation database architecture built from first principles in 
 3. The RESP parser processes byte streams in-place into command frames without heap allocations.
 
 ### Write Execution Flow
-1. **WAL Append:** Before modifying any page in memory, a log record is written to the WAL and synced (`fdatasync`).
+1. **Group commit:** Writers enqueue their operation. One committer goroutine drains the queue, takes the engine lock exclusively, and for each queued write checks its condition, appends the record to the WAL (no `fsync` yet) and applies it in memory. It then issues **one** `fsync` for the whole group, notifies replication in LSN order, releases the lock, and only then acknowledges the writers. The lock is held across the `fsync` so readers and replicas never see a write before it is durable.
 2. **Buffer Pool Pin:** The targeted 4KB disk page is fetched into a memory frame and pinned.
 3. **Slotted Page Update:** The tuple is inserted into the slotted page, updating the slot array and free space pointer.
 4. **Index Update:** If indexed, the B+ tree is traversed; keys and record pointers are updated, splitting nodes if page capacity is exceeded.
@@ -66,6 +66,6 @@ A modular, zero-allocation database architecture built from first principles in 
 ---
 
 ## 3. Storage Invariants
-- **Write-Ahead Invariant:** Log records must hit disk before dirty database pages containing those modifications are written.
+- **Write-Ahead Invariant:** Log records must hit disk before dirty database pages containing those modifications are written. Because group commit applies a write to its page before the group's `fsync`, the buffer pool enforces this with a **WAL barrier** (`WAL.EnsureDurable`) called before every dirty-page write (eviction, `FlushPage`, `FlushAll`). If the barrier fails, the page is not written. The barrier costs no extra `fsync` when the WAL is already durable up to the current LSN.
 - **Page Isolation:** Every 4KB page maintains its own self-describing header, slot array, and CRC checksum.
 - **Pin Safety:** A page frame with `pin_count > 0` cannot be evicted from the buffer pool under any circumstances.
