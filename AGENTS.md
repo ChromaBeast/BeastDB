@@ -23,4 +23,4 @@ Read by Codex and other agents that use `AGENTS.md`. Claude Code reads it throug
 
 ## Before you finish
 
-Run `go build ./... && go vet ./... && go test ./... -race`. `TestEngineSystemWorkloadBenchmark` has a fixed 1000 ops/s floor and can fail when the machine is loaded; re-run it alone before treating a failure as a regression.
+Run `go build ./... && go vet ./... && go test ./... -race`. `TestEngineSystemWorkloadBenchmark` has a fixed 1000 ops/s floor and is fsync-bound, so it fails when other packages hit the disk at the same time (CI measured ~320 ops/s in parallel vs ~1700 with `-p 1` on Windows). CI runs `go test -p 1`; locally, re-run it alone before treating a failure as a regression.
