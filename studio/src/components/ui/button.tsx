@@ -7,12 +7,12 @@ const styles = cva(
   {
     variants: {
       variant: {
-        default: "bg-beast-lime text-black font-semibold shadow hover:bg-beast-lime-hover shadow-[0_0_15px_rgba(168,242,26,0.18)]",
+        default: "bg-beast-lime text-primary-foreground font-semibold hover:bg-beast-lime-hover",
         secondary: "border border-border bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
         outline: "border border-border bg-card shadow-sm hover:bg-muted hover:text-foreground",
         ghost: "hover:bg-muted hover:text-foreground",
         destructive:
-          "bg-destructive text-destructive-foreground hover:opacity-90",
+          "border border-destructive/30 bg-destructive/15 text-destructive hover:bg-destructive/25",
       },
       size: {
         default: "h-9 px-4 py-2",

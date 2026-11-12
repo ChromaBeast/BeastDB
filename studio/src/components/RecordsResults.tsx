@@ -39,7 +39,7 @@ export function RecordsResults({ records, view, onSelect, onNotice }: Props) {
         <button
           key={r.keyStr}
           onClick={() => onSelect(r)}
-          className="min-w-0 rounded-lg border bg-card p-5 text-left shadow-sm hover:border-foreground/30 hover:bg-accent/30"
+          className="min-w-0 rounded-xl border border-border bg-card p-5 text-left hover:bg-muted/50"
         >
           <div className="flex items-start justify-between gap-2">
             <span className="truncate font-medium">{r.primaryLabel}</span>
@@ -62,20 +62,20 @@ export function RecordsResults({ records, view, onSelect, onNotice }: Props) {
   return (
     <>
       {cards}
-      <div className="hidden overflow-hidden rounded-lg border bg-card shadow-sm md:block">
+      <div className="hidden overflow-hidden rounded-xl border border-border bg-card md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-5 py-3 font-medium">Record</th>
-                <th className="px-4 py-3 font-medium">Type</th>
-                <th className="px-4 py-3 font-medium">Partition</th>
-                <th className="px-4 py-3 font-medium">Key</th>
-                <th className="px-4 py-3 font-medium">Size</th>
-                <th className="px-4 py-3 text-right font-medium">Actions</th>
+                <th className="px-5 py-3 font-semibold">Record</th>
+                <th className="px-4 py-3 font-semibold">Type</th>
+                <th className="px-4 py-3 font-semibold">Partition</th>
+                <th className="px-4 py-3 font-semibold">Key</th>
+                <th className="px-4 py-3 font-semibold">Size</th>
+                <th className="px-4 py-3 text-right font-semibold">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-border">
               {records.map((r) => (
                 <tr key={r.keyStr} className="hover:bg-accent/50">
                   <td className="max-w-[360px] px-5 py-3">

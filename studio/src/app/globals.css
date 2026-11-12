@@ -24,28 +24,33 @@
   --input: 240 5.9% 90%;
   --ring: 80 89% 45%;
   --radius: 0.5rem;
+  --sidebar: 240 4.8% 97%;
+  --code: 240 4.8% 95.9%;
 }
 .dark {
+  /* Figma "BeastDB / Color" tokens: bg/base, bg/panel, bg/raised, border/default, text/*, accent/default */
   color-scheme: dark;
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 4.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 4.9%;
-  --popover-foreground: 0 0% 98%;
+  --background: 120 14% 6%;
+  --foreground: 100 17% 95%;
+  --card: 120 11% 9%;
+  --card-foreground: 100 17% 95%;
+  --popover: 120 11% 9%;
+  --popover-foreground: 100 17% 95%;
   --primary: 80 89% 53%;
-  --primary-foreground: 240 10% 3.9%;
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 80 89% 53%;
-  --accent-foreground: 240 10% 3.9%;
-  --destructive: 0 62.8% 30.6%;
+  --primary-foreground: 90 70% 3%;
+  --secondary: 112 13% 12%;
+  --secondary-foreground: 100 17% 95%;
+  --muted: 112 13% 12%;
+  --muted-foreground: 107 8% 60%;
+  --accent: 112 13% 12%;
+  --accent-foreground: 100 17% 95%;
+  --destructive: 0 90% 71%;
   --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
+  --border: 120 12% 18%;
+  --input: 120 12% 18%;
   --ring: 80 89% 53%;
+  --sidebar: 120 11% 8%;
+  --code: 120 14% 5%;
 }
 * {
   border-color: hsl(var(--border));
