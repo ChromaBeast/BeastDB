@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
@@ -26,6 +27,9 @@ type Engine struct {
 	mu             sync.RWMutex
 	cq             committer       // group-commit queue (engine_commit.go)
 	pending        []pendingNotify // commit events awaiting the group fsync; guarded by mu
+
+	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
+	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
 }
 
 // NewEngine initializes the database engine components with recovery support.
