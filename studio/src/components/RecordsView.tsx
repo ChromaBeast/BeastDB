@@ -132,7 +132,8 @@ export function RecordsView(p: Props) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Breadcrumb partitionLabel={partitionTitle} recordLabel={p.selected?.primaryLabel} onBack={() => setPane("partitions")} />
-          <h1 id="records-title" className="mt-1 text-2xl font-bold tracking-tight">Explorer</h1>
+          <h1 id="records-title" className="mt-1 text-[22px] font-bold leading-tight tracking-tight">Table Editor</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Browse, search and edit your records.</p>
         </div>
       </div>
 

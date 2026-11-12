@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { StudioHeader, StudioView } from "../components/StudioHeader";
+import { StudioSidebar, StudioView } from "../components/StudioSidebar";
 import { RecordsView } from "../components/RecordsView";
 import { OverviewView } from "../components/OverviewView";
 import { OperationsView } from "../components/OperationsView";
@@ -92,16 +92,17 @@ export default function StudioDashboard() {
   };
 
   return (
-    <div className={`${view === "explorer" ? "flex h-dvh flex-col overflow-hidden" : "min-h-screen"} bg-background text-foreground`}>
-      <StudioHeader view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} onOpenTokens={() => setTokensOpen(true)} />
+    <div className="flex min-h-dvh flex-col bg-background text-foreground md:h-dvh md:flex-row md:overflow-hidden">
+      <StudioSidebar view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} onOpenTokens={() => setTokensOpen(true)} />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:overflow-y-auto">
       {data.user?.role === "viewer" && (
-        <div className="border-b bg-amber-50 dark:bg-amber-950/20 px-4 py-2 text-center text-sm text-amber-800 dark:text-amber-200">
+        <div className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning">
           You have view-only access — contact an admin to make changes.
         </div>
       )}
       <main className={view === "explorer"
-        ? "mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col px-4 py-4 md:px-8 md:py-5"
-        : "mx-auto max-w-[1600px] px-4 py-8 md:px-8 md:py-10"}>
+        ? "flex min-h-0 w-full flex-1 flex-col px-4 py-4 md:px-8 md:py-6"
+        : "w-full max-w-[1400px] px-4 py-6 md:px-8 md:py-8"}>
         {view === "explorer" && (
           <RecordsView
             records={data.records}
@@ -149,6 +150,7 @@ export default function StudioDashboard() {
           />
         )}
       </main>
+      </div>
       <NewRecordDialog open={newOpen} onClose={() => setNewOpen(false)} onSave={data.save} onLookup={data.lookup} onNotice={showNotice} />
       <ApiTokensDialog open={tokensOpen} onClose={() => setTokensOpen(false)} onNotice={showNotice} />
       <KeyAnalyzerDialog open={analyzerOpen} onClose={() => setAnalyzerOpen(false)} />

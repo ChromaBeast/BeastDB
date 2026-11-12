@@ -10,9 +10,9 @@
 </head>
 <body>
   <main class="login-shell">
-    <div class="login-top"><div class="brand-logo" role="img" aria-label="BeastDB"><img class="brand-logo-light" src="/brand/beastdb-horizontal-light.svg" alt=""><img class="brand-logo-dark" src="/brand/beastdb-horizontal-dark.svg" alt=""></div><button id="theme" type="button" class="theme-button" aria-label="Toggle color theme">◐</button></div>
+    <div class="login-top"><button id="theme" type="button" class="theme-button" aria-label="Toggle color theme">◐</button></div>
+    <div class="login-brand" role="img" aria-label="BeastDB"><img class="brand-logo-light" src="/brand/beastdb-stacked-light.svg" alt=""><img class="brand-logo-dark" src="/brand/beastdb-stacked-dark.svg" alt=""></div>
     <section class="login-card" aria-labelledby="login-title">
-      <p class="eyebrow">DATABASE CONSOLE</p>
       <h1 id="login-title">Welcome back</h1>
       <p class="intro">Sign in to explore records and manage your database.</p>
       <form id="login-form" method="post" action="/login">
@@ -22,7 +22,7 @@
         <button id="submit" class="submit" type="submit">Sign in</button>
       </form>
     </section>
-    <p class="footer">BeastDB Studio · Secure database access</p>
+    <p class="footer">BeastDB Studio · B+ tree · ARIES WAL · 4 KiB pages</p>
   </main>
   <script>
     document.getElementById('theme').addEventListener('click', function () {

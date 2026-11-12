@@ -3,6 +3,7 @@ import { useState, useMemo } from "react";
 import { FileText, Star } from "lucide-react";
 import { UniversalRecord } from "../types";
 import { formatKeyCompact } from "../utils/key-decoder";
+import { KeyStrip } from "./KeyStrip";
 import { PaginationBar } from "./PaginationBar";
 
 interface Props {
@@ -65,7 +66,7 @@ export function RecordTableView({
               <th className="w-28 px-3 py-2.5 font-medium text-muted-foreground">Status</th>
               <th className="w-20 px-3 py-2.5 font-medium text-muted-foreground">Rating</th>
               <th className="px-3 py-2.5 font-medium text-muted-foreground">Attributes</th>
-              <th className="w-28 px-3 py-2.5 text-right font-medium text-muted-foreground">Key</th>
+              <th className="w-40 px-3 py-2.5 text-right font-medium text-muted-foreground">Key</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
@@ -124,6 +125,7 @@ export function RecordTableView({
                     </div>
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-[11px] text-muted-foreground">
+                    <KeyStrip keyStr={r.keyStr} className="ml-auto mb-1" />
                     {formatKeyCompact(r.keyStr)}
                   </td>
                 </tr>
