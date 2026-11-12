@@ -54,7 +54,13 @@ func (e *Engine) Checkpoint() error {
 	if err := e.disk.Sync(); err != nil {
 		return fmt.Errorf("checkpoint sync data file: %w", err)
 	}
-	return e.wal.Checkpoint()
+	ckptLSN := e.wal.CurrentLSN()
+	if err := e.wal.Checkpoint(); err != nil {
+		return err
+	}
+	e.lastCkptLSN.Store(ckptLSN)
+	e.lastCkptUnix.Store(time.Now().Unix())
+	return nil
 }
 
 // StartAutoCheckpoint checkpoints whenever the WAL exceeds maxWALBytes, polling every

@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 )
 
 var (
@@ -22,6 +23,8 @@ type BufferPoolManager struct {
 	clockHand int
 	mu        sync.RWMutex
 	pagePool  sync.Pool // Fix #6: reusable 4KB page buffers
+
+	hits, misses atomic.Uint64 // FetchPage cache hit/miss counters
 }
 
 // NewBufferPoolManager creates a pool with a fixed number of in-memory frames.
@@ -48,6 +51,7 @@ func (bpm *BufferPoolManager) FetchPage(pageID uint64) (*SlottedPage, error) {
 		frame.Pin()
 		page := frame.Page
 		bpm.mu.RUnlock()
+		bpm.hits.Add(1)
 		return page, nil
 	}
 	bpm.mu.RUnlock()
@@ -59,9 +63,11 @@ func (bpm *BufferPoolManager) FetchPage(pageID uint64) (*SlottedPage, error) {
 	// Double-check: another goroutine may have loaded the page while we waited.
 	if idx, exists := bpm.pageTable[pageID]; exists {
 		bpm.frames[idx].Pin()
+		bpm.hits.Add(1)
 		return bpm.frames[idx].Page, nil
 	}
 
+	bpm.misses.Add(1)
 	return bpm.loadPage(pageID)
 }
 
@@ -149,6 +155,11 @@ func (bpm *BufferPoolManager) FlushAll() error {
 		}
 	}
 	return bpm.disk.Sync()
+}
+
+// HitMiss returns cumulative FetchPage cache hits and misses.
+func (bpm *BufferPoolManager) HitMiss() (hits, misses uint64) {
+	return bpm.hits.Load(), bpm.misses.Load()
 }
 
 // Stats returns operational metrics for the buffer pool.
