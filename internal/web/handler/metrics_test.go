@@ -119,14 +119,19 @@ func TestMetricsAuthAndFormat(t *testing.T) {
 	}
 	body := rec.Body.String()
 	validateExposition(t, body)
-	for _, want := range []string{
+	wants := []string{
 		`beastdb_build_info{version="v\"1",role="follower"} 1`,
 		"beastdb_wal_size_bytes ", "beastdb_wal_current_lsn ", "beastdb_buffer_pool_dirty_pages ",
 		"beastdb_buffer_pool_pinned_pages ", "beastdb_replica_applied_lsn 7",
 		`beastdb_requests_total{protocol="grpc",method="/beastdb.v1.KV/Get",code="NotFound"} 1`,
 		`beastdb_request_duration_seconds_bucket{protocol="grpc",method="/beastdb.v1.KV/Get",le="+Inf"} 2`,
-		"beastdb_disk_free_bytes ",
-	} {
+	}
+	// Disk-free is only reported on platforms that support it (unix); it is
+	// omitted elsewhere, e.g. Windows.
+	if _, ok := metrics.DiskFreeBytes("."); ok {
+		wants = append(wants, "beastdb_disk_free_bytes ")
+	}
+	for _, want := range wants {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q in output", want)
 		}
