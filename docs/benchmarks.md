@@ -51,6 +51,12 @@ Measured on 12th Gen Intel(R) Core(TM) i5-12450HX:
 
 ---
 
+### Concurrent writes and group commit
+
+Writers now share `fsync`s (group commit, see [architecture](architecture.md)). On one Apple-silicon laptop the engine benchmark `BenchmarkEngineConcurrentWrite` (96 concurrent writer goroutines) measured about 7.8 ms/op before and 0.5 ms/op after; `BenchmarkEnginePointWrite` (one sequential writer) stays `fsync`-bound at about 9 ms/op. These are single-machine, in-process numbers and not a comparison with other databases. For end-to-end gRPC workloads use `beastbench` and follow the [benchmarking guide](benchmarking.md).
+
+---
+
 ## 4. Crash Recovery & Disaster Recovery RTO
 
 Measurements taken using `cmd/beastctl/backup_drill_test.go`:
