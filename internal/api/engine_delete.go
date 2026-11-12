@@ -11,9 +11,7 @@ func (e *Engine) Delete(key uint64) error {
 	if e.IsReadOnly() {
 		return ErrReadOnlyReplica
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.deleteLocked(key)
+	return e.commit(func() error { return e.deleteLocked(key) })
 }
 
 func (e *Engine) deleteLocked(key uint64) error {
@@ -22,7 +20,7 @@ func (e *Engine) deleteLocked(key uint64) error {
 	}
 	var keyBytes [8]byte
 	binary.LittleEndian.PutUint64(keyBytes[:], key)
-	lsn, err := e.wal.Write(wal.OpDelete, keyBytes[:], nil)
+	lsn, err := e.wal.Append(wal.OpDelete, keyBytes[:], nil)
 	if err != nil {
 		return e.halt(err)
 	}
@@ -32,6 +30,6 @@ func (e *Engine) deleteLocked(key uint64) error {
 	}
 
 	e.unindexValueLocked(key)
-	e.notifyCommit(lsn, wal.OpDelete, keyBytes[:], nil)
+	e.queueNotify(lsn, wal.OpDelete, keyBytes[:], nil)
 	return nil
 }

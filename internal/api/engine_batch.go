@@ -50,8 +50,11 @@ func (e *Engine) BatchWriteIf(ops []BatchOperation, conds []KeyCondition) error 
 		return err
 	}
 
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	return e.commit(func() error { return e.batchWriteLocked(ops, conds) })
+}
+
+// batchWriteLocked runs under e.mu inside the group-commit pipeline.
+func (e *Engine) batchWriteLocked(ops []BatchOperation, conds []KeyCondition) error {
 	if e.failed != nil {
 		return e.failed
 	}
@@ -87,7 +90,7 @@ func (e *Engine) BatchWriteIf(ops []BatchOperation, conds []KeyCondition) error 
 	}
 
 	// 2. Commit the entire batch atomically to the WAL
-	lsn, err := e.wal.Write(wal.OpBatch, nil, payload)
+	lsn, err := e.wal.Append(wal.OpBatch, nil, payload)
 	if err != nil {
 		return e.halt(err)
 	}
@@ -108,9 +111,7 @@ func (e *Engine) BatchWriteIf(ops []BatchOperation, conds []KeyCondition) error 
 	}
 
 	// 4. Notify replication observer of the atomic batch commit as a single unit
-	if e.observer != nil {
-		e.observer.OnCommit(lsn, wal.OpBatch, nil, payload)
-	}
+	e.queueNotify(lsn, wal.OpBatch, nil, payload)
 
 	return nil
 }

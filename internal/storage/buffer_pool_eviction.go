@@ -45,7 +45,7 @@ func (bpm *BufferPoolManager) evictFrame(idx int) error {
 		return nil
 	}
 	if victim.IsDirty {
-		if err := bpm.disk.WritePage(victim.PageID, victim.Page.Data()); err != nil {
+		if err := bpm.writeBack(victim); err != nil {
 			return err
 		}
 		victim.IsDirty = false

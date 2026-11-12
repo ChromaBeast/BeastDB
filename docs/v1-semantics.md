@@ -17,7 +17,9 @@
 ## 2. Operations & Execution Contracts
 
 ### `Put(key uint64, value []byte)`
-* **Durability Guarantee:** Synchronous write-ahead log (`WAL`) persistence. A write is acknowledged only after `file.Sync()` (`fdatasync`) completes successfully on disk.
+* **Durability Guarantee:** Synchronous write-ahead log (`WAL`) persistence. A write is acknowledged only after an `fsync` covering its WAL record completes successfully on disk.
+* **Group commit:** Concurrent writers are queued and share one `fsync` per group. The durability guarantee is unchanged (no write is acknowledged before its record is durable, and readers and replication never observe a write before it is durable), but a group of N writers costs one `fsync` instead of N. A single sequential writer sees no speedup.
+* **Failed fsync:** If the group `fsync` fails, the engine halts (fail-stop): every write in the group returns the error, later writes are rejected until restart, and the failure is sticky because retrying `fsync` after an error can report false success.
 * **Overwrite Semantics:** If `key` exists, the B+ Tree record pointer (`RID`) is atomically updated to the new slotted page location.
 * **Atomicity:** Single-key atomic mutation.
 
@@ -61,7 +63,26 @@
 
 ---
 
-## 4. Supported Platform & Deployment Matrix
+## 4. Authorization (gRPC)
+
+Authentication is a Bearer token: the static `--api-token` (treated as `admin`) or an API token from the token store. Authorization is **deny by default** per method:
+
+| Role | Allowed methods |
+|---|---|
+| `viewer` | `Get`, `Scan` |
+| `writer` | `Get`, `Scan`, `Put`, `Delete`, `BatchWrite` |
+| `admin` | all client methods and `ReplicationService` |
+| `replication` | `ReplicationService.StreamWAL`, `ReplicationService.Ack` only |
+
+- A missing, malformed, unknown or expired token returns `UNAUTHENTICATED`. A valid token whose role may not call the method returns `PERMISSION_DENIED`.
+- Any gRPC method not in the role map is denied for every role, including `admin` and the static token. Register new methods in `methodRoles` (`internal/api/grpc_auth.go`).
+- A stored token with a role outside the four above can call nothing.
+- Tokens may carry an optional expiry (`expires_at`); a token is rejected once the current time reaches it. Tokens created before expiry support never expire.
+- With no static token and no token store, the interceptor is open (development only).
+
+---
+
+## 5. Supported Platform & Deployment Matrix
 
 | Component | Supported Version / Target | Notes |
 |---|---|---|

@@ -74,6 +74,8 @@ func main() {
 
 	tokenStore := initTokenStore(engine)
 	grpcOpts := api.MessageSizeServerOptions()
+	// Metrics interceptors run first so they also observe auth rejections.
+	grpcOpts = append(grpcOpts, grpc.ChainUnaryInterceptor(api.MetricsUnaryInterceptor()), grpc.ChainStreamInterceptor(api.MetricsStreamInterceptor()))
 	if *tlsCert != "" && *tlsKey != "" {
 		creds, err := loadServerTLS(*tlsCert, *tlsKey, *tlsCA)
 		if err != nil {
@@ -84,7 +86,7 @@ func main() {
 	}
 	if *apiToken != "" || tokenStore != nil {
 		authInterceptor := api.NewAuthInterceptor(*apiToken, tokenStore)
-		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(authInterceptor.Unary()), grpc.StreamInterceptor(authInterceptor.Stream()))
+		grpcOpts = append(grpcOpts, grpc.ChainUnaryInterceptor(authInterceptor.Unary()), grpc.ChainStreamInterceptor(authInterceptor.Stream()))
 		if *apiToken != "" {
 			log.Printf("🔐 gRPC service protected with Bearer token authentication.")
 		}
@@ -145,7 +147,7 @@ func main() {
 		}
 	}
 
-	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore)
+	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
 	defer stopWeb()
 
 	lis, err := net.Listen("tcp", grpcBind)
