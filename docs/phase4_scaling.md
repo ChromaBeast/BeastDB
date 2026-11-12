@@ -76,4 +76,4 @@ Expands the database engine into a production-ready distributed system with gRPC
 - [ ] Container image build succeeds under 25MB total footprint.
 - [ ] Server cleanly flushes and terminates on `SIGTERM` without corrupting active pages.
 - [ ] Sustained 50k+ QPS with p99 latency under 2ms.
-- [ ] All source files modularized to `< 200 LoC`.
+- [ ] Each source file has a single responsibility (guideline: review any file over about 400 lines; see [CONTRIBUTING](../CONTRIBUTING.md)).
