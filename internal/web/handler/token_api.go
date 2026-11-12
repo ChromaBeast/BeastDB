@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -52,6 +54,8 @@ func (h *APIHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 		Role string `json:"role"`
+		// ExpiresInSeconds optionally makes the token expire after N seconds (0 = never).
+		ExpiresInSeconds int64 `json:"expires_in_seconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -69,7 +73,21 @@ func (h *APIHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 		tokRole = "admin"
 	}
 
-	rawToken, meta, err := h.tokens.Create(name, tokRole, username)
+	if !api.ValidTokenRole(tokRole) {
+		http.Error(w, "Invalid role: must be admin, writer, viewer or replication", http.StatusBadRequest)
+		return
+	}
+	if body.ExpiresInSeconds < 0 || body.ExpiresInSeconds > 10*365*24*3600 {
+		http.Error(w, "Invalid expires_in_seconds", http.StatusBadRequest)
+		return
+	}
+	var expiresAt *time.Time
+	if body.ExpiresInSeconds > 0 {
+		t := time.Now().Add(time.Duration(body.ExpiresInSeconds) * time.Second)
+		expiresAt = &t
+	}
+
+	rawToken, meta, err := h.tokens.CreateWithExpiry(name, tokRole, username, expiresAt)
 	if err != nil {
 		http.Error(w, "Failed to create token: "+err.Error(), http.StatusInternalServerError)
 		return
