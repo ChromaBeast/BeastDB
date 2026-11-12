@@ -160,6 +160,7 @@ BeastDB is optimized for **read-heavy OLTP** — deterministic point reads and o
 - [**V1 Semantics & Guarantees**](docs/v1-semantics.md) — Durability acknowledgment, limits, and replica reads.
 - [**System Benchmarks**](docs/benchmarks.md) — Reproducible throughput, tail latencies, and cache-eviction profiles.
 - [**Benchmarking Guide**](docs/benchmarking.md) — `beastbench` YCSB-style workloads and how to compare fairly with other databases.
+- [**Security Policy**](SECURITY.md) — How to report a vulnerability privately, scope, and safe deployment checklist.
 - [**Upgrade Spec**](docs/upgrade-spec.md) — Security, usability and performance work packages and what is still planned.
 - [**Operator Guide**](docs/runbooks/operator-guide.md) — TLS configuration, cluster roles, manual failover, and `/healthz` probes.
 - [**Disaster Recovery**](docs/runbooks/disaster-recovery.md) — Physical backup drills, checksum verification, and RTO/RPO SLA.
