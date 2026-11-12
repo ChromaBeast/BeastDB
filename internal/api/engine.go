@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
@@ -24,6 +25,9 @@ type Engine struct {
 	failed         error               // set by halt; blocks writes until restart
 	reclaim        map[uint64]int      // data page -> free bytes after compaction, or unknownFree
 	mu             sync.RWMutex
+
+	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
+	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
 }
 
 // NewEngine initializes the database engine components with recovery support.
