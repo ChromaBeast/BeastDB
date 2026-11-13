@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/logbuf"
 	"github.com/ChromaBeast/beastdb/internal/replication"
+	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 	"google.golang.org/grpc"
 )
@@ -40,6 +42,13 @@ func main() {
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
 	flag.Parse()
+
+	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
+	logs := logbuf.New(logbuf.DefaultCapacity)
+	for _, secret := range []string{*apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"), nonDefault(*adminPassword)} {
+		logs.AddSecret(secret)
+	}
+	log.SetOutput(logs.Tee(os.Stderr))
 
 	grpcBind := fmt.Sprintf("%s:%d", *bindAddr, *port)
 	if *devMode {
@@ -147,7 +156,18 @@ func main() {
 		}
 	}
 
-	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
+	logs.AddSecret(nonDefault(*adminPassword)) // dev mode generates its password after flag parsing
+	webOpts := web.Options{
+		Logs: logs,
+		Settings: handler.RuntimeSettings{
+			GRPCAddr: grpcBind, WebAddr: *webAddr, DataDir: *dataDir, PoolSize: *poolSize,
+			WALCheckpointMB: *walCheckpointMB, ReplicaID: *replicaID, LeaderAddr: *leaderAddr,
+			TLSEnabled: *tlsCert != "" && *tlsKey != "", MutualTLS: *tlsCA != "",
+			APITokenConfigured: *apiToken != "", MetricsTokenSet: os.Getenv("BEASTDB_METRICS_TOKEN") != "",
+			PartitionConfigPath: cfgPath, DevMode: *devMode, InsecureAuthOverride: *insecureAuth,
+		},
+	}
+	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, webOpts, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
 	defer stopWeb()
 
 	lis, err := net.Listen("tcp", grpcBind)
@@ -173,4 +193,13 @@ func main() {
 		log.Printf("Error flushing engine to disk: %v", err)
 	}
 	log.Println("BeastDB stopped cleanly. Goodbye!")
+}
+
+// nonDefault returns "" for the well-known default password so ordinary log
+// text containing the word is not masked; any real password is redacted.
+func nonDefault(pw string) string {
+	if pw == "admin" {
+		return ""
+	}
+	return pw
 }

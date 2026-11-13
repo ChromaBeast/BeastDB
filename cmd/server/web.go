@@ -10,7 +10,7 @@ import (
 )
 
 // startWebServer boots the HTTP admin console and seeds or synchronizes the admin credentials.
-func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.Engine, partitions []handler.PartitionEntry, tokenStore *auth.TokenStore, metricsTokens ...string) func() {
+func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.Engine, partitions []handler.PartitionEntry, tokenStore *auth.TokenStore, extra web.Options, metricsTokens ...string) func() {
 	if webAddr == "" {
 		return func() {}
 	}
@@ -20,7 +20,7 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 		log.Fatalf("Failed to initialize session secret: %v", secretErr)
 	}
 
-	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, web.Options{DataDir: dataDir, MetricsTokens: metricsTokens}, tokenStore)
+	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, withBase(extra, dataDir, metricsTokens), tokenStore)
 	if webErr != nil {
 		log.Fatalf("Failed to create web server: %v", webErr)
 	}
@@ -44,4 +44,11 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 	return func() {
 		webSrv.Shutdown()
 	}
+}
+
+// withBase fills the always-present options on top of the runtime settings and log buffer from main.
+func withBase(o web.Options, dataDir string, metricsTokens []string) web.Options {
+	o.DataDir = dataDir
+	o.MetricsTokens = metricsTokens
+	return o
 }
