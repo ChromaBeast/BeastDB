@@ -6,7 +6,6 @@ import (
 	"net"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"google.golang.org/grpc"
@@ -69,12 +68,16 @@ func TestAtomicBatchReplicationCompleteness(t *testing.T) {
 		t.Fatalf("batch write failed: %v", err)
 	}
 
-	// Wait for follower catch-up
-	time.Sleep(150 * time.Millisecond)
-
-	// Verify all 4 operations are present on the follower
+	// Verify all 4 operations reach the follower
 	for _, op := range batchOps {
-		val, found, err := follower.Get(op.Key)
+		var val []byte
+		var found bool
+		var err error
+		// On timeout the checks below report what is still wrong.
+		waitUntil(t, func() bool {
+			val, found, err = follower.Get(op.Key)
+			return err == nil && found && bytes.Equal(val, op.Value)
+		})
 		if err != nil || !found {
 			t.Fatalf("follower missing batch record %d: found=%v, err=%v", op.Key, found, err)
 		}
