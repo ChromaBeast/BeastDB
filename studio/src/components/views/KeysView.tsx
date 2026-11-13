@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "../ui/alert-dialog";
 import { CreateKeyForm, SecretReveal } from "../keys/CreateKeyForm";
-import { RolesReference } from "../keys/RolesReference";
+import { RoleCards, RolesNote } from "../keys/RolesReference";
 import { TokenRoleBadge } from "../keys/TokenRoleBadge";
 import { isExpired, useApiTokens, type ApiToken } from "../../hooks/useApiTokens";
 import { formatDateRelative } from "../../utils/format";
@@ -24,7 +24,7 @@ function KeysTable({ tokens, onRevoke }: { tokens: ApiToken[]; onRevoke: (t: Api
   const sorted = [...tokens].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   return (
     <Card className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
+      <table className="w-full min-w-[720px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs text-muted-foreground">
             <th scope="col" className="px-5 py-3 font-medium">Name</th>
@@ -32,6 +32,7 @@ function KeysTable({ tokens, onRevoke }: { tokens: ApiToken[]; onRevoke: (t: Api
             <th scope="col" className="px-3 py-3 font-medium">Key</th>
             <th scope="col" className="px-3 py-3 font-medium">Created</th>
             <th scope="col" className="px-3 py-3 font-medium">Expires</th>
+            <th scope="col" className="px-3 py-3 font-medium" title="Since the server last started; not stored on disk">Last used</th>
             <th scope="col" className="px-5 py-3"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -46,6 +47,9 @@ function KeysTable({ tokens, onRevoke }: { tokens: ApiToken[]; onRevoke: (t: Api
               <td className="px-3 py-3 font-mono text-xs text-muted-foreground">{t.masked_token}</td>
               <td className="px-3 py-3 text-muted-foreground" title={new Date(t.created_at).toLocaleString()}>{formatDateRelative(t.created_at)}</td>
               <td className="px-3 py-3 font-mono text-xs"><ExpiryCell token={t} /></td>
+              <td className="px-3 py-3 text-xs text-muted-foreground" title={t.last_used_at ? new Date(t.last_used_at).toLocaleString() : "Not used since the server started"}>
+                {t.last_used_at ? formatDateRelative(t.last_used_at) : "—"}
+              </td>
               <td className="px-5 py-3 text-right">
                 <Button size="sm" variant="ghost" onClick={() => onRevoke(t)} aria-label={`Revoke ${t.name}`} className="text-muted-foreground hover:text-destructive">
                   <Trash2 size={14} /> Revoke
@@ -86,6 +90,7 @@ export function KeysView({ user, onNotice }: ViewProps) {
   return (
     <section aria-labelledby="keys-title" className="space-y-6">
       {header}
+      <RoleCards />
       {locked ? (
         <Card className="flex flex-col items-center gap-2 px-6 py-14 text-center" role="status">
           <Lock size={22} className="text-muted-foreground" />
@@ -119,7 +124,7 @@ export function KeysView({ user, onNotice }: ViewProps) {
           )}
         </>
       )}
-      <RolesReference />
+      <RolesNote />
 
       <AlertDialog open={!!pending} onOpenChange={(o) => { if (!o) setPending(null); }}>
         <AlertDialogContent>

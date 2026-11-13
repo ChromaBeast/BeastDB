@@ -30,6 +30,9 @@ type Engine struct {
 
 	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
 	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
+
+	// maxWALBytes is the auto-checkpoint threshold; adjustable at runtime.
+	maxWALBytes atomic.Int64
 }
 
 // NewEngine initializes the database engine components with recovery support.
@@ -134,14 +137,14 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 			return nil
 		}
 		keyUint := binary.LittleEndian.Uint64(key)
-		return e.commit(func() error { return e.putLocked(keyUint, value) })
+		return e.commitReplicated(func() error { return e.putLocked(keyUint, value) })
 
 	case wal.OpDelete:
 		if len(key) < 8 {
 			return nil
 		}
 		keyUint := binary.LittleEndian.Uint64(key)
-		return e.commit(func() error { return e.deleteLocked(keyUint) })
+		return e.commitReplicated(func() error { return e.deleteLocked(keyUint) })
 
 	case wal.OpBatch:
 		batchOps, err := wal.DecodeBatchPayload(value)

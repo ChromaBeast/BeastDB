@@ -17,6 +17,8 @@ service BeastDBService {
 service ReplicationService {
   rpc StreamWAL (StreamWALRequest) returns (stream WALRecordMessage);
   rpc Ack (ReplicationAck) returns (AckResponse);
+  // Fence freezes a leader's writes at a new epoch and reports its final LSN.
+  rpc Fence (FenceRequest) returns (FenceResponse);
 }
 
 message GetRequest {
@@ -66,6 +68,9 @@ message KeyValueResponse {
 message StreamWALRequest {
   string replica_id = 1;
   uint64 from_lsn = 2;
+  // Highest leader epoch the follower has seen. A leader that sees a higher
+  // epoch than its own steps down instead of serving.
+  uint64 epoch = 3;
 }
 
 message WALRecordMessage {
@@ -73,15 +78,35 @@ message WALRecordMessage {
   uint32 op_type = 2;
   bytes key = 3;
   bytes value = 4;
+  // Epoch of the leader that produced this record; followers reject lower
+  // epochs than their own.
+  uint64 epoch = 5;
 }
 
 message ReplicationAck {
   string replica_id = 1;
   uint64 acknowledged_lsn = 2;
+  uint64 epoch = 3;
 }
 
 message AckResponse {
   bool success = 1;
+  // The leader's epoch and current LSN, so an idle follower can tell whether it is caught up.
+  uint64 epoch = 2;
+  uint64 leader_lsn = 3;
+}
+
+message FenceRequest {
+  // New epoch the candidate will lead at; must exceed the leader's epoch.
+  uint64 epoch = 1;
+  // Replica asking to be promoted. Only one candidate can fence a given epoch.
+  string candidate_id = 2;
+}
+
+message FenceResponse {
+  // Final LSN of the fenced leader: it accepts no writes beyond this.
+  uint64 final_lsn = 1;
+  uint64 epoch = 2;
 }
 
 enum BatchOpType {

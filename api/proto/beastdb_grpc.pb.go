@@ -283,6 +283,7 @@ var BeastDBService_ServiceDesc = grpc.ServiceDesc{
 const (
 	ReplicationService_StreamWAL_FullMethodName = "/beastdb.v1.ReplicationService/StreamWAL"
 	ReplicationService_Ack_FullMethodName       = "/beastdb.v1.ReplicationService/Ack"
+	ReplicationService_Fence_FullMethodName     = "/beastdb.v1.ReplicationService/Fence"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
@@ -293,6 +294,8 @@ const (
 type ReplicationServiceClient interface {
 	StreamWAL(ctx context.Context, in *StreamWALRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WALRecordMessage], error)
 	Ack(ctx context.Context, in *ReplicationAck, opts ...grpc.CallOption) (*AckResponse, error)
+	// Fence freezes a leader's writes at a new epoch and reports its final LSN.
+	Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error)
 }
 
 type replicationServiceClient struct {
@@ -332,6 +335,16 @@ func (c *replicationServiceClient) Ack(ctx context.Context, in *ReplicationAck, 
 	return out, nil
 }
 
+func (c *replicationServiceClient) Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FenceResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_Fence_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ReplicationServiceServer is the server API for ReplicationService service.
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility.
@@ -340,6 +353,8 @@ func (c *replicationServiceClient) Ack(ctx context.Context, in *ReplicationAck, 
 type ReplicationServiceServer interface {
 	StreamWAL(*StreamWALRequest, grpc.ServerStreamingServer[WALRecordMessage]) error
 	Ack(context.Context, *ReplicationAck) (*AckResponse, error)
+	// Fence freezes a leader's writes at a new epoch and reports its final LSN.
+	Fence(context.Context, *FenceRequest) (*FenceResponse, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -355,6 +370,9 @@ func (UnimplementedReplicationServiceServer) StreamWAL(*StreamWALRequest, grpc.S
 }
 func (UnimplementedReplicationServiceServer) Ack(context.Context, *ReplicationAck) (*AckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ack not implemented")
+}
+func (UnimplementedReplicationServiceServer) Fence(context.Context, *FenceRequest) (*FenceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Fence not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
@@ -406,6 +424,24 @@ func _ReplicationService_Ack_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ReplicationService_Fence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).Fence(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_Fence_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).Fence(ctx, req.(*FenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -416,6 +452,10 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ack",
 			Handler:    _ReplicationService_Ack_Handler,
+		},
+		{
+			MethodName: "Fence",
+			Handler:    _ReplicationService_Fence_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

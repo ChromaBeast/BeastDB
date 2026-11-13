@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
+	"github.com/ChromaBeast/beastdb/internal/backup"
 	"github.com/ChromaBeast/beastdb/internal/logbuf"
+	"github.com/ChromaBeast/beastdb/internal/metrics"
+	"github.com/ChromaBeast/beastdb/internal/runtimecfg"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 )
@@ -17,7 +21,8 @@ var staticFiles embed.FS
 
 // Server is the embedded HTTP admin server running alongside the gRPC server.
 type Server struct {
-	httpServer *http.Server
+	httpServer  *http.Server
+	stopSampler func()
 }
 
 // EngineBackend is the combined interface required by the web server.
@@ -47,6 +52,16 @@ type Options struct {
 	Logs *logbuf.Buffer
 	// Replication supplies the leader's replica view for /api/replication (nil on followers).
 	Replication handler.ReplicationSource
+	// Cluster backs the epoch/role fields of /api/replication and
+	// POST /api/replication/promote; nil disables promotion.
+	Cluster handler.ClusterControl
+	// Audit records admin actions and backs GET /api/audit; nil disables both.
+	Audit *audit.Log
+	// Runtime holds the settings an admin may change live and backs
+	// /api/settings/runtime; nil makes that endpoint answer 404.
+	Runtime *runtimecfg.Store
+	// Backups backs /api/backups; nil makes those endpoints answer 404.
+	Backups *backup.Manager
 }
 
 // NewServerWithOptions is NewServer plus optional settings.
@@ -63,13 +78,21 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 		apiH.SetTokenStore(tokenStore[0])
 	}
 	apiH.SetReplicationSource(opts.Replication)
+	apiH.SetCluster(opts.Cluster)
+	apiH.SetAudit(opts.Audit)
 	rateLimiter := handler.NewLoginRateLimiter(5, 30*time.Second)
+	if opts.Runtime != nil {
+		opts.Runtime.Subscribe(func(v runtimecfg.Values) {
+			rateLimiter.Configure(v.LoginMaxAttempts, time.Duration(v.LoginWindowSeconds)*time.Second)
+		})
+	}
 
 	deps := &handler.Deps{
 		Users:       users,
 		Sessions:    sessions,
 		StaticFS:    staticFS,
 		RateLimiter: rateLimiter,
+		Audit:       opts.Audit,
 	}
 
 	mux := http.NewServeMux()
@@ -147,13 +170,24 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	// Operations (checkpoint, replica view) — admin only
 	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))
 	mux.Handle("/api/replication", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.GetReplication)))
+	mux.Handle("/api/replication/promote", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostPromote)))
+
+	mux.Handle("/api/settings/runtime", handler.AdminMiddleware(sessions, handler.RuntimeSettingsHandler(sessions, opts.Runtime, opts.Audit)))
+	backupsH := handler.AdminMiddleware(sessions, handler.BackupsHandler(sessions, opts.Backups, opts.Audit))
+	mux.Handle("/api/backups", backupsH)
+	mux.Handle("/api/backups/", backupsH)
+	mux.Handle("/api/audit", handler.AdminMiddleware(sessions, handler.AuditHandler(sessions, opts.Audit)))
+
+	// Server-side metric history (memory only), sampled in the background.
+	history := metrics.NewHistory(historyCapacity)
+	mux.Handle("/api/metrics/history", handler.AdminMiddleware(sessions, handler.MetricsHistoryHandler(sessions, history, historyInterval)))
 
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: securityHeaders(handler.HTTPMetrics(mux)),
 	}
 
-	return &Server{httpServer: srv}, nil
+	return &Server{httpServer: srv, stopSampler: startSampler(engine, opts.Replication, history, historyInterval)}, nil
 }
 
 // securityHeaders injects defense-in-depth headers into all web and API responses.
@@ -176,5 +210,9 @@ func (s *Server) Serve() {
 
 // Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown() {
+	if s.stopSampler != nil {
+		s.stopSampler()
+		s.stopSampler = nil
+	}
 	_ = s.httpServer.Close()
 }

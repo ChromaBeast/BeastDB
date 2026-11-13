@@ -77,6 +77,7 @@ func (e *Engine) persistCheckpointLocked(lsn uint64) error {
 // StartAutoCheckpoint checkpoints whenever the WAL exceeds maxWALBytes, polling every
 // interval, until ctx is cancelled. It bounds WAL size and crash-recovery time.
 func (e *Engine) StartAutoCheckpoint(ctx context.Context, interval time.Duration, maxWALBytes int64) {
+	e.maxWALBytes.Store(maxWALBytes)
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
@@ -85,7 +86,7 @@ func (e *Engine) StartAutoCheckpoint(ctx context.Context, interval time.Duration
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				if e.wal.FileSize() < maxWALBytes {
+				if e.wal.FileSize() < e.maxWALBytes.Load() {
 					continue
 				}
 				if err := e.Checkpoint(); err != nil {
@@ -94,4 +95,12 @@ func (e *Engine) StartAutoCheckpoint(ctx context.Context, interval time.Duration
 			}
 		}
 	}()
+}
+
+// SetCheckpointThreshold changes the WAL size at which the background
+// checkpointer runs. It takes effect on the next tick; no restart is needed.
+func (e *Engine) SetCheckpointThreshold(maxWALBytes int64) {
+	if maxWALBytes > 0 {
+		e.maxWALBytes.Store(maxWALBytes)
+	}
 }

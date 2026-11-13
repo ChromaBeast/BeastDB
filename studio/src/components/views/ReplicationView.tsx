@@ -5,6 +5,7 @@ import { CopyCommand } from "../CopyCommand";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { PromoteCard } from "../replication/PromoteCard";
 import type { ReplicationStatus } from "../../types";
 import type { ViewProps } from "./types";
 
@@ -78,6 +79,10 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
         />
       </div>
 
+      {isAdmin && data?.cluster && (
+        <PromoteCard cluster={data.cluster} isAdmin={isAdmin} onNotice={onNotice} onPromoted={() => void load()} />
+      )}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-sm">Replicas</CardTitle>
@@ -132,7 +137,8 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
           {data?.tracked && replicas.length > 0 && (
             <p className="mt-3 text-xs text-muted-foreground">
               Lag is leader LSN minus the replica&apos;s last acknowledgement. Acks are recorded as followers apply
-              records, and a disconnected replica keeps its last ack until the leader restarts.
+              records, and a disconnected replica keeps its last ack until the leader restarts. To promote a replica,
+              open Studio on that replica: promotion runs on the node being promoted.
             </p>
           )}
         </CardContent>
@@ -146,8 +152,8 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
           <CopyCommand label="Follower node (flags from cmd/server)" command={FOLLOWER_CMD} onNotice={onNotice} />
           <p className="text-xs text-muted-foreground">
             A follower runs read-only and streams the leader&apos;s WAL, replaying its archived generation first. Use a
-            unique <span className="font-mono">-replica-id</span> and its own data directory. Automatic failover and
-            promotion are not implemented.
+            unique <span className="font-mono">-replica-id</span> and its own data directory. Promotion is manual; automatic
+            failover is not implemented.
           </p>
         </CardContent>
       </Card>

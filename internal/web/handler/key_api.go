@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -90,6 +91,11 @@ func (h *APIHandler) PutKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Engine error", http.StatusInternalServerError)
 		return
 	}
+	detail := "overwrite"
+	if body.CreateOnly {
+		detail = "create"
+	}
+	h.record(r, audit.ActionRecordPut, strconv.FormatUint(key, 10), detail+" · "+strconv.Itoa(len(body.Value))+" bytes")
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -116,6 +122,7 @@ func (h *APIHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Engine error", http.StatusInternalServerError)
 		return
 	}
+	h.record(r, audit.ActionRecordDelete, strconv.FormatUint(key, 10), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

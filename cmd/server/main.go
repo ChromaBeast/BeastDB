@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/backup"
 	"github.com/ChromaBeast/beastdb/internal/logbuf"
 	"github.com/ChromaBeast/beastdb/internal/replication"
+	"github.com/ChromaBeast/beastdb/internal/runtimecfg"
 	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 	"google.golang.org/grpc"
@@ -72,14 +74,25 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
-	if *role != "leader" {
-		engine.SetReadOnly(true)
-		log.Printf("🔒 Node running in follower mode: engine write path set to read-only.")
-	}
 
 	ckptCtx, stopCkpt := context.WithCancel(context.Background())
 	defer stopCkpt()
 	engine.StartAutoCheckpoint(ckptCtx, 10*time.Second, int64(*walCheckpointMB)<<20)
+
+	// Settings an admin can change in Studio without a restart; saved values
+	// in runtime-settings.json override the matching flags.
+	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7})
+	if rtErr != nil {
+		log.Printf("Warning: ignoring runtime settings file: %v", rtErr)
+	}
+	runtimeCfg.Subscribe(func(v runtimecfg.Values) { engine.SetCheckpointThreshold(int64(v.WALCheckpointMB) << 20) })
+
+	// Server-managed backups (create, verify, download, optional schedule).
+	backups := backup.NewManager(engine, filepath.Join(*dataDir, "backups"))
+	runtimeCfg.Subscribe(func(v runtimecfg.Values) {
+		backups.Configure(time.Duration(v.BackupIntervalMinutes)*time.Minute, v.BackupKeep)
+	})
+	backups.Start(ckptCtx)
 
 	tokenStore := initTokenStore(engine)
 	grpcOpts := api.MessageSizeServerOptions()
@@ -105,12 +118,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Every node serves the replication service; it hands out WAL only while the
+	// node is a leader (or a fenced former leader). The persisted epoch and role
+	// in <data-dir>/cluster-state.json decide the starting role, so a restart
+	// cannot undo a promotion or un-fence an old leader.
+	flagRole := replication.RoleFollower
 	if *role == "leader" {
-		repServer := replication.NewLeaderServer(engine.WALPath())
-		repServer.RegisterService(grpcServer.RawServer())
-		engine.SetCommitObserver(repServer)
-		replicaSource = repServer
-	} else {
+		flagRole = replication.RoleLeader
+	}
+	repServer := replication.NewLeaderServer(engine.WALPath())
+	repServer.RegisterService(grpcServer.RawServer())
+	cluster, err := replication.NewCluster(engine, *dataDir, *replicaID, flagRole, repServer)
+	if err != nil {
+		log.Fatalf("FATAL: %v", err)
+	}
+	replicaSource = repServer
+	clusterControl = cluster
+	switch cluster.Role() {
+	case replication.RoleFollower:
+		log.Printf("🔒 Node running in follower mode at epoch %d: engine write path set to read-only.", cluster.Epoch())
 		clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
 		if err != nil {
 			log.Fatalf("Failed to initialize follower client TLS: %v", err)
@@ -120,19 +146,9 @@ func main() {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}
 		defer conn.Close()
-		followerClient := replication.NewFollowerClient(*replicaID, engine, conn)
-		go func() {
-			for ctx.Err() == nil {
-				if err := followerClient.SyncLoop(ctx); err != nil && ctx.Err() == nil {
-					log.Printf("Follower sync stream dropped: %v. Reconnecting in 1s...", err)
-					select {
-					case <-time.After(time.Second):
-					case <-ctx.Done():
-						return
-					}
-				}
-			}
-		}()
+		cluster.RunFollower(ctx, replication.NewFollowerClient(*replicaID, engine, conn))
+	case replication.RoleFenced:
+		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Wipe its data directory to rejoin it as a follower.", cluster.Epoch())
 	}
 
 	var partitions []handler.PartitionEntry
@@ -159,7 +175,9 @@ func main() {
 
 	logs.AddSecret(nonDefault(*adminPassword)) // dev mode generates its password after flag parsing
 	webOpts := web.Options{
-		Logs: logs,
+		Logs:    logs,
+		Runtime: runtimeCfg,
+		Backups: backups,
 		Settings: handler.RuntimeSettings{
 			GRPCAddr: grpcBind, WebAddr: *webAddr, DataDir: *dataDir, PoolSize: *poolSize,
 			WALCheckpointMB: *walCheckpointMB, ReplicaID: *replicaID, LeaderAddr: *leaderAddr,
@@ -168,6 +186,7 @@ func main() {
 			PartitionConfigPath: cfgPath, DevMode: *devMode, InsecureAuthOverride: *insecureAuth,
 		},
 	}
+	webOpts.Cluster = clusterControl
 	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, webOpts, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
 	defer stopWeb()
 

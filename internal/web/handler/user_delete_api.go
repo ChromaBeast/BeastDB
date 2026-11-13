@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -57,6 +58,7 @@ func (h *APIHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		deletedKeys = []uint64{}
 	}
 
+	h.record(r, audit.ActionUserDelete, strconv.FormatUint(uint64(targetHash), 10), strconv.Itoa(len(deletedKeys))+" records removed")
 	writeJSON(w, map[string]any{
 		"deleted": len(deletedKeys),
 		"keys":    deletedKeys,
