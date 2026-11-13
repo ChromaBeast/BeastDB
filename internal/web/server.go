@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ChromaBeast/beastdb/internal/logbuf"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 )
@@ -40,6 +41,10 @@ type Options struct {
 	// MetricsTokens are bearer tokens accepted by /metrics in addition to
 	// admin sessions. With none configured only admin sessions may scrape.
 	MetricsTokens []string
+	// Settings is the non-secret runtime configuration served by GET /api/settings.
+	Settings handler.RuntimeSettings
+	// Logs backs GET /api/logs; nil serves an empty log.
+	Logs *logbuf.Buffer
 }
 
 // NewServerWithOptions is NewServer plus optional settings.
@@ -131,6 +136,11 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 		}
 	})))
 
+	// Logs tail and read-only runtime settings — admin only (handlers re-check the session)
+	mux.Handle("/api/logs", handler.AdminMiddleware(sessions, handler.LogsHandler(sessions, opts.Logs)))
+	opts.Settings.Version = version
+	opts.Settings.Role = role
+	mux.Handle("/api/settings", handler.AdminMiddleware(sessions, handler.SettingsHandler(sessions, opts.Settings)))
 
 	srv := &http.Server{
 		Addr:    addr,
