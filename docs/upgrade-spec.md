@@ -10,7 +10,7 @@ Source: review of 2026-11-12. Complements [ROADMAP.md](../ROADMAP.md) and [v1-se
 | Perf | One global `sync.RWMutex`; scans hold it for the cursor lifetime | `internal/api/engine_ops.go` Scan |
 | Perf | Benchmarks are in-process, 1 MB pool, 2k records; no competitor comparison | `docs/benchmarks.md` |
 | Sec | gRPC auth checks token validity only; roles ignored | `internal/api/grpc_auth.go` |
-| Sec | Encryption at rest is opt-in (WP5); off by default, key sources other than a key file are not built | [ADR 0002](adr/0002-encryption-at-rest.md) |
+| Sec | Encryption at rest is opt-in (WP5); off by default, key sources other than a key file are not built | [ADR 0003](adr/0003-encryption-at-rest.md) |
 | Sec | Static token has no expiry/rotation | `grpc_auth.go` |
 | UX | uint64 keys only, no namespaces, one Python example, no /metrics | proto, `examples/` |
 
@@ -21,7 +21,7 @@ Source: review of 2026-11-12. Complements [ROADMAP.md](../ROADMAP.md) and [v1-se
 | WP1 | **WAL group commit** (`internal/wal`, `internal/api/engine_commit.go`): concurrent writers share one fsync with unchanged durability. Reported ~15x on a concurrent-write benchmark; a single sequential writer is unchanged. Includes a **WAL barrier** in the buffer pool so a data page never reaches disk ahead of its log record. | Merged |
 | WP2 | **gRPC role authorization** (`internal/api/grpc_auth.go`, token store): deny-by-default per-method roles `viewer`/`writer`/`admin`/`replication`, optional token expiry. | Merged. No handler test yet for `expires_in_seconds`; Studio has no expiry field. |
 | WP3 | **`beastbench`** (`cmd/beastbench`): YCSB-style workloads A–F over gRPC, latency histogram, JSON output, self-contained smoke mode, [benchmarking guide](benchmarking.md). | Merged. No competitor comparison has been run. |
-| WP5 | **Encryption at rest, opt-in** (`internal/crypt`, `internal/storage/page_crypt.go`, `internal/wal/crypt.go`): AES-256-GCM per page and per WAL record, key file plus wrapped data key, `beastctl encrypt/decrypt/rekey`, encrypted backups. Design and threat model in [ADR 0002](adr/0002-encryption-at-rest.md). | Merged as a first slice; see the ADR for what is not built. |
+| WP5 | **Encryption at rest, opt-in** (`internal/crypt`, `internal/storage/page_crypt.go`, `internal/wal/crypt.go`): AES-256-GCM per page and per WAL record, key file plus wrapped data key, `beastctl encrypt/decrypt/rekey`, encrypted backups. Design and threat model in [ADR 0003](adr/0003-encryption-at-rest.md). | Merged as a first slice; see the ADR for what is not built. |
 | WP4 | **Prometheus `/metrics`**: request counts and latency, WAL size and LSN, checkpoint age, buffer pool, disk free. Never anonymous; accepts an admin session or a metrics/static bearer token. See the [operator guide](runbooks/operator-guide.md). | Merged |
 
 ## Known limits of what shipped

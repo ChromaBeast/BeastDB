@@ -23,7 +23,7 @@ const (
 	MetaVersion uint32 = 1
 )
 
-// MetaFlagEncrypted marks a database whose pages are encrypted (ADR 0002).
+// MetaFlagEncrypted marks a database whose pages are encrypted (ADR 0003).
 const MetaFlagEncrypted uint32 = 1 << 0
 
 // MetaData holds persistent database-level metadata stored at Page 0.

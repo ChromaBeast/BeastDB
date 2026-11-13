@@ -70,7 +70,7 @@ Measurements taken using `cmd/beastctl/backup_drill_test.go`:
 
 ## 5. Encryption at rest overhead
 
-Measured on Apple M6 (12 logical CPUs), Go 1.27.2, darwin/arm64, a local external SSD, on 13 November 2026 with the build that introduced encryption ([ADR 0002](adr/0002-encryption-at-rest.md)). Each pair is the same operation with encryption off and on, in the same process settings. These are single-machine numbers with run-to-run noise as noted; they say nothing about other databases.
+Measured on Apple M6 (12 logical CPUs), Go 1.27.2, darwin/arm64, a local external SSD, on 13 November 2026 with the build that introduced encryption ([ADR 0003](adr/0003-encryption-at-rest.md)). Each pair is the same operation with encryption off and on, in the same process settings. These are single-machine numbers with run-to-run noise as noted; they say nothing about other databases.
 
 | Measurement | Off | On | Reading |
 |---|---|---|---|

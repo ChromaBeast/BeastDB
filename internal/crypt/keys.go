@@ -1,4 +1,4 @@
-// Package crypt holds the key hierarchy for encryption at rest (ADR 0002): a
+// Package crypt holds the key hierarchy for encryption at rest (ADR 0003): a
 // master key supplied by the operator wraps a random per-database data key
 // (DEK) kept in <db>.keyring, and the DEK yields separate page and WAL keys.
 package crypt

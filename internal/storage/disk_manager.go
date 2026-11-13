@@ -64,7 +64,7 @@ func OpenDiskManager(path string) (*DiskManager, error) {
 	return OpenDiskManagerEncrypted(path, nil)
 }
 
-// OpenDiskManagerEncrypted is OpenDiskManager with page encryption (ADR 0002).
+// OpenDiskManagerEncrypted is OpenDiskManager with page encryption (ADR 0003).
 // A nil cipher means plaintext. The file's format must match: an encrypted
 // file without a cipher returns ErrEncryptedNoKey, a plaintext one with a
 // cipher returns ErrNotEncrypted.

@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-// Encrypted page layout (ADR 0002). The last PageReserve bytes of every page
+// Encrypted page layout (ADR 0003). The last PageReserve bytes of every page
 // of an encrypted database hold, in clear:
 //
 //	[PageDataEnd   : +16] AES-GCM tag

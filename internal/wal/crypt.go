@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-// Encrypted WAL format (ADR 0002). The file starts with a 16-byte header:
+// Encrypted WAL format (ADR 0003). The file starts with a 16-byte header:
 //
 //	magic "BDBWALE1" | key ID (uint16 LE) | 6 reserved bytes
 //

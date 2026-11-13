@@ -106,7 +106,7 @@ A redesign of Studio is specified in Figma (design only; `studio/` is unchanged)
 
 Typography is Inter with Roboto Mono for code. Components: Button (Primary/Secondary/Danger), Status pill, Input, Nav item, Stat card, Toggle, Table row, Card.
 
-**Encryption at rest** is opt-in and the Settings page shows the state the running engine reports (see [ADR 0002](adr/0002-encryption-at-rest.md) and the [runbook](runbooks/encryption.md)).
+**Encryption at rest** is opt-in and the Settings page shows the state the running engine reports (see [ADR 0003](adr/0003-encryption-at-rest.md) and the [runbook](runbooks/encryption.md)).
 
 **Not yet backed by the engine:** two-factor, collections/namespaces and the visual query builder, index suggestions, and a restore-to-new-database flow are shown in the design but are roadmap items (see [upgrade spec](upgrade-spec.md)). The mocks use placeholder data.
 

@@ -1,4 +1,4 @@
-# ADR 0002: Encryption at rest
+# ADR 0003: Encryption at rest
 
 **Status:** accepted and implemented for the first slice (data file, spill file, checkpoint journal, WAL, backups as a consequence), 13 November 2026. Items under "Not in this slice" are planned, not built.
 

@@ -43,7 +43,7 @@ func main() {
 	insecureAuth := flag.Bool("insecure-auth", false, "Permit default credentials on public interfaces (unsafe, for testing only)")
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
-	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0002-encryption-at-rest.md")
+	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
 	flag.Parse()
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.

@@ -10,7 +10,7 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/storage"
 )
 
-// MigrateOptions selects the direction of an offline format change (ADR 0002):
+// MigrateOptions selects the direction of an offline format change (ADR 0003):
 // a source key file means the database is encrypted now; a destination key file
 // means it will be. Both, with different files, is a key rotation (a fresh data
 // key is generated every time). Neither is rejected.

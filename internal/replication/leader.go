@@ -16,7 +16,7 @@ import (
 type LeaderServer struct {
 	beastv1.UnimplementedReplicationServiceServer
 	walPath     string
-	walCipher   *wal.Cipher // nil for a plaintext log (ADR 0002)
+	walCipher   *wal.Cipher // nil for a plaintext log (ADR 0003)
 	broadcaster *Broadcaster
 	acks        map[string]uint64
 	addrs       map[string]string // replica id -> remote address of its live stream

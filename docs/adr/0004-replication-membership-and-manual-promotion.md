@@ -1,4 +1,4 @@
-# ADR 0002: Replication membership and manual promotion
+# ADR 0004: Replication membership and manual promotion
 
 **Status:** proposed, 13 November 2026. The first slice (sections marked *built*) is
 implemented; the rest is design only. Items under "Decisions for the owner" are open.

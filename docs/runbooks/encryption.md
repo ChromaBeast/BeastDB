@@ -1,6 +1,6 @@
 # Encryption at rest runbook
 
-Design, threat model and limits: [ADR 0002](../adr/0002-encryption-at-rest.md). Encryption is **off by default**. It protects the data file, checkpoint journal, spill file, WAL and backup bundles from someone who copies the disk or a backup without the key. It does not protect against a compromised running server, and it does not detect an old valid copy of a file being put back.
+Design, threat model and limits: [ADR 0003](../adr/0003-encryption-at-rest.md). Encryption is **off by default**. It protects the data file, checkpoint journal, spill file, WAL and backup bundles from someone who copies the disk or a backup without the key. It does not protect against a compromised running server, and it does not detect an old valid copy of a file being put back.
 
 ## Turn it on for a new database
 

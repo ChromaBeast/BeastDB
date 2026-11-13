@@ -15,7 +15,7 @@ var ErrEncryptionFlagMismatch = errors.New("engine: encryption flag in page 0 do
 
 // Options configures NewEngineWithOptions.
 type Options struct {
-	// KeyFile enables encryption at rest (ADR 0002): the path of the master key
+	// KeyFile enables encryption at rest (ADR 0003): the path of the master key
 	// file. Empty means a plaintext database; opening an encrypted one then fails.
 	KeyFile string
 }
