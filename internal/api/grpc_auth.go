@@ -45,13 +45,16 @@ func ValidTokenRole(role string) bool {
 // methodRoles is the deny-by-default method -> allowed roles map. Methods not
 // listed here are rejected for every caller.
 var methodRoles = map[string][]string{
-	"/beastdb.v1.BeastDBService/Get":           {RoleViewer, RoleWriter, RoleAdmin},
-	"/beastdb.v1.BeastDBService/Scan":          {RoleViewer, RoleWriter, RoleAdmin},
-	"/beastdb.v1.BeastDBService/Put":           {RoleWriter, RoleAdmin},
-	"/beastdb.v1.BeastDBService/Delete":        {RoleWriter, RoleAdmin},
-	"/beastdb.v1.BeastDBService/BatchWrite":    {RoleWriter, RoleAdmin},
-	"/beastdb.v1.ReplicationService/StreamWAL": {RoleReplication, RoleAdmin},
-	"/beastdb.v1.ReplicationService/Ack":       {RoleReplication, RoleAdmin},
+	"/beastdb.v1.BeastDBService/Get":              {RoleViewer, RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/Scan":             {RoleViewer, RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/Put":              {RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/Delete":           {RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/BatchWrite":       {RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/ListCollections":  {RoleViewer, RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/CreateCollection": {RoleAdmin},
+	"/beastdb.v1.BeastDBService/DropCollection":   {RoleAdmin},
+	"/beastdb.v1.ReplicationService/StreamWAL":    {RoleReplication, RoleAdmin},
+	"/beastdb.v1.ReplicationService/Ack":          {RoleReplication, RoleAdmin},
 }
 
 func roleAllowed(role, method string) bool {

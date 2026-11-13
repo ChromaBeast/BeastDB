@@ -122,6 +122,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	mux.Handle("/api/stats", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetStats)))
 	mux.Handle("/api/me", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetMe)))
 	mux.Handle("/api/records", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetRecords)))
+	mux.Handle("/api/collections", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.CollectionsHandler)))
 	mux.Handle("/api/partitions", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetPartitions)))
 
 	// Protected key-value CRUD routes

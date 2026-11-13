@@ -19,11 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BeastDBService_Get_FullMethodName        = "/beastdb.v1.BeastDBService/Get"
-	BeastDBService_Put_FullMethodName        = "/beastdb.v1.BeastDBService/Put"
-	BeastDBService_Delete_FullMethodName     = "/beastdb.v1.BeastDBService/Delete"
-	BeastDBService_Scan_FullMethodName       = "/beastdb.v1.BeastDBService/Scan"
-	BeastDBService_BatchWrite_FullMethodName = "/beastdb.v1.BeastDBService/BatchWrite"
+	BeastDBService_Get_FullMethodName              = "/beastdb.v1.BeastDBService/Get"
+	BeastDBService_Put_FullMethodName              = "/beastdb.v1.BeastDBService/Put"
+	BeastDBService_Delete_FullMethodName           = "/beastdb.v1.BeastDBService/Delete"
+	BeastDBService_Scan_FullMethodName             = "/beastdb.v1.BeastDBService/Scan"
+	BeastDBService_BatchWrite_FullMethodName       = "/beastdb.v1.BeastDBService/BatchWrite"
+	BeastDBService_CreateCollection_FullMethodName = "/beastdb.v1.BeastDBService/CreateCollection"
+	BeastDBService_ListCollections_FullMethodName  = "/beastdb.v1.BeastDBService/ListCollections"
+	BeastDBService_DropCollection_FullMethodName   = "/beastdb.v1.BeastDBService/DropCollection"
 )
 
 // BeastDBServiceClient is the client API for BeastDBService service.
@@ -37,6 +40,11 @@ type BeastDBServiceClient interface {
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	Scan(ctx context.Context, in *ScanRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[KeyValueResponse], error)
 	BatchWrite(ctx context.Context, in *BatchWriteRequest, opts ...grpc.CallOption) (*BatchWriteResponse, error)
+	// Collections bind a name to an 8-bit key prefix (docs/adr/0002-collections.md).
+	// Keys stay uint64: a collection's keys are prefix<<56 | local (local < 2^56).
+	CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error)
+	ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
+	DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*DropCollectionResponse, error)
 }
 
 type beastDBServiceClient struct {
@@ -106,6 +114,36 @@ func (c *beastDBServiceClient) BatchWrite(ctx context.Context, in *BatchWriteReq
 	return out, nil
 }
 
+func (c *beastDBServiceClient) CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateCollectionResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_CreateCollection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *beastDBServiceClient) ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...grpc.CallOption) (*ListCollectionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCollectionsResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_ListCollections_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *beastDBServiceClient) DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*DropCollectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DropCollectionResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_DropCollection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BeastDBServiceServer is the server API for BeastDBService service.
 // All implementations must embed UnimplementedBeastDBServiceServer
 // for forward compatibility.
@@ -117,6 +155,11 @@ type BeastDBServiceServer interface {
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	Scan(*ScanRequest, grpc.ServerStreamingServer[KeyValueResponse]) error
 	BatchWrite(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error)
+	// Collections bind a name to an 8-bit key prefix (docs/adr/0002-collections.md).
+	// Keys stay uint64: a collection's keys are prefix<<56 | local (local < 2^56).
+	CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error)
+	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
+	DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error)
 	mustEmbedUnimplementedBeastDBServiceServer()
 }
 
@@ -141,6 +184,15 @@ func (UnimplementedBeastDBServiceServer) Scan(*ScanRequest, grpc.ServerStreaming
 }
 func (UnimplementedBeastDBServiceServer) BatchWrite(context.Context, *BatchWriteRequest) (*BatchWriteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method BatchWrite not implemented")
+}
+func (UnimplementedBeastDBServiceServer) CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateCollection not implemented")
+}
+func (UnimplementedBeastDBServiceServer) ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListCollections not implemented")
+}
+func (UnimplementedBeastDBServiceServer) DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropCollection not implemented")
 }
 func (UnimplementedBeastDBServiceServer) mustEmbedUnimplementedBeastDBServiceServer() {}
 func (UnimplementedBeastDBServiceServer) testEmbeddedByValue()                        {}
@@ -246,6 +298,60 @@ func _BeastDBService_BatchWrite_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BeastDBService_CreateCollection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateCollectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).CreateCollection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_CreateCollection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).CreateCollection(ctx, req.(*CreateCollectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BeastDBService_ListCollections_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCollectionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).ListCollections(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_ListCollections_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).ListCollections(ctx, req.(*ListCollectionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BeastDBService_DropCollection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropCollectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).DropCollection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_DropCollection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).DropCollection(ctx, req.(*DropCollectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BeastDBService_ServiceDesc is the grpc.ServiceDesc for BeastDBService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -268,6 +374,18 @@ var BeastDBService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "BatchWrite",
 			Handler:    _BeastDBService_BatchWrite_Handler,
+		},
+		{
+			MethodName: "CreateCollection",
+			Handler:    _BeastDBService_CreateCollection_Handler,
+		},
+		{
+			MethodName: "ListCollections",
+			Handler:    _BeastDBService_ListCollections_Handler,
+		},
+		{
+			MethodName: "DropCollection",
+			Handler:    _BeastDBService_DropCollection_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

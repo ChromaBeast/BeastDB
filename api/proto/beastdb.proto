@@ -11,6 +11,11 @@ service BeastDBService {
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   rpc Scan (ScanRequest) returns (stream KeyValueResponse);
   rpc BatchWrite (BatchWriteRequest) returns (BatchWriteResponse);
+  // Collections bind a name to an 8-bit key prefix (docs/adr/0002-collections.md).
+  // Keys stay uint64: a collection's keys are prefix<<56 | local (local < 2^56).
+  rpc CreateCollection (CreateCollectionRequest) returns (CreateCollectionResponse);
+  rpc ListCollections (ListCollectionsRequest) returns (ListCollectionsResponse);
+  rpc DropCollection (DropCollectionRequest) returns (DropCollectionResponse);
 }
 
 // ReplicationService handles physical WAL streaming from Leader to Followers.
@@ -124,4 +129,35 @@ message Condition {
 message KeyCondition {
   uint64 key = 1;
   Condition condition = 2;
+}
+
+message Collection {
+  string name = 1;
+  uint32 prefix = 2;       // 0-255; the top 8 bits of every key in the collection
+  int64 created_at = 3;    // unix seconds
+}
+
+message CreateCollectionRequest {
+  string name = 1;         // 1-64 chars of [a-z0-9_-], starting with a letter or digit
+  // Explicit prefix (adopts existing records under it). Leave unset to
+  // auto-allocate the lowest empty prefix in 0x10-0xFE.
+  optional uint32 prefix = 2;
+}
+
+message CreateCollectionResponse {
+  Collection collection = 1;
+}
+
+message ListCollectionsRequest {}
+
+message ListCollectionsResponse {
+  repeated Collection collections = 1;
+}
+
+message DropCollectionRequest {
+  string name = 1;         // refused with FAILED_PRECONDITION while the prefix holds records
+}
+
+message DropCollectionResponse {
+  bool success = 1;
 }

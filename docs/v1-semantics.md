@@ -11,6 +11,7 @@
 - **Maximum Value Size:** 2 MiB (`MaxValueSize`). Values up to 4,000 bytes (`MaxRecordSize`) are stored inline in one slotted-page tuple; larger ones are chained across pages and checked with a CRC32 on read ([ADR 0001](adr/0001-large-values.md)). Larger payloads return `ErrRecordTooLarge`.
 - **Batch Size:** the values in one `BatchWrite` may total at most 8 MiB (`MaxBatchBytes`, `ErrBatchTooLarge`). gRPC clients sending large values must raise the 4 MiB default message limit (`api.MessageSizeDialOption`).
 - **Key Partitioning Convention:** Applications may optionally pack higher-order bits for table/collection prefixing (e.g., bits 56–63 for partition ID), but the engine treats keys as scalar `uint64` values.
+- **Collections:** a collection binds a unique name (`[a-z0-9_-]`, 1–64 chars) to one prefix; its keys are `prefix<<56 | local` with `local < 2^56`. The catalog is one record at the reserved key `0xFF00000000000001` (WAL-logged, replicated, backed up like any record); `Put`, `Delete` and `BatchWrite` to that key are rejected. Prefixes `0x00` (plain keys), `0x05` (API tokens) and `0xFF` cannot be bound. `DropCollection` is refused while the prefix holds records. `CreateCollection`/`DropCollection` need `admin`; `ListCollections` needs any client role. `Get`/`Put`/`Scan` do not yet take a collection name. See [ADR 0002](adr/0002-collections.md).
 
 ---
 

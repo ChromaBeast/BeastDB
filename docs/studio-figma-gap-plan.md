@@ -69,7 +69,7 @@ Shipped, with these notes against the descriptions below:
 
 | Feature | Blocker | First step |
 |---|---|---|
-| Collections / namespaces | Keys are uint64; no string keys or namespace concept. Upgrade spec lists string keys plus namespaces as not started. | ADR in `docs/adr/`: key encoding, migration of existing data, partition interaction. |
+| Collections / namespaces | **First slice shipped 2026-11-13** ([ADR 0002](adr/0002-collections.md)): persisted catalog binding a name to an 8-bit key prefix; create/list/drop in the engine, gRPC (`CreateCollection`, `ListCollections`, `DropCollection`) and `/api/collections`; Table Editor rail shows catalog names and lets admins create or drop (drop only when empty). Not done: collection-scoped Get/Put/Scan, drop-with-data, rename, string keys, the 254-collection ceiling. | Next: collection-aware data plane (name in the request, 56-bit local keys), then drop-with-data. String keys need their own ADR. |
 | Visual query builder + generated beastctl/SDK command | Needs collections and field-level filters; engine only has Get, Scan, text search. | Define filter push-down in Scan after collections land. |
 | Secondary indexes (list, create, slow-query suggestion) | Only one fixed text index. Needs index definitions, persistence, build-in-background, and query stats for suggestions. | ADR on index catalog; depends on collections. |
 | Replication management (add replica, promote) | Followers start by flags; no membership, no leader election, no fencing. Promotion without fencing risks split-brain. | ADR on membership and epoch-based promotion; Studio shows the real topology read-only first (leader plus connected replicas diagram with real LSN and lag, which Phase 0 can already approximate). |

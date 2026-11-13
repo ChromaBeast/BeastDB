@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SearchResponse, UniversalRecord, ViewMode } from "../types";
+import { CollectionConfig, SearchResponse, UniversalRecord, ViewMode } from "../types";
 import { Button } from "./ui/button";
 import { Breadcrumb } from "./Breadcrumb";
 import { GlobalSearchBar, SearchMode } from "./GlobalSearchBar";
@@ -19,6 +19,9 @@ interface Props {
   canWrite: boolean;
   error: string | null;
   partitionCounts?: Record<string, number>;
+  collections?: CollectionConfig[];
+  onCreateCollection?: (name: string) => Promise<void>;
+  onDropCollection?: (name: string) => Promise<void>;
   onRetry: () => void;
   onLoadMore: () => void;
   onLoadPartition?: (prefix: number) => Promise<void>;
@@ -48,7 +51,7 @@ export function RecordsView(p: Props) {
 
   const partitions = useMemo(
     () => buildPartitionList(p.records, p.partitionCounts),
-    [p.records, p.partitionCounts, metadataRevision]
+    [p.records, p.partitionCounts, p.collections, metadataRevision]
   );
 
   const [partition, setPartition] = useState<string>("1");
@@ -183,6 +186,7 @@ export function RecordsView(p: Props) {
         onChoosePartition={choosePartition} onDelete={p.onDelete} onDeleteUser={p.onDeleteUser}
         onEdit={p.onEdit ? () => p.onEdit!(p.selected!) : undefined}
         onNotice={p.onNotice} onScanRange={p.onScanRange}
+        onCreateCollection={p.onCreateCollection} onDropCollection={p.onDropCollection}
       />
     </section>
   );
