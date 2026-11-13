@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/binary"
 
-	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
@@ -30,14 +29,7 @@ func (e *Engine) recoverFromWAL(lastCheckpointLSN uint64) error {
 	}
 
 	if replayedCount > 0 {
-		if err := e.updateMeta(func(m *storage.MetaData) {
-			m.LastCheckpointLSN = highestReplayedLSN
-			m.ActiveDataPageID = e.activeDataPage
-			m.RootPageID = e.tree.RootPageID()
-		}); err != nil {
-			return err
-		}
-		if err := e.bpm.FlushAll(); err != nil {
+		if err := e.persistCheckpointLocked(highestReplayedLSN); err != nil {
 			return err
 		}
 	}

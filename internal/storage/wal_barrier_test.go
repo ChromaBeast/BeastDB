@@ -19,7 +19,7 @@ func newBarrierPool(t *testing.T, size int) (*BufferPoolManager, *DiskManager) {
 
 // A dirty page must not reach the data file when the WAL barrier fails:
 // otherwise a page could be persisted ahead of the log records that describe it.
-func TestWALBarrierFailureBlocksPageWrite(t *testing.T) {
+func TestWALBarrierFailureBlocksCheckpoint(t *testing.T) {
 	bpm, disk := newBarrierPool(t, 1)
 	errBarrier := errors.New("wal not durable")
 	bpm.SetWALBarrier(func() error { return errBarrier })
@@ -32,29 +32,19 @@ func TestWALBarrierFailureBlocksPageWrite(t *testing.T) {
 	if err := bpm.UnpinPage(id, true); err != nil {
 		t.Fatal(err)
 	}
-
-	// Eviction (pool of one) must fail because the barrier fails.
-	if _, _, err := bpm.NewPage(); !errors.Is(err, errBarrier) {
-		t.Fatalf("eviction err = %v, want barrier error", err)
-	}
-	if err := bpm.FlushPage(id); !errors.Is(err, errBarrier) {
-		t.Fatalf("FlushPage err = %v, want barrier error", err)
-	}
 	if err := bpm.FlushAll(); !errors.Is(err, errBarrier) {
 		t.Fatalf("FlushAll err = %v, want barrier error", err)
 	}
 
 	onDisk := make([]byte, PageSize)
-	if err := disk.ReadPage(id, onDisk); err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(onDisk, []byte("uncommitted")) {
+	if _, err := disk.file.ReadAt(onDisk, int64(id*PageSize)); err == nil && bytes.Contains(onDisk, []byte("uncommitted")) {
 		t.Fatal("dirty page reached the data file although the WAL barrier failed")
 	}
 }
 
-// The barrier runs before every page write path, and pages are written after it.
-func TestWALBarrierRunsBeforeEveryPageWrite(t *testing.T) {
+// Evictions spill to scratch space and need no barrier; a checkpoint runs the
+// barrier once, then installs every dirty and spilled page in the data file.
+func TestWALBarrierRunsOncePerCheckpoint(t *testing.T) {
 	bpm, disk := newBarrierPool(t, 1)
 	calls := 0
 	bpm.SetWALBarrier(func() error { calls++; return nil })
@@ -68,45 +58,32 @@ func TestWALBarrierRunsBeforeEveryPageWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Evict via a second page (pool size 1).
-	_, id2, err := bpm.NewPage()
+	// Evict via a second page (pool size 1): goes to the spill file.
+	page2, id2, err := bpm.NewPage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 {
-		t.Fatalf("barrier calls after eviction = %d, want 1", calls)
+	copy(page2.Data()[100:], []byte("second"))
+	if calls != 0 {
+		t.Fatalf("barrier calls after eviction = %d, want 0", calls)
 	}
-	onDisk := make([]byte, PageSize)
-	if err := disk.ReadPage(id, onDisk); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(onDisk, []byte("committed")) {
-		t.Fatal("evicted page was not written after the barrier succeeded")
-	}
-
-	if err := bpm.UnpinPage(id2, true); err != nil {
-		t.Fatal(err)
-	}
-	if err := bpm.FlushPage(id2); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 2 {
-		t.Fatalf("barrier calls after FlushPage = %d, want 2", calls)
-	}
-
-	// Dirty again, then FlushAll.
-	p, err := bpm.FetchPage(id2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	copy(p.Data()[200:], []byte("more"))
 	if err := bpm.UnpinPage(id2, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := bpm.FlushAll(); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 3 {
-		t.Fatalf("barrier calls after FlushAll = %d, want 3", calls)
+	if calls != 1 {
+		t.Fatalf("barrier calls after FlushAll = %d, want 1", calls)
+	}
+
+	for pid, want := range map[uint64]string{id: "committed", id2: "second"} {
+		onDisk := make([]byte, PageSize)
+		if _, err := disk.file.ReadAt(onDisk, int64(pid*PageSize)); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(onDisk, []byte(want)) {
+			t.Fatalf("page %d not in the data file after checkpoint", pid)
+		}
 	}
 }

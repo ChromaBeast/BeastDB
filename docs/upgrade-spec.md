@@ -26,7 +26,7 @@ Source: review of 2026-11-12. Complements [ROADMAP.md](../ROADMAP.md) and [v1-se
 ## Known limits of what shipped
 
 - Readers and replication are still blocked for the duration of each group's fsync (the engine keeps one global lock). Lifting this needs MVCC or latch coupling.
-- The barrier can add an extra fsync when a dirty page is evicted under memory pressure.
+- Evicted dirty pages go to a non-durable spill file until the next checkpoint, so the spill file grows with the number of distinct pages dirtied since then. Auto-checkpoint bounds it along with the WAL.
 - `LeaderServer.StreamWAL` replays the WAL file from disk and can briefly read a record that is appended but not yet fsynced.
 - `TestEngineSystemWorkloadBenchmark` has a fixed 1000 ops/s floor and is timing-sensitive on a loaded machine.
 - Checkpoint LSN/age metrics only appear after the first checkpoint since process start; the buffer pool hit ratio is cumulative.

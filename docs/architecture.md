@@ -56,7 +56,7 @@ A modular, zero-allocation database architecture built from first principles in 
 2. **Buffer Pool Pin:** The targeted 4KB disk page is fetched into a memory frame and pinned.
 3. **Slotted Page Update:** The tuple is inserted into the slotted page, updating the slot array and free space pointer.
 4. **Index Update:** If indexed, the B+ tree is traversed; keys and record pointers are updated, splitting nodes if page capacity is exceeded.
-5. **Frame Unpin:** The page frame is marked dirty and unpinned, allowing the background clock-sweep evictor to flush it later.
+5. **Frame Unpin:** The page frame is marked dirty and unpinned. If the clock-sweep evictor later needs the frame, the page goes to the spill file; it reaches the data file only at the next checkpoint.
 
 ### Read Execution Flow
 1. **Cache Check:** Point queries check the sharded in-memory cache first for sub-microsecond responses.
@@ -66,6 +66,7 @@ A modular, zero-allocation database architecture built from first principles in 
 ---
 
 ## 3. Storage Invariants
-- **Write-Ahead Invariant:** Log records must hit disk before dirty database pages containing those modifications are written. Because group commit applies a write to its page before the group's `fsync`, the buffer pool enforces this with a **WAL barrier** (`WAL.EnsureDurable`) called before every dirty-page write (eviction, `FlushPage`, `FlushAll`). If the barrier fails, the page is not written. The barrier costs no extra `fsync` when the WAL is already durable up to the current LSN.
+- **Checkpoint Image:** The data file only ever holds a complete checkpoint image. Dirty pages evicted between checkpoints go to a scratch spill file (`<db>-spill`), which is never fsynced and is discarded on restart, so evictions cost no `fsync`. A checkpoint (`FlushAll`) installs every dirty and spilled page atomically: it writes and fsyncs them all to a journal (`<db>-journal`, framed and CRC-checked), copies them into the data file, fsyncs it, and only then empties the journal. On open, a complete journal is re-applied and an incomplete one discarded. Recovery replays the WAL after the checkpoint LSN onto exactly that image; logical replay is not idempotent against pages that already hold later changes, which is why evicted pages must never reach the data file early.
+- **Write-Ahead Invariant:** Log records must hit disk before dirty database pages containing those modifications are written. Because group commit applies a write to its page before the group's `fsync`, the buffer pool runs a **WAL barrier** (`WAL.EnsureDurable`) before a checkpoint writes pages to the data file. If the barrier fails, nothing is written. The barrier costs no extra `fsync` when the WAL is already durable up to the current LSN.
 - **Page Isolation:** Every 4KB page maintains its own self-describing header, slot array, and CRC checksum.
 - **Pin Safety:** A page frame with `pin_count > 0` cannot be evicted from the buffer pool under any circumstances.

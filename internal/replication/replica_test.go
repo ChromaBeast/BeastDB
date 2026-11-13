@@ -6,7 +6,6 @@ import (
 	"net"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"google.golang.org/grpc"
@@ -72,11 +71,14 @@ func TestLeaderFollowerReplication(t *testing.T) {
 	}()
 
 	// Wait for catch-up replication of initial keys
-	time.Sleep(100 * time.Millisecond)
-
 	for _, k := range initialKeys {
-		val, found, err := followerEngine.Get(k)
-		if err != nil || !found || !bytes.Equal(val, []byte("val-initial")) {
+		var val []byte
+		var found bool
+		var err error
+		if !waitUntil(t, func() bool {
+			val, found, err = followerEngine.Get(k)
+			return err == nil && found && bytes.Equal(val, []byte("val-initial"))
+		}) {
 			t.Fatalf("follower missing replayed key %d: found=%v, err=%v", k, found, err)
 		}
 	}
@@ -88,10 +90,12 @@ func TestLeaderFollowerReplication(t *testing.T) {
 		t.Fatalf("leader live put failed: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
-	val, found, err := followerEngine.Get(liveKey)
-	if err != nil || !found || !bytes.Equal(val, liveVal) {
+	var val []byte
+	var found bool
+	if !waitUntil(t, func() bool {
+		val, found, err = followerEngine.Get(liveKey)
+		return err == nil && found && bytes.Equal(val, liveVal)
+	}) {
 		t.Fatalf("follower failed to receive live replicated key 999: found=%v, err=%v", found, err)
 	}
 
@@ -119,16 +123,15 @@ func TestLeaderFollowerReplication(t *testing.T) {
 		t.Fatalf("leader delete failed: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-
-	_, found20, _ := followerEngine.Get(20)
-	if found20 {
+	if !waitUntil(t, func() bool {
+		_, found20, err := followerEngine.Get(20)
+		return err == nil && !found20
+	}) {
 		t.Fatalf("expected deleted key 20 to be gone from replica")
 	}
 
-	// Verify Leader tracked the follower's Ack
-	ackLSN := leaderRepServer.GetReplicaAck("replica-node-1")
-	if ackLSN == 0 {
+	// Verify Leader tracked the follower's Ack (acks are batched, so wait for one)
+	if !waitUntil(t, func() bool { return leaderRepServer.GetReplicaAck("replica-node-1") != 0 }) {
 		t.Fatalf("expected non-zero replica ACK LSN on leader")
 	}
 }

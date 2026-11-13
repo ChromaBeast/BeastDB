@@ -22,12 +22,7 @@ func (e *Engine) Close() error {
 		}
 	}
 
-	recordErr(e.updateMeta(func(m *storage.MetaData) {
-		m.LastCheckpointLSN = e.wal.CurrentLSN()
-		m.ActiveDataPageID = e.activeDataPage
-		m.RootPageID = e.tree.RootPageID()
-	}))
-	recordErr(e.bpm.FlushAll())
+	recordErr(e.persistCheckpointLocked(e.wal.CurrentLSN()))
 	recordErr(e.wal.Close())
 	recordErr(e.disk.Close())
 	return firstErr
@@ -47,27 +42,35 @@ func (e *Engine) Checkpoint() error {
 		return fmt.Errorf("checkpoint sync wal: %w", err)
 	}
 
-	if err := e.updateMeta(func(m *storage.MetaData) {
-		m.LastCheckpointLSN = e.wal.CurrentLSN()
-		m.ActiveDataPageID = e.activeDataPage
-		m.RootPageID = e.tree.RootPageID()
-	}); err != nil {
-		return fmt.Errorf("checkpoint update meta: %w", err)
-	}
-	if err := e.bpm.FlushAll(); err != nil {
-		return fmt.Errorf("checkpoint flush dirty pages: %w", err)
-	}
-	// Dirty pages (and any file extension) must be durable before the WAL that
-	// covers them is archived.
-	if err := e.disk.Sync(); err != nil {
-		return fmt.Errorf("checkpoint sync data file: %w", err)
-	}
+	// Dirty pages and the meta page must be durable before the WAL that covers
+	// them is archived.
 	ckptLSN := e.wal.CurrentLSN()
+	if err := e.persistCheckpointLocked(ckptLSN); err != nil {
+		return fmt.Errorf("checkpoint: %w", err)
+	}
 	if err := e.wal.Checkpoint(); err != nil {
 		return err
 	}
 	e.lastCkptLSN.Store(ckptLSN)
 	e.lastCkptUnix.Store(time.Now().Unix())
+	return nil
+}
+
+// persistCheckpointLocked records lsn as the recovery start point in the meta
+// page and installs every page, meta included, in the data file as one atomic
+// checkpoint. Recovery redoes the WAL after lsn on exactly this image.
+// Caller holds e.mu exclusively.
+func (e *Engine) persistCheckpointLocked(lsn uint64) error {
+	if err := e.updateMeta(func(m *storage.MetaData) {
+		m.LastCheckpointLSN = lsn
+		m.ActiveDataPageID = e.activeDataPage
+		m.RootPageID = e.tree.RootPageID()
+	}); err != nil {
+		return fmt.Errorf("update meta: %w", err)
+	}
+	if err := e.bpm.FlushAll(); err != nil {
+		return fmt.Errorf("write checkpoint: %w", err)
+	}
 	return nil
 }
 
