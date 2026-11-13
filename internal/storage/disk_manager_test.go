@@ -36,8 +36,8 @@ func TestDiskManager(t *testing.T) {
 
 	writeBuf := make([]byte, PageSize)
 	copy(writeBuf, "hello disk manager page 0")
-	if err := disk.WritePage(0, writeBuf); err != nil {
-		t.Fatalf("failed to write page 0: %v", err)
+	if err := disk.SpillPage(0, writeBuf); err != nil {
+		t.Fatalf("failed to spill page 0: %v", err)
 	}
 
 	readBuf := make([]byte, PageSize)
@@ -49,6 +49,10 @@ func TestDiskManager(t *testing.T) {
 		t.Fatalf("read content mismatch: %s", string(readBuf[:25]))
 	}
 
+	// Only a checkpoint reaches the data file; spilled pages do not survive Close.
+	if err := disk.WriteCheckpoint([]PageImage{{ID: 0, Data: writeBuf}, {ID: 1, Data: make([]byte, PageSize)}}); err != nil {
+		t.Fatalf("failed to checkpoint: %v", err)
+	}
 	if err := disk.Close(); err != nil {
 		t.Fatalf("failed to close disk manager: %v", err)
 	}

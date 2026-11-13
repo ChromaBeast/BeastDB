@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/storage"
 )
 
 // RestoreResult captures recovery timing and metadata from a restore drill.
@@ -70,6 +71,11 @@ func runRestore(backupDir, destDir string, force bool) (*RestoreResult, error) {
 	}
 
 	_ = os.Remove(destWAL)
+	// A journal left by the previous database (e.g. a crash mid-checkpoint)
+	// belongs to that database; applied to the restored file it would corrupt it.
+	if err := os.Remove(storage.JournalPath(destDB)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("remove stale journal: %w", err)
+	}
 
 	// 4. Verify that restored database can be opened cleanly by engine
 	engine, err := api.NewEngine(destDB, destWAL, 20)

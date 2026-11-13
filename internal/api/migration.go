@@ -127,6 +127,9 @@ func migrateV0ToV1(dbPath, walPath string, poolSize int) error {
 	if err := eng.Close(); err != nil {
 		return fmt.Errorf("failed to close temporary v1 engine: %w", err)
 	}
+	// The temporary engine's journal is empty after Close; the installed
+	// database gets its own journal next to dbPath on open.
+	_ = os.Remove(storage.JournalPath(tmpDB))
 
 	bakDB := dbPath + ".v0.bak"
 	bakWAL := walPath + ".v0.bak"
