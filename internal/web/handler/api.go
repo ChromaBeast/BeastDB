@@ -34,6 +34,8 @@ type APIHandler struct {
 	version    string
 	partitions []PartitionEntry
 	tokens     *auth.TokenStore
+
+	replication ReplicationSource // leader only; nil elsewhere
 }
 
 // NewAPIHandler creates an APIHandler with engine, session, and partition registry.

@@ -10,6 +10,10 @@ import (
 )
 
 // startWebServer boots the HTTP admin console and seeds or synchronizes the admin credentials.
+// replicaSource is set by main on a leader so the web console can list replicas.
+// It stays nil on followers (they do not see other replicas).
+var replicaSource handler.ReplicationSource
+
 func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.Engine, partitions []handler.PartitionEntry, tokenStore *auth.TokenStore, metricsTokens ...string) func() {
 	if webAddr == "" {
 		return func() {}
@@ -20,7 +24,7 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 		log.Fatalf("Failed to initialize session secret: %v", secretErr)
 	}
 
-	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, web.Options{DataDir: dataDir, MetricsTokens: metricsTokens}, tokenStore)
+	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, web.Options{DataDir: dataDir, MetricsTokens: metricsTokens, Replication: replicaSource}, tokenStore)
 	if webErr != nil {
 		log.Fatalf("Failed to create web server: %v", webErr)
 	}

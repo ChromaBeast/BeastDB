@@ -44,6 +44,17 @@ func (b *Broadcaster) Subscribe(replicaID string, bufSize int) (<-chan *beastv1.
 	return ch, unsubscribe
 }
 
+// SubscriberIDs returns the ids of replicas with a live stream, in no particular order.
+func (b *Broadcaster) SubscriberIDs() []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	ids := make([]string, 0, len(b.subscribers))
+	for id := range b.subscribers {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Broadcast dispatches a new WAL record to all active follower subscriber channels.
 // If a consumer's channel is full, it is evicted and closed so the follower fails visibly and resyncs.
 func (b *Broadcaster) Broadcast(msg *beastv1.WALRecordMessage) {

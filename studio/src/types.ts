@@ -46,6 +46,26 @@ export interface StorageMetrics {
   walSizeBytes: number;
   currentLSN: number;
   activeDataPage: number;
+  lastCheckpointLSN?: number;
+  /** Unix seconds; 0 until a checkpoint completes in this process. */
+  lastCheckpointUnix?: number;
+  readOnly?: boolean;
+}
+
+export interface ReplicaStatus {
+  id: string;
+  address?: string;
+  connected: boolean;
+  ackedLSN: number;
+  lagLSN: number;
+}
+
+export interface ReplicationStatus {
+  role: string;
+  lsn: number;
+  /** True only on a leader; followers cannot see other replicas. */
+  tracked: boolean;
+  replicas: ReplicaStatus[];
 }
 
 export interface TelemetryStats {
