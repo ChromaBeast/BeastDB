@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Check, Copy, Key, Plus, Trash2, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { APITokenItem } from "../types";
+import { TOKEN_ROLES, useApiTokens } from "../hooks/useApiTokens";
 
 interface Props {
   open: boolean;
@@ -12,32 +12,15 @@ interface Props {
 }
 
 export function ApiTokensDialog({ open, onClose, onNotice }: Props) {
-  const [tokens, setTokens] = useState<APITokenItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { tokens, loading, create, revoke } = useApiTokens(open, onNotice);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [role, setRole] = useState("admin");
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const fetchTokens = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/tokens");
-      if (res.ok) {
-        const json = await res.json();
-        setTokens(json.tokens || []);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
     if (open) {
-      void fetchTokens();
       setNewSecret(null);
       setName("");
     }
@@ -46,34 +29,15 @@ export function ApiTokensDialog({ open, onClose, onNotice }: Props) {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    try {
-      const res = await fetch("/api/tokens", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), role }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setNewSecret(data.token);
+    const secret = await create({ name, role, expiresInSeconds: 0 });
+    if (secret) {
+      setNewSecret(secret);
       setName("");
       setCreating(false);
-      onNotice("API token generated and saved in partition 0x05.");
-      await fetchTokens();
-    } catch (err) {
-      onNotice((err as Error).message, true);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      const res = await fetch(`/api/tokens?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
-      onNotice("Token revoked.");
-      await fetchTokens();
-    } catch (err) {
-      onNotice((err as Error).message, true);
-    }
-  };
+  const handleDelete = (id: string) => void revoke(id);
 
   const copyToClipboard = () => {
     if (!newSecret) return;
@@ -138,8 +102,9 @@ export function ApiTokensDialog({ open, onClose, onNotice }: Props) {
                 onChange={(e) => setRole(e.target.value)}
                 className="rounded bg-card text-foreground px-2 py-1.5 text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                <option value="admin">Admin</option>
-                <option value="viewer">Viewer</option>
+                {TOKEN_ROLES.map((r) => (
+                  <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                ))}
               </select>
             </div>
             <div className="flex justify-end gap-2 pt-1">
