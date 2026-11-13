@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/logbuf"
+	"github.com/ChromaBeast/beastdb/internal/metrics"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 )
@@ -17,7 +18,8 @@ var staticFiles embed.FS
 
 // Server is the embedded HTTP admin server running alongside the gRPC server.
 type Server struct {
-	httpServer *http.Server
+	httpServer  *http.Server
+	stopSampler func()
 }
 
 // EngineBackend is the combined interface required by the web server.
@@ -148,12 +150,16 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))
 	mux.Handle("/api/replication", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.GetReplication)))
 
+	// Server-side metric history (memory only), sampled in the background.
+	history := metrics.NewHistory(historyCapacity)
+	mux.Handle("/api/metrics/history", handler.AdminMiddleware(sessions, handler.MetricsHistoryHandler(sessions, history, historyInterval)))
+
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: securityHeaders(handler.HTTPMetrics(mux)),
 	}
 
-	return &Server{httpServer: srv}, nil
+	return &Server{httpServer: srv, stopSampler: startSampler(engine, opts.Replication, history, historyInterval)}, nil
 }
 
 // securityHeaders injects defense-in-depth headers into all web and API responses.
@@ -176,5 +182,9 @@ func (s *Server) Serve() {
 
 // Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown() {
+	if s.stopSampler != nil {
+		s.stopSampler()
+		s.stopSampler = nil
+	}
 	_ = s.httpServer.Close()
 }

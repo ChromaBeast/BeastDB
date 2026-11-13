@@ -20,10 +20,14 @@ const maxMessageBytes = 4096
 
 // Entry is one captured log line.
 type Entry struct {
-	Seq     uint64    `json:"seq"`
-	Time    time.Time `json:"time"`
-	Level   string    `json:"level"`
-	Message string    `json:"message"`
+	Seq   uint64    `json:"seq"`
+	Time  time.Time `json:"time"`
+	Level string    `json:"level"`
+	// Source is the subsystem the line most likely came from (engine, grpc,
+	// auth, replication, studio, server). It is derived from the message text,
+	// not from call-site tags, so treat it as a filter aid.
+	Source  string `json:"source"`
+	Message string `json:"message"`
 }
 
 // Buffer is a fixed-capacity ring of log entries. Safe for concurrent use.
@@ -109,7 +113,7 @@ func (b *Buffer) appendLocked(line string) {
 		line = line[:maxMessageBytes] + "…"
 	}
 	ts, msg := splitTimestamp(line)
-	e := Entry{Seq: b.nextSeq, Time: ts, Level: detectLevel(msg), Message: msg}
+	e := Entry{Seq: b.nextSeq, Time: ts, Level: detectLevel(msg), Source: detectSource(msg), Message: msg}
 	b.nextSeq++
 	if b.n < len(b.ring) {
 		b.ring[(b.start+b.n)%len(b.ring)] = e
@@ -150,6 +154,34 @@ func detectLevel(msg string) string {
 	return "info"
 }
 
+// Known log sources, in the order the Studio lists them.
+var Sources = []string{"engine", "grpc", "auth", "replication", "studio", "server"}
+
+// detectSource classifies a line by keywords this server's own messages use.
+// Order matters: the first match wins; anything else is "server".
+func detectSource(msg string) string {
+	m := strings.ToLower(msg)
+	switch {
+	case strings.Contains(m, "replica"), strings.Contains(m, "replication"),
+		strings.Contains(m, "follower"):
+		return "replication"
+	case strings.Contains(m, "grpc"):
+		return "grpc"
+	case strings.Contains(m, "web console"), strings.Contains(m, "studio"),
+		strings.Contains(m, "web server"), strings.Contains(m, "admin user"):
+		return "studio"
+	case strings.Contains(m, "password"), strings.Contains(m, "token"),
+		strings.Contains(m, "security"), strings.Contains(m, "login"),
+		strings.Contains(m, "session secret"), strings.Contains(m, "tls"):
+		return "auth"
+	case strings.Contains(m, "wal"), strings.Contains(m, "checkpoint"),
+		strings.Contains(m, "buffer pool"), strings.Contains(m, "recover"),
+		strings.Contains(m, "b+ tree"), strings.Contains(m, "page"):
+		return "engine"
+	}
+	return "server"
+}
+
 // Query selects entries.
 type Query struct {
 	// Since returns only entries with Seq > Since.
@@ -160,6 +192,8 @@ type Query struct {
 	Level string
 	// Text is a case-insensitive substring filter on the message.
 	Text string
+	// Source, if set, matches that source exactly (see Sources).
+	Source string
 }
 
 // Result is a query answer. Latest is the highest seq stored (0 if empty), so
@@ -189,6 +223,9 @@ func (b *Buffer) Snapshot(q Query) Result {
 			break
 		}
 		if q.Level != "" && e.Level != q.Level {
+			continue
+		}
+		if q.Source != "" && e.Source != q.Source {
 			continue
 		}
 		if text != "" && !strings.Contains(strings.ToLower(e.Message), text) {

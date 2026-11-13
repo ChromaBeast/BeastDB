@@ -36,7 +36,12 @@ Everything maps to data that already exists.
 
 Done when: each page matches its frame's layout using real data only, and `go build ./... && go vet ./... && go test ./... -race` plus `bun test` pass.
 
-## Phase 1: small server additions (2-3 weeks)
+## Phase 1: small server additions (done 2026-11-13)
+
+Shipped, with these differences from the table below:
+- **Token last-used** is held in memory only (never written, so authenticating does not touch the engine) and resets on restart. The Keys table shows "-" until a key is used after a restart.
+- **Log source** is derived from the message text (keywords in `internal/logbuf`), not from tags at each call site, because the server logs through the standard logger. Treat it as a filter aid. `/api/logs` takes `source=`; the Studio filters the time range in the browser.
+- **Metrics history** is sampled every 10 s into a 24 h in-memory ring at `/api/metrics/history`; the Metrics page has a Live / 1 h / 24 h picker and Overview shows a request-rate chart. Not persisted.
 
 | Item | Server work | Studio work |
 |---|---|---|

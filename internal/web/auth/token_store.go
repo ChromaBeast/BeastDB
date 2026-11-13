@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"hash/fnv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -23,6 +24,11 @@ type APIToken struct {
 	CreatedBy   string    `json:"created_by"`
 	// ExpiresAt is optional; nil (or absent in older stored tokens) means no expiry.
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// LastUsedAt is filled in by List from in-memory tracking: the last time the
+	// token authenticated a request since this process started. It is never
+	// persisted (authenticating must not write to the engine), so it is nil for
+	// tokens not used since the last restart.
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 }
 
 // Expired reports whether the token has an expiry that is at or before now.
@@ -48,6 +54,7 @@ type TokenStore struct {
 	scanFn     func(start, end uint64) ([]TokenRecord, error)
 	mu         sync.RWMutex
 	tokenIndex map[string]APIToken // tokenHash -> APIToken
+	lastUsed   sync.Map            // tokenHash -> *atomic.Int64 (unix nanoseconds)
 }
 
 // NewTokenStore initializes TokenStore and loads existing tokens.
@@ -129,7 +136,13 @@ func (ts *TokenStore) List() []APIToken {
 	defer ts.mu.RUnlock()
 
 	list := make([]APIToken, 0, len(ts.tokenIndex))
-	for _, tok := range ts.tokenIndex {
+	for h, tok := range ts.tokenIndex {
+		if v, ok := ts.lastUsed.Load(h); ok {
+			if ns := v.(*atomic.Int64).Load(); ns > 0 {
+				t := time.Unix(0, ns).UTC()
+				tok.LastUsedAt = &t
+			}
+		}
 		list = append(list, tok)
 	}
 	return list
@@ -143,6 +156,7 @@ func (ts *TokenStore) Delete(id string) error {
 	for h, tok := range ts.tokenIndex {
 		if tok.ID == id {
 			delete(ts.tokenIndex, h)
+			ts.lastUsed.Delete(h)
 			break
 		}
 	}
@@ -163,10 +177,22 @@ func (ts *TokenStore) ValidateRole(raw string) (string, bool) {
 	ts.mu.RLock()
 	tok, exists := ts.tokenIndex[th]
 	ts.mu.RUnlock()
-	if !exists || tok.Expired(time.Now()) {
+	now := time.Now()
+	if !exists || tok.Expired(now) {
 		return "", false
 	}
+	ts.touch(th, now)
 	return tok.Role, true
+}
+
+// touch records a successful authentication. Pure memory: one atomic store, and
+// an allocation only the first time a token is seen.
+func (ts *TokenStore) touch(hash string, now time.Time) {
+	v, ok := ts.lastUsed.Load(hash)
+	if !ok {
+		v, _ = ts.lastUsed.LoadOrStore(hash, new(atomic.Int64))
+	}
+	v.(*atomic.Int64).Store(now.UnixNano())
 }
 
 // Reload repopulates the in-memory token cache from partition 0x05.

@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { APITokenItem } from "../types";
 
 /** Token as returned by GET /api/tokens (expires_at is omitted for non-expiring tokens). */
-export type ApiToken = APITokenItem & { expires_at?: string };
+/** last_used_at is in-memory on the server: absent until the key is used after a restart. */
+export type ApiToken = APITokenItem & { expires_at?: string; last_used_at?: string };
 
 /** Roles accepted by POST /api/tokens (api.ValidTokenRole). */
 export const TOKEN_ROLES = ["admin", "writer", "viewer", "replication"] as const;

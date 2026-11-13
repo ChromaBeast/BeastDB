@@ -9,6 +9,8 @@ import { Input } from "../ui/input";
 import { cn } from "@/lib/utils";
 import {
   filterEntries,
+  LOG_RANGES,
+  LOG_SOURCES,
   formatLogTime,
   mergeEntries,
   toLogCsv,
@@ -27,6 +29,8 @@ const LEVEL_STYLE: Record<LogLevel, string> = {
   debug: "text-muted-foreground/60",
 };
 
+const SELECT = "h-8 rounded-md border border-border bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
 type Status = "loading" | "ok" | "forbidden" | "error";
 
 export function LogsView({ user }: ViewProps) {
@@ -36,6 +40,8 @@ export function LogsView({ user }: ViewProps) {
   const [paused, setPaused] = useState(false);
   const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set(LEVELS));
   const [text, setText] = useState("");
+  const [source, setSource] = useState("");
+  const [rangeMs, setRangeMs] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
   const latest = useRef(0);
   const scroller = useRef<HTMLDivElement>(null);
@@ -67,7 +73,11 @@ export function LogsView({ user }: ViewProps) {
     return () => clearInterval(id);
   }, [isAdmin, paused, status === "forbidden", poll]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visible = useMemo(() => filterEntries(entries, levels, text), [entries, levels, text]);
+  const visible = useMemo(
+    () => filterEntries(entries, { levels, text, source, rangeMs }),
+    // `entries` changes every poll, which also re-evaluates the time range.
+    [entries, levels, text, source, rangeMs],
+  );
   const counts = useMemo(() => {
     const c: Record<LogLevel, number> = { error: 0, warn: 0, info: 0, debug: 0 };
     for (const e of entries) c[e.level] += 1;
@@ -160,12 +170,19 @@ export function LogsView({ user }: ViewProps) {
             </button>
           );
         })}
+        <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Filter by source" className={SELECT}>
+          <option value="">All sources</option>
+          {LOG_SOURCES.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={rangeMs} onChange={(e) => setRangeMs(Number(e.target.value))} aria-label="Filter by time range" className={SELECT}>
+          {LOG_RANGES.map((r) => <option key={r.ms} value={r.ms}>{r.label}</option>)}
+        </select>
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Filter messages"
           aria-label="Filter log messages"
-          className="ml-auto h-8 w-full max-w-xs"
+          className="h-8 w-full max-w-xs flex-1"
         />
       </div>
 
@@ -190,6 +207,7 @@ export function LogsView({ user }: ViewProps) {
             <div aria-hidden className="sticky top-0 z-10 flex gap-3 border-b border-border bg-card px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               <span className="w-[4.5rem] shrink-0">Time</span>
               <span className="w-14 shrink-0">Level</span>
+              <span className="w-24 shrink-0">Source</span>
               <span>Event</span>
             </div>
           )}
@@ -197,6 +215,7 @@ export function LogsView({ user }: ViewProps) {
             <div key={e.seq} className="flex gap-3 rounded px-2 py-0.5 hover:bg-muted/50">
               <span className="w-[4.5rem] shrink-0 text-muted-foreground/70">{formatLogTime(e.time)}</span>
               <span className={cn("w-14 shrink-0 uppercase", LEVEL_STYLE[e.level])}>{e.level}</span>
+              <span className="w-24 shrink-0 text-muted-foreground">{e.source ?? ""}</span>
               <span className="min-w-0 whitespace-pre-wrap break-words text-foreground">{e.message}</span>
             </div>
           ))}
