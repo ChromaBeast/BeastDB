@@ -17,6 +17,7 @@ type LeaderServer struct {
 	walPath     string
 	broadcaster *Broadcaster
 	acks        map[string]uint64
+	addrs       map[string]string // replica id -> remote address of its live stream
 	mu          sync.RWMutex
 }
 
@@ -26,6 +27,7 @@ func NewLeaderServer(walPath string) *LeaderServer {
 		walPath:     walPath,
 		broadcaster: NewBroadcaster(),
 		acks:        make(map[string]uint64),
+		addrs:       make(map[string]string),
 	}
 }
 
@@ -54,6 +56,7 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 	// 1. Subscribe FIRST before reading WAL from disk to eliminate the live-handoff race gap.
 	ch, unsubscribe := s.broadcaster.Subscribe(req.ReplicaId, 1024)
 	defer unsubscribe()
+	s.trackAddr(stream.Context(), req.ReplicaId)
 
 	var maxReplayedLSN uint64
 

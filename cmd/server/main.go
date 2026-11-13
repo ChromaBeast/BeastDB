@@ -109,6 +109,7 @@ func main() {
 		repServer := replication.NewLeaderServer(engine.WALPath())
 		repServer.RegisterService(grpcServer.RawServer())
 		engine.SetCommitObserver(repServer)
+		replicaSource = repServer
 	} else {
 		clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
 		if err != nil {

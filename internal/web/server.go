@@ -45,6 +45,8 @@ type Options struct {
 	Settings handler.RuntimeSettings
 	// Logs backs GET /api/logs; nil serves an empty log.
 	Logs *logbuf.Buffer
+	// Replication supplies the leader's replica view for /api/replication (nil on followers).
+	Replication handler.ReplicationSource
 }
 
 // NewServerWithOptions is NewServer plus optional settings.
@@ -60,6 +62,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	if len(tokenStore) > 0 && tokenStore[0] != nil {
 		apiH.SetTokenStore(tokenStore[0])
 	}
+	apiH.SetReplicationSource(opts.Replication)
 	rateLimiter := handler.NewLoginRateLimiter(5, 30*time.Second)
 
 	deps := &handler.Deps{
@@ -141,6 +144,9 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	opts.Settings.Version = version
 	opts.Settings.Role = role
 	mux.Handle("/api/settings", handler.AdminMiddleware(sessions, handler.SettingsHandler(sessions, opts.Settings)))
+	// Operations (checkpoint, replica view) — admin only
+	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))
+	mux.Handle("/api/replication", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.GetReplication)))
 
 	srv := &http.Server{
 		Addr:    addr,
