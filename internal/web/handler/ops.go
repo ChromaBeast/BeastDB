@@ -2,7 +2,9 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/replication"
 )
 
@@ -55,6 +57,7 @@ func (h *APIHandler) PostCheckpoint(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := h.engine.StorageMetrics()
+	h.record(r, audit.ActionCheckpoint, "", "LSN "+strconv.FormatUint(m.CurrentLSN, 10))
 	writeJSON(w, map[string]any{
 		"ok":                 true,
 		"lsn":                m.CurrentLSN,

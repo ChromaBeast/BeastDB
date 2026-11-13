@@ -52,7 +52,14 @@ Shipped, with these differences from the table below:
 
 Risks: write amplification from last-used (mitigate with throttling and no WAL entry); history memory (bounded ring).
 
-## Phase 2: medium features, each needs a short design note (1-2 months)
+## Phase 2: medium features (done 2026-11-13)
+
+Shipped, with these notes against the descriptions below:
+- **Backups** (`internal/backup`, `/api/backups`): create, list, verify and download (tar) from Studio, plus an optional schedule and retention. Built on the engine's existing `CreateSnapshot`, which holds the engine lock while it copies the data file, so **reads and writes pause for the copy** (time grows with data size). Bundles are the same format `beastctl` writes; a test proves `beastctl verify` and `beastctl restore` accept them. **Restore stays offline**: Studio shows the command, not a button. Backups live on the same host as the data (`<data-dir>/backups`), so they do not protect against losing the machine; off-host copy is still manual (Download).
+- **Runtime settings** (`internal/runtimecfg`, `/api/settings/runtime`): the WAL checkpoint threshold, the sign-in rate limit, and the backup schedule. Saved to `runtime-settings.json` in the data directory and override the matching flags on the next start. Everything else (TLS, addresses, pool size) stays startup-only.
+- **Audit log** (`internal/audit`, `/api/audit`): append-only, hash-chained `audit.log` in the data directory. Records sign-ins (and failures), key create/revoke, record put/delete, user delete, checkpoints, settings changes and backup actions. Never records record values or secrets. The chain detects edits, removals and reordering; it does not stop someone who can rewrite the whole file, and it is not replicated off the host. The server refuses to start if the existing chain is broken.
+
+## Phase 2 (original description)
 
 1. **Server-managed backups.** Move `beastctl` backup, verify and restore logic into an internal package. Add admin endpoints to create a bundle into a configured backup directory, list manifests with size, time and verify status, verify, and stream a download. Scheduling comes last (simple interval, retention count). Restore stays an offline `beastctl` step until restore-to-new-database is designed; the Figma "Restore" button is shown as copy-the-command, not a live action. Needs: concurrent-safe backup while serving (today beastctl assumes a stopped node), so the first design question is a consistent snapshot using checkpoint plus WAL position.
 2. **Runtime settings.** Pick the subset that is safe to change live (checkpoint threshold, log level, rate limits), persist to a settings file, apply without restart, audit each change. Everything else stays startup-only. TLS and mTLS toggles are not live-changeable and stay read-only.

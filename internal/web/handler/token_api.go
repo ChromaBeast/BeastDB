@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -93,6 +94,12 @@ func (h *APIHandler) CreateToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	exp := "never expires"
+	if expiresAt != nil {
+		exp = "expires " + expiresAt.UTC().Format(time.RFC3339)
+	}
+	h.record(r, audit.ActionTokenCreate, meta.ID, name+" · role "+tokRole+" · "+exp)
+
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, map[string]any{
 		"token": rawToken,
@@ -129,5 +136,6 @@ func (h *APIHandler) DeleteToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.record(r, audit.ActionTokenRevoke, id, "")
 	w.WriteHeader(http.StatusNoContent)
 }

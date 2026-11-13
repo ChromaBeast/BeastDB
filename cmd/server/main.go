@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/backup"
 	"github.com/ChromaBeast/beastdb/internal/logbuf"
 	"github.com/ChromaBeast/beastdb/internal/replication"
+	"github.com/ChromaBeast/beastdb/internal/runtimecfg"
 	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
 	"google.golang.org/grpc"
@@ -80,6 +82,21 @@ func main() {
 	ckptCtx, stopCkpt := context.WithCancel(context.Background())
 	defer stopCkpt()
 	engine.StartAutoCheckpoint(ckptCtx, 10*time.Second, int64(*walCheckpointMB)<<20)
+
+	// Settings an admin can change in Studio without a restart; saved values
+	// in runtime-settings.json override the matching flags.
+	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7})
+	if rtErr != nil {
+		log.Printf("Warning: ignoring runtime settings file: %v", rtErr)
+	}
+	runtimeCfg.Subscribe(func(v runtimecfg.Values) { engine.SetCheckpointThreshold(int64(v.WALCheckpointMB) << 20) })
+
+	// Server-managed backups (create, verify, download, optional schedule).
+	backups := backup.NewManager(engine, filepath.Join(*dataDir, "backups"))
+	runtimeCfg.Subscribe(func(v runtimecfg.Values) {
+		backups.Configure(time.Duration(v.BackupIntervalMinutes)*time.Minute, v.BackupKeep)
+	})
+	backups.Start(ckptCtx)
 
 	tokenStore := initTokenStore(engine)
 	grpcOpts := api.MessageSizeServerOptions()
@@ -159,7 +176,9 @@ func main() {
 
 	logs.AddSecret(nonDefault(*adminPassword)) // dev mode generates its password after flag parsing
 	webOpts := web.Options{
-		Logs: logs,
+		Logs:    logs,
+		Runtime: runtimeCfg,
+		Backups: backups,
 		Settings: handler.RuntimeSettings{
 			GRPCAddr: grpcBind, WebAddr: *webAddr, DataDir: *dataDir, PoolSize: *poolSize,
 			WALCheckpointMB: *walCheckpointMB, ReplicaID: *replicaID, LeaderAddr: *leaderAddr,

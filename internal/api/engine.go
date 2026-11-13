@@ -30,6 +30,9 @@ type Engine struct {
 
 	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
 	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
+
+	// maxWALBytes is the auto-checkpoint threshold; adjustable at runtime.
+	maxWALBytes atomic.Int64
 }
 
 // NewEngine initializes the database engine components with recovery support.

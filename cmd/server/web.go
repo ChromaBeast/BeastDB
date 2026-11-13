@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
@@ -23,6 +24,12 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 	if secretErr != nil {
 		log.Fatalf("Failed to initialize session secret: %v", secretErr)
 	}
+
+	auditLog, auditErr := audit.Open(dataDir)
+	if auditErr != nil {
+		log.Fatalf("Failed to open audit log: %v", auditErr)
+	}
+	extra.Audit = auditLog
 
 	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, withBase(withReplication(extra), dataDir, metricsTokens), tokenStore)
 	if webErr != nil {
@@ -47,6 +54,7 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 	go webSrv.Serve()
 	return func() {
 		webSrv.Shutdown()
+		_ = auditLog.Close()
 	}
 }
 

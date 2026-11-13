@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -36,6 +37,7 @@ type APIHandler struct {
 	tokens     *auth.TokenStore
 
 	replication ReplicationSource // leader only; nil elsewhere
+	audit       *audit.Log        // nil disables auditing
 }
 
 // NewAPIHandler creates an APIHandler with engine, session, and partition registry.
@@ -44,6 +46,19 @@ func NewAPIHandler(e EngineReader, s *auth.SessionManager, role, version string,
 }
 
 // SetTokenStore assigns the persistent TokenStore to the APIHandler.
+// SetAudit wires the audit log (nil disables auditing).
+func (h *APIHandler) SetAudit(l *audit.Log) { h.audit = l }
+
+// record writes an audit entry attributed to the requesting session.
+// Record values and secrets must never be passed in detail.
+func (h *APIHandler) record(r *http.Request, action, target, detail string) {
+	actor := "unknown"
+	if u, _, err := h.sessions.ValidateSession(r); err == nil {
+		actor = u
+	}
+	_ = h.audit.Record(actor, action, target, detail, ClientIP(r))
+}
+
 func (h *APIHandler) SetTokenStore(ts *auth.TokenStore) {
 	h.tokens = ts
 }

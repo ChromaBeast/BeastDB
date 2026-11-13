@@ -5,6 +5,7 @@ import { PageHeader } from "../PageHeader";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { useTheme } from "../../hooks/useTheme";
+import { RuntimeSettingsCard } from "../settings/RuntimeSettings";
 import { SettingsCard, settingsCards, type Settings, type SettingsSection } from "../settings/SettingsCards";
 import { cn } from "@/lib/utils";
 import type { ViewProps } from "./types";
@@ -17,7 +18,7 @@ const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "limits", label: "Limits" },
 ];
 
-export function SettingsView({ user }: ViewProps) {
+export function SettingsView({ user, onNotice }: ViewProps) {
   const { dark, toggle } = useTheme();
   const [section, setSection] = useState<SettingsSection>("general");
   const isAdmin = user?.role === "admin";
@@ -49,7 +50,7 @@ export function SettingsView({ user }: ViewProps) {
 
   return (
     <section aria-labelledby="settings-title" className="space-y-6">
-      <PageHeader id="settings-title" title="Settings" subtitle="How this node is configured. Read-only." />
+      <PageHeader id="settings-title" title="Settings" subtitle="Startup configuration is read-only. A few settings can be changed live and are saved to the data directory." />
 
       <div className="grid gap-4 md:grid-cols-[200px_minmax(0,1fr)]">
         <nav aria-label="Settings sections" className="flex gap-1 overflow-x-auto md:flex-col md:self-start md:rounded-xl md:border md:border-border md:bg-card md:p-2">
@@ -93,6 +94,25 @@ export function SettingsView({ user }: ViewProps) {
           )}
           {state === "forbidden" && section === "general" && (
             <Card className="p-6 text-sm text-muted-foreground">Node identity is visible to administrators only.</Card>
+          )}
+          {isAdmin && section === "storage" && (
+            <RuntimeSettingsCard
+              title="Checkpointing"
+              description="Adjustable without a restart. Saved settings override the startup flag."
+              onNotice={onNotice}
+              fields={[{ name: "wal_checkpoint_mb", label: "WAL checkpoint threshold", unit: "MiB", hint: "The server checkpoints and rotates the WAL when it grows past this size." }]}
+            />
+          )}
+          {isAdmin && section === "security" && (
+            <RuntimeSettingsCard
+              title="Sign-in rate limit"
+              description="Failed Studio sign-ins allowed per client address."
+              onNotice={onNotice}
+              fields={[
+                { name: "login_max_attempts", label: "Failed attempts allowed", unit: "attempts" },
+                { name: "login_window_seconds", label: "Within a window of", unit: "seconds" },
+              ]}
+            />
           )}
           {state === "ok" && settings && (
             <>

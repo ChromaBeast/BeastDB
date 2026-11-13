@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { PageHeader } from "../PageHeader";
 import { StatCard, StatGrid } from "../StatCard";
+import { BackupsTable } from "../backups/BackupsTable";
+import { RuntimeSettingsCard } from "../settings/RuntimeSettings";
 import { CopyCommand } from "../CopyCommand";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -40,6 +42,8 @@ function lastCheckpoint(unix?: number): string {
 /** Backups: durability state, a real checkpoint action, and the offline beastctl workflow. */
 export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
   const [checkpointing, setCheckpointing] = useState(false);
+  const [backingUp, setBackingUp] = useState(false);
+  const [reload, setReload] = useState(0);
   const s = stats?.storage;
   const dirty = s?.dirtyPages ?? 0;
   const isAdmin = user?.role === "admin";
@@ -61,12 +65,34 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
     }
   };
 
+  const backUpNow = async () => {
+    setBackingUp(true);
+    try {
+      const res = await fetch("/api/backups", { method: "POST" });
+      if (!res.ok) throw new Error((await res.text()).trim() || `HTTP ${res.status}`);
+      const body = (await res.json()) as { backup: { id: string }; tookMs: number };
+      onNotice(`Backup ${body.backup.id} created in ${(body.tookMs / 1000).toFixed(1)} s and verified.`);
+      setReload((n) => n + 1);
+    } catch (e) {
+      onNotice(`Backup failed: ${e instanceof Error ? e.message : "request failed"}`, true);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
   return (
     <section aria-labelledby="backups-title" className="space-y-6">
       <PageHeader
         id="backups-title"
         title="Backups"
-        subtitle="Backups are produced offline with beastctl. Studio shows durability state and runs checkpoints."
+        subtitle="Create, verify and download backups of this node. Restoring runs offline with beastctl."
+        actions={
+          isAdmin ? (
+            <Button size="sm" onClick={() => void backUpNow()} disabled={backingUp} title="Reads and writes pause while the data file is copied">
+              {backingUp ? "Backing up…" : "Back up now"}
+            </Button>
+          ) : undefined
+        }
       />
 
       <StatGrid>
@@ -80,6 +106,20 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
         <StatCard label="Dirty pages" value={`${dirty}`} hint={`of ${s?.poolSize ?? 0} frames`} tone={dirty > 0 ? "warning" : "muted"} />
         <StatCard label="Data file" value={formatBytes(s?.diskSizeBytes ?? 0)} hint={`${s?.totalPages ?? 0} pages`} />
       </StatGrid>
+
+      <BackupsTable canWrite={isAdmin} onNotice={onNotice} reloadKey={reload} />
+
+      {isAdmin && (
+        <RuntimeSettingsCard
+          title="Automatic backups"
+          description="Off by default. Reads and writes pause while each backup copies the data file, so choose a quiet interval. Manual backups are never pruned."
+          onNotice={(m, e) => { onNotice(m, e); setReload((n) => n + 1); }}
+          fields={[
+            { name: "backup_interval_minutes", label: "Back up every", unit: "minutes (0 = off, otherwise 5 or more)" },
+            { name: "backup_keep", label: "Keep the newest", unit: "scheduled backups" },
+          ]}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -143,15 +183,15 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
             <CardTitle className="text-sm">Not available yet</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-xs">
-            {["Scheduled / automatic backups", "Point-in-time recovery (PITR)", "Retention policies and off-host copy"].map((name) => (
+            {["Point-in-time recovery (PITR)", "Off-host copy", "Restore from Studio"].map((name) => (
               <div key={name} className="flex items-center justify-between">
                 <span className="text-foreground">{name}</span>
                 <Badge variant="outline">Planned</Badge>
               </div>
             ))}
             <p className="text-muted-foreground">
-              These are on the roadmap (ROADMAP.md) and have no controls here. Until then, run beastctl from your own
-              scheduler and copy bundles off the host yourself.
+              These have no controls here. Copy bundles off the host yourself (Download above), and restore with the
+              beastctl command, which verifies the bundle first.
             </p>
           </CardContent>
         </Card>

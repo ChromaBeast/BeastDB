@@ -103,7 +103,6 @@ export function settingsCards(s: Settings): { title: string; description: string
         { label: "Data directory", value: s.storage.data_dir, copy: true },
         { label: "Buffer pool", value: `${s.storage.pool_size_frames} frames (${formatBytes(s.storage.pool_size_frames * s.storage.page_size_bytes)})` },
         { label: "Page size", value: formatBytes(s.storage.page_size_bytes) },
-        { label: "WAL checkpoint threshold", value: `${s.storage.wal_checkpoint_mb} MiB` },
       ],
     },
     {

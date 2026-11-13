@@ -6,6 +6,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { AuditPanel } from "./AuditPanel";
 import { cn } from "@/lib/utils";
 import {
   filterEntries,
@@ -31,6 +32,24 @@ const LEVEL_STYLE: Record<LogLevel, string> = {
 
 const SELECT = "h-8 rounded-md border border-border bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+function LogTabs({ tab, setTab }: { tab: "server" | "audit"; setTab: (t: "server" | "audit") => void }) {
+  return (
+    <div role="tablist" aria-label="Log type" className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+      {([["server", "Server log"], ["audit", "Audit"]] as const).map(([id, label]) => (
+        <button
+          key={id}
+          role="tab"
+          aria-selected={tab === id}
+          onClick={() => setTab(id)}
+          className={cn("rounded-md px-3 py-1 text-xs transition-colors", tab === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type Status = "loading" | "ok" | "forbidden" | "error";
 
 export function LogsView({ user }: ViewProps) {
@@ -40,6 +59,7 @@ export function LogsView({ user }: ViewProps) {
   const [paused, setPaused] = useState(false);
   const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set(LEVELS));
   const [text, setText] = useState("");
+  const [tab, setTab] = useState<"server" | "audit">("server");
   const [source, setSource] = useState("");
   const [rangeMs, setRangeMs] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
@@ -128,6 +148,8 @@ export function LogsView({ user }: ViewProps) {
     );
   }
 
+  if (tab === "audit") return <AuditPanel tabs={<LogTabs tab={tab} setTab={setTab} />} />;
+
   return (
     <section aria-labelledby="logs-title" className="space-y-4">
       <PageHeader
@@ -153,6 +175,7 @@ export function LogsView({ user }: ViewProps) {
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        <LogTabs tab={tab} setTab={setTab} />
         {LEVELS.map((l) => {
           const on = levels.has(l);
           return (
