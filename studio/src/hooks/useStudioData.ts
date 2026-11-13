@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { PartitionConfig, SearchResponse, SessionUser, TelemetryStats, UniversalRecord } from "../types";
+import { CollectionConfig, PartitionConfig, SearchResponse, SessionUser, TelemetryStats, UniversalRecord } from "../types";
 import { parseUniversalRecord } from "../utils/data-parser";
-import { setPartitionRegistry } from "../utils/key-decoder";
+import { setCollectionRegistry, setPartitionRegistry } from "../utils/key-decoder";
 import { api } from "../lib/api-client";
 
 type RawRecord = { keyText: string; value: string };
@@ -20,6 +20,7 @@ export function useStudioData() {
   const [nextKey, setNextKey] = useState("0");
   const [activePartition, setActivePartition] = useState<number | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [collections, setCollections] = useState<CollectionConfig[]>([]);
 
   const fetchStats = useCallback(async (includeCounts = false) => {
     try {
@@ -55,13 +56,19 @@ export function useStudioData() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [pageResult, userResult, partitionsResult] = await Promise.allSettled([
+    const [pageResult, userResult, partitionsResult, collectionsResult] = await Promise.allSettled([
       api<Page>("/api/records?limit=100"),
       api<SessionUser>("/api/me"),
       api<PartitionConfig[]>("/api/partitions"),
+      api<CollectionConfig[]>("/api/collections"),
     ]);
     if (partitionsResult.status === "fulfilled") {
       setPartitionRegistry(partitionsResult.value);
+    }
+    // A failed catalog read keeps the previous names rather than blanking the rail.
+    if (collectionsResult.status === "fulfilled") {
+      setCollectionRegistry(collectionsResult.value);
+      setCollections(collectionsResult.value);
     }
     if (pageResult.status === "fulfilled") {
       setRecords(pageResult.value.records.map(parseUniversalRecord));
@@ -163,6 +170,20 @@ export function useStudioData() {
     await refresh();
   };
 
+  const createCollection = async (name: string): Promise<void> => {
+    await api<CollectionConfig>("/api/collections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    await refresh();
+  };
+
+  const dropCollection = async (name: string): Promise<void> => {
+    await api<void>(`/api/collections?name=${encodeURIComponent(name)}`, { method: "DELETE" });
+    await refresh();
+  };
+
   const removeUser = async (userHash: number): Promise<{ deleted: number }> => {
     const res = await api<{ deleted: number }>(`/api/user?userHash=${userHash}`, { method: "DELETE" });
     await refresh();
@@ -180,6 +201,9 @@ export function useStudioData() {
     hasMore,
     activePartition,
     updatedAt,
+    collections,
+    createCollection,
+    dropCollection,
     refresh,
     loadMore,
     loadPartition,

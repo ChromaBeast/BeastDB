@@ -41,20 +41,22 @@ type Entry struct {
 
 // Actions recorded by the server.
 const (
-	ActionLoginOK        = "login.ok"
-	ActionLoginFailed    = "login.failed"
-	ActionLogout         = "logout"
-	ActionTokenCreate    = "token.create"
-	ActionTokenRevoke    = "token.revoke"
-	ActionUserDelete     = "user.delete"
-	ActionRecordPut      = "record.put"
-	ActionRecordDelete   = "record.delete"
-	ActionCheckpoint     = "checkpoint"
-	ActionSettingChange  = "settings.update"
-	ActionBackupCreate   = "backup.create"
-	ActionBackupVerify   = "backup.verify"
-	ActionBackupDownload = "backup.download"
-	ActionPromote        = "replication.promote"
+	ActionLoginOK          = "login.ok"
+	ActionLoginFailed      = "login.failed"
+	ActionLogout           = "logout"
+	ActionTokenCreate      = "token.create"
+	ActionTokenRevoke      = "token.revoke"
+	ActionUserDelete       = "user.delete"
+	ActionRecordPut        = "record.put"
+	ActionRecordDelete     = "record.delete"
+	ActionCheckpoint       = "checkpoint"
+	ActionSettingChange    = "settings.update"
+	ActionBackupCreate     = "backup.create"
+	ActionBackupVerify     = "backup.verify"
+	ActionBackupDownload   = "backup.download"
+	ActionCollectionCreate = "collection.create"
+	ActionCollectionDrop   = "collection.drop"
+	ActionPromote          = "replication.promote"
 )
 
 const maxField = 512

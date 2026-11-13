@@ -77,6 +77,10 @@ func (h *APIHandler) PutKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid key", http.StatusBadRequest)
 		return
 	}
+	if api.IsCatalogKey(key) {
+		http.Error(w, api.ErrCatalogKey.Error(), http.StatusBadRequest)
+		return
+	}
 	var writeErr error
 	if body.CreateOnly {
 		writeErr = h.engine.PutIfAbsent(key, []byte(body.Value))
@@ -118,6 +122,10 @@ func (h *APIHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if api.IsCatalogKey(key) {
+		http.Error(w, api.ErrCatalogKey.Error(), http.StatusBadRequest)
+		return
+	}
 	if err := h.engine.Delete(key); err != nil {
 		http.Error(w, "Engine error", http.StatusInternalServerError)
 		return

@@ -132,6 +132,9 @@ export default function StudioDashboard() {
             onSearch={data.search}
             onScanRange={data.scanRange}
             partitionCounts={data.stats?.partitionCounts}
+            collections={data.collections}
+            onCreateCollection={data.createCollection}
+            onDropCollection={data.dropCollection}
             onLoadPartition={data.loadPartition}
             onNotice={showNotice}
             onOpenTokens={() => setTokensOpen(true)}

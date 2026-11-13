@@ -115,6 +115,12 @@ export interface PartitionConfig {
   icon?: string;
 }
 
+export interface CollectionConfig {
+  name: string;
+  prefix: number;
+  createdAt: number;
+}
+
 export interface APITokenItem {
   id: string;
   name: string;
