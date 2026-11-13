@@ -4,7 +4,14 @@ import { X } from "lucide-react";
 import { StudioSidebar, StudioView } from "../components/StudioSidebar";
 import { RecordsView } from "../components/RecordsView";
 import { OverviewView } from "../components/OverviewView";
-import { OperationsView } from "../components/OperationsView";
+import { QueryView } from "../components/views/QueryView";
+import { IndexesView } from "../components/views/IndexesView";
+import { ReplicationView } from "../components/views/ReplicationView";
+import { BackupsView } from "../components/views/BackupsView";
+import { KeysView } from "../components/views/KeysView";
+import { MetricsView } from "../components/views/MetricsView";
+import { LogsView } from "../components/views/LogsView";
+import { SettingsView } from "../components/views/SettingsView";
 import { NewRecordDialog } from "../components/NewRecordDialog";
 import { KeyAnalyzerDialog } from "../components/KeyAnalyzerDialog";
 import { DeleteUserDialog } from "../components/DeleteUserDialog";
@@ -91,9 +98,11 @@ export default function StudioDashboard() {
     }
   };
 
+  const viewProps = { stats: data.stats, user: data.user, onNotice: showNotice, onRefresh: () => void data.refresh() };
+
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground md:h-dvh md:flex-row md:overflow-hidden">
-      <StudioSidebar view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} onOpenTokens={() => setTokensOpen(true)} />
+      <StudioSidebar view={view} setView={setView} user={data.user} busy={data.loading} onRefresh={() => void data.refresh()} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col md:overflow-y-auto">
       {data.user?.role === "viewer" && (
         <div className="border-b border-warning/30 bg-warning/10 px-4 py-2 text-center text-sm text-warning">
@@ -141,14 +150,14 @@ export default function StudioDashboard() {
             onAnalyze={() => setAnalyzerOpen(true)}
           />
         )}
-        {view === "operations" && (
-          <OperationsView
-            stats={data.stats}
-            user={data.user}
-            onNotice={showNotice}
-            onRefresh={() => void data.refresh()}
-          />
-        )}
+        {view === "query" && <QueryView {...viewProps} />}
+        {view === "indexes" && <IndexesView {...viewProps} />}
+        {view === "replication" && <ReplicationView {...viewProps} />}
+        {view === "backups" && <BackupsView {...viewProps} />}
+        {view === "keys" && <KeysView {...viewProps} />}
+        {view === "metrics" && <MetricsView {...viewProps} />}
+        {view === "logs" && <LogsView {...viewProps} />}
+        {view === "settings" && <SettingsView {...viewProps} />}
       </main>
       </div>
       <NewRecordDialog open={newOpen} onClose={() => setNewOpen(false)} onSave={data.save} onLookup={data.lookup} onNotice={showNotice} />

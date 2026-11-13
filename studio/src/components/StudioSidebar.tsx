@@ -1,12 +1,18 @@
 "use client";
 import {
   Activity,
+  Archive,
+  FileText,
+  Gauge,
+  ListTree,
+  Network,
+  Search,
+  Settings,
   Database,
   Key,
   LogOut,
   Moon,
   RefreshCw,
-  Sliders,
   Sun,
   type LucideIcon,
 } from "lucide-react";
@@ -16,7 +22,9 @@ import { SessionUser } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { cn } from "@/lib/utils";
 
-export type StudioView = "overview" | "explorer" | "operations";
+export type StudioView =
+  | "overview" | "explorer" | "query" | "indexes" | "replication"
+  | "backups" | "keys" | "metrics" | "logs" | "settings";
 
 interface Props {
   view: StudioView;
@@ -24,19 +32,25 @@ interface Props {
   user: SessionUser | null;
   busy: boolean;
   onRefresh: () => void;
-  onOpenTokens: () => void;
 }
 
 const PAGES: { id: StudioView; label: string; icon: LucideIcon }[] = [
   { id: "overview", label: "Overview", icon: Activity },
   { id: "explorer", label: "Table Editor", icon: Database },
-  { id: "operations", label: "Operations", icon: Sliders },
+  { id: "query", label: "Query", icon: Search },
+  { id: "indexes", label: "Indexes", icon: ListTree },
+  { id: "replication", label: "Replication", icon: Network },
+  { id: "backups", label: "Backups", icon: Archive },
+  { id: "keys", label: "API Keys & Roles", icon: Key },
+  { id: "metrics", label: "Metrics", icon: Gauge },
+  { id: "logs", label: "Logs", icon: FileText },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 const itemBase =
   "flex w-full shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors";
 
-export function StudioSidebar({ view, setView, user, busy, onRefresh, onOpenTokens }: Props) {
+export function StudioSidebar({ view, setView, user, busy, onRefresh }: Props) {
   const theme = useTheme();
   return (
     <aside
@@ -74,13 +88,6 @@ export function StudioSidebar({ view, setView, user, busy, onRefresh, onOpenToke
             {label}
           </button>
         ))}
-        <button
-          onClick={onOpenTokens}
-          className={cn(itemBase, "text-muted-foreground hover:bg-muted hover:text-foreground")}
-        >
-          <Key size={16} />
-          API Keys &amp; Roles
-        </button>
       </nav>
 
       <div className="hidden items-center gap-2 border-t border-border p-3 md:flex">
