@@ -52,6 +52,9 @@ type Options struct {
 	Logs *logbuf.Buffer
 	// Replication supplies the leader's replica view for /api/replication (nil on followers).
 	Replication handler.ReplicationSource
+	// Cluster backs the epoch/role fields of /api/replication and
+	// POST /api/replication/promote; nil disables promotion.
+	Cluster handler.ClusterControl
 	// Audit records admin actions and backs GET /api/audit; nil disables both.
 	Audit *audit.Log
 	// Runtime holds the settings an admin may change live and backs
@@ -75,6 +78,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 		apiH.SetTokenStore(tokenStore[0])
 	}
 	apiH.SetReplicationSource(opts.Replication)
+	apiH.SetCluster(opts.Cluster)
 	apiH.SetAudit(opts.Audit)
 	rateLimiter := handler.NewLoginRateLimiter(5, 30*time.Second)
 	if opts.Runtime != nil {
@@ -166,6 +170,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	// Operations (checkpoint, replica view) — admin only
 	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))
 	mux.Handle("/api/replication", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.GetReplication)))
+	mux.Handle("/api/replication/promote", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostPromote)))
 
 	mux.Handle("/api/settings/runtime", handler.AdminMiddleware(sessions, handler.RuntimeSettingsHandler(sessions, opts.Runtime, opts.Audit)))
 	backupsH := handler.AdminMiddleware(sessions, handler.BackupsHandler(sessions, opts.Backups, opts.Audit))

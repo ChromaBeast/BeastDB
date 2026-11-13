@@ -37,6 +37,7 @@ type APIHandler struct {
 	tokens     *auth.TokenStore
 
 	replication ReplicationSource // leader only; nil elsewhere
+	cluster     ClusterControl    // epoch/role/promotion; nil disables /api/replication/promote
 	audit       *audit.Log        // nil disables auditing
 }
 

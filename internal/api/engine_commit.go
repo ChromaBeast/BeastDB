@@ -21,6 +21,9 @@ type writeReq struct {
 	err  error
 	done chan struct{}
 	ok   bool // run appended a WAL record (so it depends on the batch fsync)
+	// replicated marks a write applied from a leader's WAL; only client writes
+	// are refused on a read-only engine.
+	replicated bool
 }
 
 // committer is the group-commit queue. Writers enqueue a request; whichever
@@ -49,9 +52,15 @@ type committer struct {
 // record (if it wrote one) is durable. fn runs with e.mu held exclusively and
 // must record observer events via e.queueNotify rather than calling the
 // observer directly.
-func (e *Engine) commit(fn func() error) error {
+func (e *Engine) commit(fn func() error) error { return e.submit(fn, false) }
+
+// commitReplicated is commit for writes replayed from a leader, which must
+// still apply while the engine is read-only.
+func (e *Engine) commitReplicated(fn func() error) error { return e.submit(fn, true) }
+
+func (e *Engine) submit(fn func() error, replicated bool) error {
 	c := &e.cq
-	req := &writeReq{run: fn, done: make(chan struct{})}
+	req := &writeReq{run: fn, done: make(chan struct{}), replicated: replicated}
 
 	c.mu.Lock()
 	if c.closed {
@@ -139,6 +148,12 @@ func (e *Engine) runBatch(batch []*writeReq) {
 	e.pending = e.pending[:0]
 	wrote := false
 	for _, r := range batch {
+		// Checked under e.mu so a client write can never land after
+		// SetReadOnly(true) returns: this is what makes fencing exact.
+		if e.readOnly && !r.replicated {
+			r.err = ErrReadOnlyReplica
+			continue
+		}
 		before := e.wal.CurrentLSN()
 		r.err = r.run()
 		// A request that appended a WAL record must wait for the group fsync,

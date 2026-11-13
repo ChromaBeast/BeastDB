@@ -74,10 +74,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
-	if *role != "leader" {
-		engine.SetReadOnly(true)
-		log.Printf("🔒 Node running in follower mode: engine write path set to read-only.")
-	}
 
 	ckptCtx, stopCkpt := context.WithCancel(context.Background())
 	defer stopCkpt()
@@ -122,12 +118,25 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Every node serves the replication service; it hands out WAL only while the
+	// node is a leader (or a fenced former leader). The persisted epoch and role
+	// in <data-dir>/cluster-state.json decide the starting role, so a restart
+	// cannot undo a promotion or un-fence an old leader.
+	flagRole := replication.RoleFollower
 	if *role == "leader" {
-		repServer := replication.NewLeaderServer(engine.WALPath())
-		repServer.RegisterService(grpcServer.RawServer())
-		engine.SetCommitObserver(repServer)
-		replicaSource = repServer
-	} else {
+		flagRole = replication.RoleLeader
+	}
+	repServer := replication.NewLeaderServer(engine.WALPath())
+	repServer.RegisterService(grpcServer.RawServer())
+	cluster, err := replication.NewCluster(engine, *dataDir, *replicaID, flagRole, repServer)
+	if err != nil {
+		log.Fatalf("FATAL: %v", err)
+	}
+	replicaSource = repServer
+	clusterControl = cluster
+	switch cluster.Role() {
+	case replication.RoleFollower:
+		log.Printf("🔒 Node running in follower mode at epoch %d: engine write path set to read-only.", cluster.Epoch())
 		clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
 		if err != nil {
 			log.Fatalf("Failed to initialize follower client TLS: %v", err)
@@ -137,19 +146,9 @@ func main() {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}
 		defer conn.Close()
-		followerClient := replication.NewFollowerClient(*replicaID, engine, conn)
-		go func() {
-			for ctx.Err() == nil {
-				if err := followerClient.SyncLoop(ctx); err != nil && ctx.Err() == nil {
-					log.Printf("Follower sync stream dropped: %v. Reconnecting in 1s...", err)
-					select {
-					case <-time.After(time.Second):
-					case <-ctx.Done():
-						return
-					}
-				}
-			}
-		}()
+		cluster.RunFollower(ctx, replication.NewFollowerClient(*replicaID, engine, conn))
+	case replication.RoleFenced:
+		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Wipe its data directory to rejoin it as a follower.", cluster.Epoch())
 	}
 
 	var partitions []handler.PartitionEntry
@@ -187,6 +186,7 @@ func main() {
 			PartitionConfigPath: cfgPath, DevMode: *devMode, InsecureAuthOverride: *insecureAuth,
 		},
 	}
+	webOpts.Cluster = clusterControl
 	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, webOpts, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
 	defer stopWeb()
 

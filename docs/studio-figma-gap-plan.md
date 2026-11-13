@@ -13,7 +13,7 @@ Principle: Studio only shows what the server reports. A Figma control ships only
 | Indexes | One primary B+ tree plus one fixed in-memory text index | `internal/index/` |
 | Tokens | Roles and `expires_at` exist on the server; no last-used | `internal/web/auth/token_store.go`, `handler/token_api.go` |
 | Logs | Ring buffer of `{seq, time, level, message}`; no source field | `internal/logbuf/logbuf.go` |
-| Replication | Leader lists replicas with connected and acked LSN; followers are started by flags; no promote | `internal/replication/leader_replicas.go` |
+| Replication | Leader lists replicas with connected and acked LSN; followers start by flags; manual promotion with epoch fencing (ADR 0002), no automatic election | `internal/replication/` |
 | Settings | Read-only startup config | `handler/settings_api.go` |
 | Metrics | Prometheus `/metrics`; Studio keeps ~5 s polling history in the browser only | `internal/metrics/`, `useMetricsHistory.ts` |
 | Backups | Offline `beastctl backup/verify/restore`; server only runs checkpoints | `cmd/beastctl`, `handler/ops.go` |
@@ -72,7 +72,7 @@ Shipped, with these notes against the descriptions below:
 | Collections / namespaces | Keys are uint64; no string keys or namespace concept. Upgrade spec lists string keys plus namespaces as not started. | ADR in `docs/adr/`: key encoding, migration of existing data, partition interaction. |
 | Visual query builder + generated beastctl/SDK command | Needs collections and field-level filters; engine only has Get, Scan, text search. | Define filter push-down in Scan after collections land. |
 | Secondary indexes (list, create, slow-query suggestion) | Only one fixed text index. Needs index definitions, persistence, build-in-background, and query stats for suggestions. | ADR on index catalog; depends on collections. |
-| Replication management (add replica, promote) | Followers start by flags; no membership, no leader election, no fencing. Promotion without fencing risks split-brain. | ADR on membership and epoch-based promotion; Studio shows the real topology read-only first (leader plus connected replicas diagram with real LSN and lag, which Phase 0 can already approximate). |
+| Replication management (add replica, promote) | **Partly built (2026-11-13), see [ADR 0002](adr/0002-replication-membership-and-manual-promotion.md).** Built: persisted epoch and role, followers reject a stale-epoch leader, a leader steps down on a higher epoch, a `Fence` RPC, admin `POST /api/replication/promote` with an audit entry, and a Studio Promote action that is disabled with a stated reason unless the node is caught up. Promotion is manual and runs on the replica being promoted, not from the leader's table. **Not built:** the epoch in WAL frames, add-replica (still a command), membership or discovery, client leader lookup, any automatic election. This is not high availability. | Owner decisions listed at the end of the ADR (WAL epoch marker, stuck-fence recovery, sync replication, client discovery). |
 | Encryption at rest | Not built (data file, WAL, backups, spill file). | ADR on key management and on-disk format versioning. |
 | Two-factor for admins | Studio auth is a signed cookie with local users. | Design TOTP storage and recovery; depends on audit log. |
 | Restore to new database | Needs snapshot-consistent backups (Phase 2) and a swap-in procedure. | After backups design. |

@@ -54,6 +54,7 @@ const (
 	ActionBackupCreate   = "backup.create"
 	ActionBackupVerify   = "backup.verify"
 	ActionBackupDownload = "backup.download"
+	ActionPromote        = "replication.promote"
 )
 
 const maxField = 512

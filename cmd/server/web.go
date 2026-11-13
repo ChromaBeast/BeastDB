@@ -15,6 +15,9 @@ import (
 // It stays nil on followers (they do not see other replicas).
 var replicaSource handler.ReplicationSource
 
+// clusterControl is set by main; it carries the node's epoch, role and promotion.
+var clusterControl handler.ClusterControl
+
 func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.Engine, partitions []handler.PartitionEntry, tokenStore *auth.TokenStore, extra web.Options, metricsTokens ...string) func() {
 	if webAddr == "" {
 		return func() {}

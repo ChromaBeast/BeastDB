@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
 	"github.com/ChromaBeast/beastdb/internal/wal"
@@ -19,6 +20,12 @@ type LeaderServer struct {
 	acks        map[string]uint64
 	addrs       map[string]string // replica id -> remote address of its live stream
 	mu          sync.RWMutex
+
+	// cluster is set when the node tracks epochs (see Cluster); nil keeps the
+	// original unfenced behaviour for standalone use and tests.
+	cluster *Cluster
+	// inactive is true on a node that is not (yet) a leader: it serves no WAL.
+	inactive atomic.Bool
 }
 
 // NewLeaderServer creates a replication server tracking connected replicas and log history.
@@ -43,6 +50,7 @@ func (s *LeaderServer) Broadcast(lsn uint64, opType byte, key, value []byte) {
 		OpType: uint32(opType),
 		Key:    key,
 		Value:  value,
+		Epoch:  s.servedEpoch(),
 	})
 }
 
@@ -53,6 +61,13 @@ func (s *LeaderServer) OnCommit(lsn uint64, opType byte, key, value []byte) {
 
 // StreamWAL streams historical WAL replay followed by real-time committed WAL frames.
 func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.ServerStreamingServer[beastv1.WALRecordMessage]) error {
+	if err := s.admit(req.Epoch, req.ReplicaId); err != nil {
+		return err
+	}
+	if s.cluster != nil && req.FromLsn > 0 && req.FromLsn-1 > s.cluster.engine.CurrentLSN() {
+		return status.Errorf(codes.FailedPrecondition, "follower is at LSN %d, ahead of this leader (%d): it holds writes this leader never had; rebuild it from this leader",
+			req.FromLsn-1, s.cluster.engine.CurrentLSN())
+	}
 	// 1. Subscribe FIRST before reading WAL from disk to eliminate the live-handoff race gap.
 	ch, unsubscribe := s.broadcaster.Subscribe(req.ReplicaId, 1024)
 	defer unsubscribe()
@@ -74,6 +89,7 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 				OpType: uint32(rec.Type),
 				Key:    rec.Key,
 				Value:  rec.Value,
+				Epoch:  s.servedEpoch(),
 			}
 			if err := stream.Send(msg); err != nil {
 				return err
@@ -108,11 +124,17 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 
 // Ack records the latest applied LSN acknowledgment from a replica node.
 func (s *LeaderServer) Ack(ctx context.Context, req *beastv1.ReplicationAck) (*beastv1.AckResponse, error) {
+	if err := s.admit(req.Epoch, req.ReplicaId); err != nil {
+		return nil, err
+	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	s.acks[req.ReplicaId] = req.AcknowledgedLsn
-	return &beastv1.AckResponse{Success: true}, nil
+	s.mu.Unlock()
+	resp := &beastv1.AckResponse{Success: true, Epoch: s.servedEpoch()}
+	if s.cluster != nil {
+		resp.LeaderLsn = s.cluster.engine.CurrentLSN()
+	}
+	return resp, nil
 }
 
 // GetReplicaAck returns the highest acknowledged LSN for a given replica.

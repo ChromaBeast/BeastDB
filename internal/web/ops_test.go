@@ -20,6 +20,15 @@ func (f fakeReplicas) Replicas() []replication.ReplicaInfo { return f.list }
 
 func opsServer(t *testing.T, src fakeReplicas, withSource bool) (*Server, *api.Engine, []*http.Cookie, []*http.Cookie) {
 	t.Helper()
+	opts := Options{}
+	if withSource {
+		opts.Replication = src
+	}
+	return opsServerWith(t, opts)
+}
+
+func opsServerWith(t *testing.T, opts Options) (*Server, *api.Engine, []*http.Cookie, []*http.Cookie) {
+	t.Helper()
 	dir := t.TempDir()
 	engine, err := api.NewEngine(filepath.Join(dir, "db.bin"), filepath.Join(dir, "db.wal"), 32)
 	if err != nil {
@@ -32,10 +41,6 @@ func opsServer(t *testing.T, src fakeReplicas, withSource bool) (*Server, *api.E
 	}
 	if err := users.CreateUser("viewer", "viewer-pass", auth.RoleViewer); err != nil {
 		t.Fatal(err)
-	}
-	opts := Options{}
-	if withSource {
-		opts.Replication = src
 	}
 	srv, err := NewServerWithOptions("127.0.0.1:0", engine, make([]byte, 32), "leader", "test", nil, opts)
 	if err != nil {

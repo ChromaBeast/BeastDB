@@ -137,14 +137,14 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 			return nil
 		}
 		keyUint := binary.LittleEndian.Uint64(key)
-		return e.commit(func() error { return e.putLocked(keyUint, value) })
+		return e.commitReplicated(func() error { return e.putLocked(keyUint, value) })
 
 	case wal.OpDelete:
 		if len(key) < 8 {
 			return nil
 		}
 		keyUint := binary.LittleEndian.Uint64(key)
-		return e.commit(func() error { return e.deleteLocked(keyUint) })
+		return e.commitReplicated(func() error { return e.deleteLocked(keyUint) })
 
 	case wal.OpBatch:
 		batchOps, err := wal.DecodeBatchPayload(value)
