@@ -37,7 +37,7 @@ func (bpm *BufferPoolManager) loadPage(pageID uint64) (*SlottedPage, error) {
 	return page, nil
 }
 
-// evictFrame flushes (if dirty) and clears the given frame for reuse.
+// evictFrame spills the frame's page (if dirty) and clears the frame for reuse.
 // Caller must hold bpm.mu (write lock).
 func (bpm *BufferPoolManager) evictFrame(idx int) error {
 	victim := bpm.frames[idx]
@@ -45,7 +45,7 @@ func (bpm *BufferPoolManager) evictFrame(idx int) error {
 		return nil
 	}
 	if victim.IsDirty {
-		if err := bpm.writeBack(victim); err != nil {
+		if err := bpm.disk.SpillPage(victim.PageID, victim.Page.Data()); err != nil {
 			return err
 		}
 		victim.IsDirty = false

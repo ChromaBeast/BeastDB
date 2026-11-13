@@ -38,7 +38,12 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openEngine(disk, dbPath, walPath, poolSize)
+}
 
+// openEngine builds the engine on an open data file. dbPath is used only to
+// recreate or migrate the file; crash tests pass a simulated file.
+func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int) (*Engine, error) {
 	bpm := storage.NewBufferPoolManager(disk, poolSize)
 	w, err := wal.OpenWAL(walPath, true)
 	if err != nil {
@@ -63,7 +68,10 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 
 	data := metaPage.Data()
 
-	if disk.NumPages() == 1 && isAllZeros(data) {
+	// A zero meta page means initialization never reached its first sync
+	// (no write is accepted before that), so there is nothing to recover. The
+	// file may be longer than one page because growth is reserved in chunks.
+	if isAllZeros(data) {
 		_ = bpm.UnpinPage(storage.MetaPageID, false)
 		_ = disk.Close()
 		_ = w.Close()

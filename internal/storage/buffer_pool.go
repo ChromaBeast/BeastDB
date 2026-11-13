@@ -26,10 +26,11 @@ type BufferPoolManager struct {
 
 	hits, misses atomic.Uint64 // FetchPage cache hit/miss counters
 
-	// walBarrier, when set, is called before any dirty page is written to the
+	// walBarrier, when set, is called before a checkpoint writes pages to the
 	// data file. It must return only once every WAL record appended so far is
 	// durable, which preserves the write-ahead invariant even though writes are
-	// applied to pages before their group's fsync completes.
+	// applied to pages before their group's fsync completes. Evictions go to
+	// the non-durable spill file and do not need it.
 	walBarrier func() error
 }
 
@@ -127,38 +128,31 @@ func (bpm *BufferPoolManager) UnpinPage(pageID uint64, isDirty bool) error {
 	return nil
 }
 
-// FlushPage forces a cached page to disk if dirty.
-func (bpm *BufferPoolManager) FlushPage(pageID uint64) error {
-	bpm.mu.Lock()
-	defer bpm.mu.Unlock()
-
-	idx, exists := bpm.pageTable[pageID]
-	if !exists {
-		return ErrPageNotFound
-	}
-
-	frame := bpm.frames[idx]
-	if frame.Page != nil && frame.IsDirty {
-		if err := bpm.writeBack(frame); err != nil {
-			return err
-		}
-		frame.IsDirty = false
-	}
-	return nil
-}
-
-// FlushAll flushes all dirty pages across all frames to persistent storage.
+// FlushAll checkpoints the pool: every dirty frame plus every spilled page is
+// installed in the data file atomically (see DiskManager.WriteCheckpoint),
+// after the WAL barrier. On error no frame is marked clean.
 func (bpm *BufferPoolManager) FlushAll() error {
 	bpm.mu.Lock()
 	defer bpm.mu.Unlock()
 
+	var pages []PageImage
 	for _, frame := range bpm.frames {
 		if frame.Page != nil && frame.IsDirty {
-			if err := bpm.writeBack(frame); err != nil {
-				return err
-			}
+			pages = append(pages, PageImage{ID: frame.PageID, Data: frame.Page.Data()})
+		}
+	}
+	if bpm.walBarrier != nil {
+		if err := bpm.walBarrier(); err != nil {
+			return err
+		}
+	}
+	if err := bpm.disk.WriteCheckpoint(pages); err != nil {
+		return err
+	}
+	for _, frame := range bpm.frames {
+		if frame.Page != nil {
 			frame.IsDirty = false
 		}
 	}
-	return bpm.disk.Sync()
+	return nil
 }
