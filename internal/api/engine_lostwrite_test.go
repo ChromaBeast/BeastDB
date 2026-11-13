@@ -30,7 +30,11 @@ func openEngineOnSim(t *testing.T, s simDisk, walPath string, poolSize int) *Eng
 	if err != nil {
 		t.Fatal(err)
 	}
-	e, err := openEngine(disk, s.data.Name(), walPath, poolSize)
+	// The WAL is a real file that these tests never crash (crashEngine closes it
+	// normally), so per-commit fsyncs add nothing but disk load: without them
+	// the tests stay CPU-only and do not slow fsync-bound tests running in
+	// parallel packages.
+	e, err := openEngine(disk, s.data.Name(), walPath, poolSize, false)
 	if err != nil {
 		t.Fatalf("open engine: %v", err)
 	}

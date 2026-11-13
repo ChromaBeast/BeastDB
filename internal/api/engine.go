@@ -38,14 +38,16 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return openEngine(disk, dbPath, walPath, poolSize)
+	return openEngine(disk, dbPath, walPath, poolSize, true)
 }
 
 // openEngine builds the engine on an open data file. dbPath is used only to
-// recreate or migrate the file; crash tests pass a simulated file.
-func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int) (*Engine, error) {
+// recreate or migrate the file; crash tests pass a simulated file. syncWAL is
+// always true in production; crash tests that never lose WAL writes turn it
+// off so they do not fsync on every commit.
+func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int, syncWAL bool) (*Engine, error) {
 	bpm := storage.NewBufferPoolManager(disk, poolSize)
-	w, err := wal.OpenWAL(walPath, true)
+	w, err := wal.OpenWAL(walPath, syncWAL)
 	if err != nil {
 		_ = disk.Close()
 		return nil, err

@@ -19,7 +19,7 @@ var (
 )
 
 const (
-	ackBatchSize     = 100              // send ACK every N records
+	ackBatchSize     = 100                    // send ACK every N records
 	ackBatchInterval = 100 * time.Millisecond // or every 100 ms, whichever first
 )
 
@@ -30,6 +30,9 @@ type FollowerClient struct {
 	client         beastv1.ReplicationServiceClient
 	lastAppliedLSN uint64
 	mu             sync.RWMutex
+
+	ackMu        sync.Mutex // serializes ACK RPCs so the leader sees them in LSN order
+	lastAckedLSN uint64     // guarded by ackMu
 }
 
 // NewFollowerClient initializes a replication worker targeting the primary leader.
@@ -45,7 +48,13 @@ func NewFollowerClient(replicaID string, engine *api.Engine, conn *grpc.ClientCo
 // SyncLoop continuously streams and applies WAL records from the Leader until context cancels.
 // Fix #4: ACKs are batched — sent every ackBatchSize records OR every ackBatchInterval ms,
 // whichever comes first. This reduces ACK round-trips from O(writes/sec) to O(writes/100).
+// The interval ACK runs on its own ticker, so progress is acknowledged even when
+// the stream goes idle after fewer than ackBatchSize records.
 func (f *FollowerClient) SyncLoop(ctx context.Context) error {
+	tickCtx, stopTicker := context.WithCancel(ctx)
+	defer stopTicker()
+	go f.ackTicker(tickCtx)
+
 	f.mu.Lock()
 	fromLSN := f.lastAppliedLSN + 1
 	f.mu.Unlock()
@@ -59,7 +68,6 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 	}
 
 	var count int
-	lastAck := time.Now()
 
 	for {
 		msg, err := stream.Recv()
@@ -92,23 +100,45 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 		f.mu.Unlock()
 
 		count++
-		if count >= ackBatchSize || time.Since(lastAck) >= ackBatchInterval {
+		if count >= ackBatchSize {
 			f.sendAck(ctx)
 			count = 0
-			lastAck = time.Now()
 		}
 	}
 }
 
-// sendAck fires a single ACK for the current lastAppliedLSN.
+// ackTicker acknowledges applied-but-unacknowledged records every
+// ackBatchInterval until ctx is cancelled.
+func (f *FollowerClient) ackTicker(ctx context.Context) {
+	t := time.NewTicker(ackBatchInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			f.sendAck(ctx)
+		}
+	}
+}
+
+// sendAck fires a single ACK for the current lastAppliedLSN, unless that LSN
+// is already acknowledged.
 func (f *FollowerClient) sendAck(ctx context.Context) {
+	f.ackMu.Lock()
+	defer f.ackMu.Unlock()
 	f.mu.RLock()
 	lsn := f.lastAppliedLSN
 	f.mu.RUnlock()
-	_, _ = f.client.Ack(ctx, &beastv1.ReplicationAck{
+	if lsn == f.lastAckedLSN {
+		return
+	}
+	if _, err := f.client.Ack(ctx, &beastv1.ReplicationAck{
 		ReplicaId:       f.replicaID,
 		AcknowledgedLsn: lsn,
-	})
+	}); err == nil {
+		f.lastAckedLSN = lsn
+	}
 }
 
 // LastAppliedLSN returns the latest Log Sequence Number applied by this replica.
