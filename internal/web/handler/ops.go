@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -19,6 +20,24 @@ type ReplicationSource interface {
 	Replicas() []replication.ReplicaInfo
 }
 
+// ClusterControl is the node's epoch, role and promotion control (replication.Cluster).
+type ClusterControl interface {
+	Status() replication.Status
+	Promote(ctx context.Context, opts replication.PromoteOptions) (replication.PromoteResult, error)
+}
+
+// currentRole is the live role when epochs are tracked (it changes on
+// promotion), else the role the process started with.
+func (h *APIHandler) currentRole() string {
+	if h.cluster != nil {
+		return string(h.cluster.Status().Role)
+	}
+	return h.role
+}
+
+// SetCluster wires epoch-aware role reporting and promotion (nil disables both).
+func (h *APIHandler) SetCluster(c ClusterControl) { h.cluster = c }
+
 // ReplicaStatus is one replica row of the /api/replication response.
 type ReplicaStatus struct {
 	replication.ReplicaInfo
@@ -33,6 +52,9 @@ type ReplicationStatus struct {
 	// Tracked is true only on a leader, the node that sees its replicas.
 	Tracked  bool            `json:"tracked"`
 	Replicas []ReplicaStatus `json:"replicas"`
+	// Cluster is this node's epoch and promotion state; absent when the node
+	// does not track epochs.
+	Cluster *replication.Status `json:"cluster,omitempty"`
 }
 
 // SetReplicationSource wires the leader's replica tracker (nil on followers).
@@ -76,7 +98,15 @@ func (h *APIHandler) GetReplication(w http.ResponseWriter, r *http.Request) {
 	}
 	lsn := h.engine.CurrentLSN()
 	resp := ReplicationStatus{Role: h.role, LSN: lsn, Replicas: []ReplicaStatus{}}
-	if h.replication != nil {
+	tracked := h.replication != nil
+	if h.cluster != nil {
+		st := h.cluster.Status()
+		resp.Cluster = &st
+		resp.Role = string(st.Role)
+		// Only a leader (or a fenced former leader) sees replicas.
+		tracked = tracked && st.Role != replication.RoleFollower
+	}
+	if tracked {
 		resp.Tracked = true
 		for _, rep := range h.replication.Replicas() {
 			var lag uint64
