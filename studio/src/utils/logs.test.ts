@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { filterEntries, mergeEntries, toLogText, type LogEntry, type LogLevel } from "./logs";
+import { filterEntries, mergeEntries, toLogCsv, toLogText, type LogEntry, type LogLevel } from "./logs";
 
 const e = (seq: number, level: LogLevel, message: string): LogEntry => ({
   seq,
@@ -26,5 +26,17 @@ describe("logs helpers", () => {
   test("toLogText emits one line per entry", () => {
     expect(toLogText([e(1, "warn", "hi")])).toBe("2026-01-01T10:00:00Z WARN  hi\n");
     expect(toLogText([])).toBe("");
+  });
+});
+
+describe("toLogCsv", () => {
+  test("quotes fields, doubles quotes and keeps commas and newlines inside the message", () => {
+    const csv = toLogCsv([
+      { seq: 1, time: "2026-11-13T10:00:00Z", level: "warn", message: 'said "hi", then\nleft' },
+    ]);
+    expect(csv).toBe('time,level,message\r\n"2026-11-13T10:00:00Z","warn","said ""hi"", then\nleft"\r\n');
+  });
+  test("empty input is just the header", () => {
+    expect(toLogCsv([])).toBe("time,level,message\r\n");
   });
 });

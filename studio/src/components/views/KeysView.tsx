@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogTitle } from "../ui/alert-dialog";
 import { CreateKeyForm, SecretReveal } from "../keys/CreateKeyForm";
-import { RolesReference } from "../keys/RolesReference";
+import { RoleCards, RolesNote } from "../keys/RolesReference";
 import { TokenRoleBadge } from "../keys/TokenRoleBadge";
 import { isExpired, useApiTokens, type ApiToken } from "../../hooks/useApiTokens";
 import { formatDateRelative } from "../../utils/format";
@@ -86,6 +86,7 @@ export function KeysView({ user, onNotice }: ViewProps) {
   return (
     <section aria-labelledby="keys-title" className="space-y-6">
       {header}
+      <RoleCards />
       {locked ? (
         <Card className="flex flex-col items-center gap-2 px-6 py-14 text-center" role="status">
           <Lock size={22} className="text-muted-foreground" />
@@ -119,7 +120,7 @@ export function KeysView({ user, onNotice }: ViewProps) {
           )}
         </>
       )}
-      <RolesReference />
+      <RolesNote />
 
       <AlertDialog open={!!pending} onOpenChange={(o) => { if (!o) setPending(null); }}>
         <AlertDialogContent>

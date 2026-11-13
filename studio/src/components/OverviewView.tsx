@@ -7,6 +7,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { BufferPoolMap, WalHead } from "./EnginePanel";
 import { PartitionChart } from "./PartitionChart";
+import { StatCard, StatGrid } from "./StatCard";
 import { getRegisteredPartitions } from "../utils/key-decoder";
 
 interface Props {
@@ -31,6 +32,7 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
     : []
   ).filter((d) => d.count > 0);
 
+  const totalRecords = chartData.reduce((n, d) => n + d.count, 0);
   const isHealthy = Boolean(stats);
   const dirtyPages = stats?.storage?.dirtyPages ?? 0;
   const poolSize = stats?.storage?.poolSize ?? 64;
@@ -66,13 +68,19 @@ export function OverviewView({ stats, statsError, recordsError, user, loaded, ha
         </div>
       )}
 
+      <StatGrid>
+        <StatCard label="Records" value={totalRecords.toLocaleString()} hint={`${chartData.length} partition${chartData.length === 1 ? "" : "s"}`} />
+        <StatCard label="Log sequence number" value={(stats?.lsn ?? 0).toLocaleString()} hint="WAL head" />
+        <StatCard label="Dirty pages" value={`${dirtyPages}`} hint={`of ${poolSize} in buffer pool`} tone={isDirtyHeavy ? "warning" : "muted"} />
+        <StatCard label="Storage" value={stats?.storage ? formatBytes(stats.storage.diskSizeBytes) : "—"} hint={`${stats?.storage?.totalPages ?? 0} pages`} />
+      </StatGrid>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-6 lg:col-span-2"><BufferPoolMap storage={stats?.storage} /></Card>
         <Card className="p-6"><WalHead lsn={stats?.lsn} storage={stats?.storage} /></Card>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Disk" value={stats?.storage ? formatBytes(stats.storage.diskSizeBytes) : "—"} />
+      <div className="grid gap-4 sm:grid-cols-2">
         <Stat label="Node role" value={(stats?.role || "standalone").toUpperCase()} />
         <Stat label="Version" value={`v${stats?.version || "1.0.0"}`} />
       </div>

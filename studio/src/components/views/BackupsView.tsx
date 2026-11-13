@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { PageHeader } from "../PageHeader";
+import { StatCard, StatGrid } from "../StatCard";
 import { CopyCommand } from "../CopyCommand";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -67,6 +68,18 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
         title="Backups"
         subtitle="Backups are produced offline with beastctl. Studio shows durability state and runs checkpoints."
       />
+
+      <StatGrid>
+        <StatCard
+          label="Last checkpoint"
+          value={s?.lastCheckpointUnix ? new Date(s.lastCheckpointUnix * 1000).toLocaleTimeString() : "None yet"}
+          hint={s?.lastCheckpointUnix ? `LSN ${(s.lastCheckpointLSN ?? 0).toLocaleString()}` : "since this process started"}
+          tone={s?.lastCheckpointUnix ? "success" : "muted"}
+        />
+        <StatCard label="WAL size" value={formatBytes(s?.walSizeBytes ?? 0)} hint={`LSN ${(s?.currentLSN ?? stats?.lsn ?? 0).toLocaleString()}`} />
+        <StatCard label="Dirty pages" value={`${dirty}`} hint={`of ${s?.poolSize ?? 0} frames`} tone={dirty > 0 ? "warning" : "muted"} />
+        <StatCard label="Data file" value={formatBytes(s?.diskSizeBytes ?? 0)} hint={`${s?.totalPages ?? 0} pages`} />
+      </StatGrid>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

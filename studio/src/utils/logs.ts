@@ -36,3 +36,10 @@ export function formatLogTime(iso: string): string {
 export function toLogText(entries: LogEntry[]): string {
   return entries.map((e) => `${e.time} ${e.level.toUpperCase().padEnd(5)} ${e.message}`).join("\n") + (entries.length ? "\n" : "");
 }
+
+/** RFC 4180 CSV (time, level, message) for the Export CSV button. Fields are quoted and quotes doubled. */
+export function toLogCsv(entries: LogEntry[]): string {
+  const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const rows = entries.map((e) => [q(e.time), q(e.level), q(e.message)].join(","));
+  return ["time,level,message", ...rows].join("\r\n") + "\r\n";
+}

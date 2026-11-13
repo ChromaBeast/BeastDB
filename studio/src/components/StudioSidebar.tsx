@@ -48,13 +48,13 @@ const PAGES: { id: StudioView; label: string; icon: LucideIcon }[] = [
 ];
 
 const itemBase =
-  "flex w-full shrink-0 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors";
+  "flex w-full shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors";
 
 export function StudioSidebar({ view, setView, user, busy, onRefresh }: Props) {
   const theme = useTheme();
   return (
     <aside
-      className="flex shrink-0 flex-col border-b border-border bg-sidebar md:h-dvh md:w-60 md:border-b-0 md:border-r"
+      className="flex shrink-0 flex-col border-b border-border bg-sidebar md:h-dvh md:w-[232px] md:border-b-0 md:border-r"
     >
       <div className="flex items-center justify-between px-4 py-3 md:px-5 md:pb-2 md:pt-5">
         <BeastDBLogo />
@@ -80,7 +80,7 @@ export function StudioSidebar({ view, setView, user, busy, onRefresh }: Props) {
             className={cn(
               itemBase,
               view === id
-                ? "bg-primary/10 font-medium text-primary"
+                ? "bg-primary/10 font-medium text-primary dark:bg-[#1e2b0a]"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
