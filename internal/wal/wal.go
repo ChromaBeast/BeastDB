@@ -18,6 +18,7 @@ type WAL struct {
 	path        string
 	currentLSN  uint64
 	syncOnWrite bool
+	cipher      *Cipher // nil for a plaintext log
 
 	syncMu    sync.Mutex // serializes fsyncs; guards syncedLSN
 	syncedLSN uint64     // highest LSN known to be fsynced
@@ -27,6 +28,19 @@ type WAL struct {
 
 // OpenWAL opens an existing WAL file or creates a new one at the specified path.
 func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
+	return OpenWALCipher(path, syncOnWrite, nil)
+}
+
+// Encrypted reports whether this log seals its records.
+func (w *WAL) Encrypted() bool { return w.cipher != nil }
+
+// Cipher returns the log's cipher (nil when plaintext) so readers of the file,
+// such as replication catch-up, can open the same frames.
+func (w *WAL) Cipher() *Cipher { return w.cipher }
+
+// OpenWALCipher opens or creates a log whose records are sealed with c (nil:
+// plaintext). A log in the other format returns ErrWALFormat.
+func OpenWALCipher(path string, syncOnWrite bool, c *Cipher) (*WAL, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
@@ -36,10 +50,25 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 		file:        file,
 		path:        path,
 		syncOnWrite: syncOnWrite,
+		cipher:      c,
+	}
+
+	if c != nil {
+		_, empty, err := checkHeader(file, c)
+		if err == nil && empty {
+			err = writeHeader(file, c) // new log, or a header torn at creation
+		}
+		if err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+	} else if _, _, err := checkHeader(file, nil); err != nil {
+		_ = file.Close()
+		return nil, err
 	}
 
 	// Scan existing file to determine the highest existing LSN
-	lastLSN, err := findHighestLSN(file)
+	lastLSN, err := findHighestLSN(file, c)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -50,7 +79,7 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 	if lastLSN == 0 {
 		archivePath := path + ".bak"
 		if archFile, err := os.Open(archivePath); err == nil {
-			if archLSN, err := findHighestLSN(archFile); err == nil && archLSN > lastLSN {
+			if archLSN, err := findHighestLSN(archFile, c); err == nil && archLSN > lastLSN {
 				lastLSN = archLSN
 			}
 			_ = archFile.Close()
@@ -79,9 +108,20 @@ func (w *WAL) Append(opType byte, key, value []byte) (uint64, error) {
 		Value: value,
 	}
 
-	encoded := EncodeRecord(rec)
-	if len(encoded) > MaxFrameSize {
-		return 0, ErrFrameTooLarge
+	var encoded []byte
+	if w.cipher != nil {
+		var err error
+		if len(key)+len(value)+HeaderSize > MaxFrameSize {
+			return 0, ErrFrameTooLarge
+		}
+		if encoded, err = w.cipher.encode(rec); err != nil {
+			return 0, err
+		}
+	} else {
+		encoded = EncodeRecord(rec)
+		if len(encoded) > MaxFrameSize {
+			return 0, ErrFrameTooLarge
+		}
 	}
 	if _, err := w.file.Write(encoded); err != nil {
 		return 0, err
@@ -132,7 +172,10 @@ func (w *WAL) Path() string {
 	return w.path
 }
 
-func findHighestLSN(file *os.File) (uint64, error) {
+func findHighestLSN(file *os.File, c *Cipher) (uint64, error) {
+	if c != nil {
+		return findHighestLSNEncrypted(file, c)
+	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return 0, err
 	}
@@ -166,4 +209,29 @@ func (w *WAL) FileSize() int64 {
 		return info.Size()
 	}
 	return 0
+}
+
+func findHighestLSNEncrypted(file *os.File, c *Cipher) (uint64, error) {
+	off, empty, err := checkHeader(file, c)
+	if err != nil {
+		return 0, err
+	}
+	var highest uint64
+	if !empty {
+		if _, err := file.Seek(off, io.SeekStart); err != nil {
+			return 0, err
+		}
+		if _, err := c.scan(file, func(rec *Record) error {
+			if rec.LSN > highest {
+				highest = rec.LSN
+			}
+			return nil
+		}); err != nil {
+			return 0, err
+		}
+	}
+	if _, err := file.Seek(0, io.SeekEnd); err != nil {
+		return 0, err
+	}
+	return highest, nil
 }

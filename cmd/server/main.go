@@ -43,6 +43,7 @@ func main() {
 	insecureAuth := flag.Bool("insecure-auth", false, "Permit default credentials on public interfaces (unsafe, for testing only)")
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
+	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0002-encryption-at-rest.md")
 	flag.Parse()
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
@@ -70,7 +71,7 @@ func main() {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	engine, err := api.NewEngine(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize)
+	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{KeyFile: *encKeyFile})
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
@@ -124,6 +125,7 @@ func main() {
 
 	if *role == "leader" {
 		repServer := replication.NewLeaderServer(engine.WALPath())
+		repServer.SetWALCipher(engine.WALCipher())
 		repServer.RegisterService(grpcServer.RawServer())
 		engine.SetCommitObserver(repServer)
 		replicaSource = repServer
@@ -185,6 +187,7 @@ func main() {
 			TLSEnabled: *tlsCert != "" && *tlsKey != "", MutualTLS: *tlsCA != "",
 			APITokenConfigured: *apiToken != "", MetricsTokenSet: os.Getenv("BEASTDB_METRICS_TOKEN") != "",
 			PartitionConfigPath: cfgPath, DevMode: *devMode, InsecureAuthOverride: *insecureAuth,
+			Encryption: engine.Encryption(),
 		},
 	}
 	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, webOpts, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))

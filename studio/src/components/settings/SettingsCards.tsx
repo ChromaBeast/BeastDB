@@ -5,12 +5,13 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { formatBytes } from "../../utils/format";
+import { encryptionLabel, type EncryptionState } from "../../utils/encryption";
 
 export type SettingsSection = "general" | "storage" | "networking" | "security" | "limits";
 
 export interface Settings {
   node: { role: string; version: string; replica_id: string; leader_addr: string; dev_mode: boolean };
-  storage: { data_dir: string; pool_size_frames: number; page_size_bytes: number; wal_checkpoint_mb: number };
+  storage: { data_dir: string; pool_size_frames: number; page_size_bytes: number; wal_checkpoint_mb: number } & EncryptionState;
   network: { grpc_addr: string; web_addr: string };
   security: {
     tls_enabled: boolean;
@@ -103,6 +104,7 @@ export function settingsCards(s: Settings): { title: string; description: string
         { label: "Data directory", value: s.storage.data_dir, copy: true },
         { label: "Buffer pool", value: `${s.storage.pool_size_frames} frames (${formatBytes(s.storage.pool_size_frames * s.storage.page_size_bytes)})` },
         { label: "Page size", value: formatBytes(s.storage.page_size_bytes) },
+        { label: "Encryption at rest", value: encryptionLabel(s.storage) },
       ],
     },
     {

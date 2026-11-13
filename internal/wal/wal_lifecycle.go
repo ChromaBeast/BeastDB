@@ -46,6 +46,12 @@ func (w *WAL) Checkpoint() error {
 	if err != nil {
 		return err
 	}
+	if w.cipher != nil {
+		if err := writeHeader(newFile, w.cipher); err != nil {
+			_ = newFile.Close()
+			return err
+		}
+	}
 	w.file = newFile
 
 	// Persist the rename and the new file's directory entry.

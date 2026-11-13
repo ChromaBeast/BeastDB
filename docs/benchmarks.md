@@ -64,3 +64,24 @@ Measurements taken using `cmd/beastctl/backup_drill_test.go`:
 - **WAL Crash Recovery & Checkpoint Replay:** `< 25 ms` (replaying uncommitted and checkpointed log records).
 - **Total Measured Recovery Time Objective (RTO):** `< 40 ms` to fully initialized, query-ready state.
 - **Measured Data Loss (RPO):** `0 records` across clean checkpoint and recovery drills.
+
+
+---
+
+## 5. Encryption at rest overhead
+
+Measured on Apple M6 (12 logical CPUs), Go 1.27.2, darwin/arm64, a local external SSD, on 13 November 2026 with the build that introduced encryption ([ADR 0002](adr/0002-encryption-at-rest.md)). Each pair is the same operation with encryption off and on, in the same process settings. These are single-machine numbers with run-to-run noise as noted; they say nothing about other databases.
+
+| Measurement | Off | On | Reading |
+|---|---|---|---|
+| Seal one 4 KB page (`BenchmarkPageSeal`) | n/a | ~0.72-0.78 us, 0 allocs | AES-256-GCM, about 5.2-5.7 GB/s |
+| Open one 4 KB page (`BenchmarkPageOpen`) | n/a | ~0.54-0.59 us, 0 allocs | about 7.0-7.6 GB/s |
+| Point write, fsync per commit (`BenchmarkEncryptionPut`, 3 runs) | 2.30-2.37 ms | 2.31-2.32 ms | no measurable difference: the fsync dominates |
+| Point read, pool of 32 frames over 60,000 records (`BenchmarkEncryptionGetMiss`, 6 runs) | 1.8-2.4 us | 3.0-3.7 us | about +1.1 us per read that misses the pool; a hit costs nothing extra |
+| Checkpoint of 500 records (`BenchmarkEncryptionCheckpoint`, 3 runs) | 13.2-18.6 ms | 16.6-18.7 ms | within run-to-run spread (each run varied by more than the difference) |
+| `beastbench --self-contained` workload C, 100,000 reads, 8 threads, 64-frame pool, 3 runs each | 83,600-107,300 ops/s, p50 70-87 us | 94,400-103,500 ops/s, p50 72-77 us | the two ranges overlap; loopback gRPC and machine noise exceed the cryptographic cost |
+| `beastbench` workload A (50/50) and load phase, 2 runs each | load 415-1,230 ops/s, run 1,044-1,059 ops/s | load 578-1,086 ops/s, run 1,189-1,217 ops/s | fsync-bound and very noisy on this disk; no overhead is visible |
+
+How to reproduce: `go test ./internal/api -run xxx -bench Encryption -benchtime 2s -count 3`, `go test ./internal/storage -run xxx -bench 'Page(Seal|Open)'`, and `beastbench --self-contained [--encrypt] --pool-size 64 --workload C --records 20000 --ops 100000 --threads 8 --value-size 256`.
+
+Space: an encrypted page holds 4,064 bytes of slotted-page data instead of 4,096 (0.8% less), and the WAL adds 40 bytes per record plus a 16-byte header.

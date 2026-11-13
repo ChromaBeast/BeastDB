@@ -92,9 +92,16 @@ func (d *DiskManager) writeJournalLocked(pages []PageImage, spilled []uint64) er
 		if len(p.Data) < PageSize {
 			return ErrDiskBufferTooSmall
 		}
+		out := p.Data[:PageSize]
+		if d.pc != nil {
+			if err := d.pc.Seal(d.scratch, p.Data, p.ID); err != nil {
+				return err
+			}
+			out = d.scratch
+		}
 		binary.LittleEndian.PutUint64(id[:], p.ID)
 		_, _ = w.Write(id[:])
-		_, _ = w.Write(p.Data[:PageSize])
+		_, _ = w.Write(out)
 	}
 	buf := make([]byte, PageSize)
 	for _, pid := range spilled {

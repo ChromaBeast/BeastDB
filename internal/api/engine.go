@@ -37,11 +37,7 @@ type Engine struct {
 
 // NewEngine initializes the database engine components with recovery support.
 func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
-	disk, err := storage.OpenDiskManager(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	return openEngine(disk, dbPath, walPath, poolSize, true)
+	return NewEngineWithOptions(dbPath, walPath, poolSize, Options{})
 }
 
 // openEngine builds the engine on an open data file. dbPath is used only to
@@ -49,8 +45,13 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 // always true in production; crash tests that never lose WAL writes turn it
 // off so they do not fsync on every commit.
 func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int, syncWAL bool) (*Engine, error) {
+	return openEngineCipher(disk, dbPath, walPath, poolSize, syncWAL, nil)
+}
+
+// openEngineCipher is openEngine with an optional WAL cipher (encryption at rest).
+func openEngineCipher(disk *storage.DiskManager, dbPath, walPath string, poolSize int, syncWAL bool, walc *wal.Cipher) (*Engine, error) {
 	bpm := storage.NewBufferPoolManager(disk, poolSize)
-	w, err := wal.OpenWAL(walPath, syncWAL)
+	w, err := wal.OpenWALCipher(walPath, syncWAL, walc)
 	if err != nil {
 		_ = disk.Close()
 		return nil, err
@@ -86,6 +87,9 @@ func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int,
 
 	meta, err := storage.DecodeMeta(data)
 	_ = bpm.UnpinPage(storage.MetaPageID, false)
+	if err == nil && (meta.Flags&storage.MetaFlagEncrypted != 0) != disk.Encrypted() {
+		err = ErrEncryptionFlagMismatch
+	}
 	if err != nil {
 		_ = disk.Close()
 		_ = w.Close()

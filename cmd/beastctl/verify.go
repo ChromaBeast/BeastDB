@@ -13,7 +13,10 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/storage"
 )
 
-func runVerify(backupDir string) error {
+// runVerify checks a bundle without a key (checksum and, for plaintext, page 0).
+func runVerify(backupDir string) error { return runVerifyKey(backupDir, "") }
+
+func runVerifyKey(backupDir, keyFile string) error {
 	if backupDir == "" {
 		return errors.New("backup directory is required (--backup)")
 	}
@@ -51,14 +54,27 @@ func runVerify(backupDir string) error {
 		return fmt.Errorf("file size mismatch: manifest specifies %d bytes, found %d bytes", manifest.FileSize, size)
 	}
 
-	page0 := make([]byte, storage.PageSize)
-	if _, err := f.ReadAt(page0, 0); err != nil {
-		return fmt.Errorf("cannot read Page 0: %w", err)
-	}
-
-	meta, err := storage.DecodeMeta(page0)
+	pc, err := bundleCipher(backupDir, manifest.Encrypted, keyFile)
 	if err != nil {
-		return fmt.Errorf("Page 0 metadata validation failed: %w", err)
+		return err
+	}
+	if manifest.Encrypted && pc == nil {
+		fmt.Printf("Verification PASSED (checksum and size only):\n  Directory: %s\n  Checksum:  %s (valid)\n  The bundle is encrypted; pass --key-file to authenticate every page.\n", backupDir, actualChecksum)
+		return nil
+	}
+	var meta storage.MetaData
+	if pc != nil {
+		if meta, _, err = storage.AuthenticateFile(dataPath, pc); err != nil {
+			return fmt.Errorf("page authentication failed: %w", err)
+		}
+	} else {
+		page0 := make([]byte, storage.PageSize)
+		if _, err := f.ReadAt(page0, 0); err != nil {
+			return fmt.Errorf("cannot read Page 0: %w", err)
+		}
+		if meta, err = storage.DecodeMeta(page0); err != nil {
+			return fmt.Errorf("Page 0 metadata validation failed: %w", err)
+		}
 	}
 
 	if meta.RootPageID != manifest.RootPageID {

@@ -22,6 +22,10 @@ func printUsage() {
 	fmt.Println("  backup             Create an atomic physical database backup bundle with checksum")
 	fmt.Println("  verify             Validate manifest and checksums of a backup bundle")
 	fmt.Println("  restore            Restore database bundle to target directory with safe overwrite checks")
+	fmt.Println("  keygen             Write a new random master key file for encryption at rest")
+	fmt.Println("  encrypt            Convert a stopped plaintext database to encrypted (--key-file)")
+	fmt.Println("  decrypt            Convert a stopped encrypted database back to plaintext (--key-file)")
+	fmt.Println("  rekey              Re-encrypt a stopped database under a new master key (--key-file, --new-key-file)")
 	fmt.Println("  get                Retrieve a record value by its 64-bit key")
 	fmt.Println("  put                Store or update a key-value record")
 	fmt.Println("  delete             Tombstone/delete a record by its 64-bit key")
@@ -112,23 +116,57 @@ func main() {
 		db := fs.String("db", "beast.bin", "Path to source database file")
 		wal := fs.String("wal", "beast.wal", "Path to source WAL file")
 		out := fs.String("out", "./backup", "Output directory for backup bundle")
+		keyFile := fs.String("key-file", "", "Master key file (required if the database is encrypted)")
 		_ = fs.Parse(args)
-		handleErr(runBackup(*db, *wal, *out))
+		handleErr(runBackupKey(*db, *wal, *out, *keyFile))
 
 	case "verify":
 		fs := flag.NewFlagSet("verify", flag.ExitOnError)
 		backupDir := fs.String("backup", "./backup", "Path to backup directory")
+		keyFile := fs.String("key-file", "", "Master key file: authenticates every page of an encrypted bundle")
 		_ = fs.Parse(args)
-		handleErr(runVerify(*backupDir))
+		handleErr(runVerifyKey(*backupDir, *keyFile))
 
 	case "restore":
 		fs := flag.NewFlagSet("restore", flag.ExitOnError)
 		backupDir := fs.String("backup", "./backup", "Path to backup directory")
 		dest := fs.String("dest", "./restored", "Destination directory")
 		force := fs.Bool("force", false, "Overwrite existing files in destination directory")
+		keyFile := fs.String("key-file", "", "Master key file (required for an encrypted bundle)")
 		_ = fs.Parse(args)
-		_, err := runRestore(*backupDir, *dest, *force)
+		_, err := runRestoreKey(*backupDir, *dest, *force, *keyFile)
 		handleErr(err)
+
+	case "keygen":
+		fs := flag.NewFlagSet("keygen", flag.ExitOnError)
+		out := fs.String("out", "", "Path of the key file to create (mode 0600; refuses to overwrite)")
+		_ = fs.Parse(args)
+		handleErr(runKeygen(*out))
+
+	case "encrypt", "decrypt", "rekey":
+		fs := flag.NewFlagSet(cmd, flag.ExitOnError)
+		db := fs.String("db", "beast.bin", "Path to the database file (server must be stopped)")
+		wal := fs.String("wal", "beast.wal", "Path to the WAL file")
+		keyFile := fs.String("key-file", "", "Master key file (encrypt: the new key; decrypt/rekey: the current key)")
+		newKey := fs.String("new-key-file", "", "rekey: the new master key file")
+		del := fs.Bool("delete-original", false, "Remove the replaced files instead of keeping *.pre*.bak copies")
+		_ = fs.Parse(args)
+		if *keyFile == "" {
+			fmt.Println("Error: --key-file is required.")
+			os.Exit(1)
+		}
+		switch cmd {
+		case "encrypt":
+			handleErr(runMigrate("Encrypt", *db, *wal, "", *keyFile, *del))
+		case "decrypt":
+			handleErr(runMigrate("Decrypt", *db, *wal, *keyFile, "", *del))
+		default:
+			if *newKey == "" {
+				fmt.Println("Error: --new-key-file is required for rekey.")
+				os.Exit(1)
+			}
+			handleErr(runMigrate("Rekey", *db, *wal, *keyFile, *newKey, *del))
+		}
 
 	case "version":
 		fmt.Printf("beastctl v%s\n", Version)

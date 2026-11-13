@@ -15,6 +15,7 @@ import (
 type LeaderServer struct {
 	beastv1.UnimplementedReplicationServiceServer
 	walPath     string
+	walCipher   *wal.Cipher // nil for a plaintext log (ADR 0002)
 	broadcaster *Broadcaster
 	acks        map[string]uint64
 	addrs       map[string]string // replica id -> remote address of its live stream
@@ -30,6 +31,9 @@ func NewLeaderServer(walPath string) *LeaderServer {
 		addrs:       make(map[string]string),
 	}
 }
+
+// SetWALCipher makes catch-up read an encrypted log. Call before serving.
+func (s *LeaderServer) SetWALCipher(c *wal.Cipher) { s.walCipher = c }
 
 // RegisterService registers the replication handler with the gRPC server instance.
 func (s *LeaderServer) RegisterService(grpcServer *grpc.Server) {
@@ -65,7 +69,7 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 	// one checkpoint still catches up. Anything older surfaces as a gap on the
 	// follower, which fails loudly rather than diverging silently.
 	for _, path := range []string{s.walPath + ".bak", s.walPath} {
-		_, err := wal.Replay(path, func(rec *wal.Record) error {
+		_, err := wal.ReplayWith(path, s.walCipher, func(rec *wal.Record) error {
 			if rec.LSN < req.FromLsn || rec.LSN <= maxReplayedLSN {
 				return nil
 			}

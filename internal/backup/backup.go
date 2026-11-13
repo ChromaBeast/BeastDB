@@ -33,6 +33,11 @@ type Manifest struct {
 	LastCheckpointLSN  uint64 `json:"last_checkpoint_lsn"`
 	FileSize           int64  `json:"file_size"`
 
+	// Encrypted bundles hold ciphertext pages plus keyring.json (the wrapped data
+	// key). Without the master key only the checksum can be verified.
+	Encrypted bool   `json:"encrypted,omitempty"`
+	KeyID     uint16 `json:"key_id,omitempty"`
+
 	Kind      string `json:"kind,omitempty"` // "manual" or "scheduled"
 	CreatedBy string `json:"created_by,omitempty"`
 }
@@ -50,6 +55,13 @@ type Snapshotter interface {
 	// for the copy (time grows with the data file size).
 	CreateSnapshot(dir string) (string, error)
 	StorageMetrics() api.StorageMetrics
+}
+
+// Encrypted is implemented by an engine with encryption at rest; Create then
+// copies its keyring into the bundle and records it in the manifest.
+type Encrypted interface {
+	KeyringPath() string
+	VerifyCipher() *storage.PageCipher
 }
 
 // Kinds of backup.
@@ -109,8 +121,22 @@ func Create(eng Snapshotter, root, kind, createdBy string) (Info, error) {
 		Version: "1.0.0", CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		DataChecksumSHA256: sum, FileSize: size, Kind: kind, CreatedBy: createdBy,
 	}
-	if meta, err := readMeta(data); err == nil {
+	var pc *storage.PageCipher
+	if enc, ok := eng.(Encrypted); ok && enc.KeyringPath() != "" {
+		pc = enc.VerifyCipher()
+		kr, err := os.ReadFile(enc.KeyringPath())
+		if err != nil {
+			return fail(fmt.Errorf("copy keyring: %w", err))
+		}
+		if err := os.WriteFile(filepath.Join(dir, KeyringName), kr, 0o600); err != nil {
+			return fail(err)
+		}
+		m.Encrypted, m.KeyID = true, pc.KeyID()
+	}
+	if meta, err := metaOf(data, pc); err == nil {
 		m.RootPageID, m.ActiveDataPageID, m.LastCheckpointLSN = meta.RootPageID, meta.ActiveDataPageID, meta.LastCheckpointLSN
+	} else if pc != nil {
+		return fail(fmt.Errorf("authenticate backup pages: %w", err))
 	}
 	b, _ := json.MarshalIndent(m, "", "  ")
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0o640); err != nil {
@@ -143,9 +169,27 @@ func readMeta(path string) (storage.MetaData, error) {
 	return storage.DecodeMeta(page)
 }
 
+// KeyringName is the keyring's file name inside an encrypted bundle.
+const KeyringName = "keyring.json"
+
+// metaOf reads page 0's metadata, authenticating every page when pc is set.
+func metaOf(data string, pc *storage.PageCipher) (storage.MetaData, error) {
+	if pc == nil {
+		return readMeta(data)
+	}
+	meta, _, err := storage.AuthenticateFile(data, pc)
+	return meta, err
+}
+
 // Verify re-hashes data.bin and checks it against manifest.json, the same
-// checks `beastctl verify` makes.
-func Verify(dir string) (Manifest, error) {
+// checks `beastctl verify` makes. For an encrypted bundle it can only check the
+// checksum and size (the manifest is not authenticated); use VerifyWith to
+// authenticate the pages.
+func Verify(dir string) (Manifest, error) { return VerifyWith(dir, nil) }
+
+// VerifyWith is Verify that also authenticates every page of an encrypted
+// bundle with pc (obtained from the master key and the bundle's keyring).
+func VerifyWith(dir string, pc *storage.PageCipher) (Manifest, error) {
 	var m Manifest
 	b, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
 	if err != nil {
@@ -164,7 +208,13 @@ func Verify(dir string) (Manifest, error) {
 	if size != m.FileSize {
 		return m, fmt.Errorf("file size mismatch: manifest says %d bytes, found %d", m.FileSize, size)
 	}
-	meta, err := readMeta(filepath.Join(dir, "data.bin"))
+	if m.Encrypted && pc == nil {
+		return m, nil // checksum and size only; the pages are ciphertext
+	}
+	if !m.Encrypted && pc != nil {
+		return m, errors.New("bundle is not encrypted but a key was given")
+	}
+	meta, err := metaOf(filepath.Join(dir, "data.bin"), pc)
 	if err != nil {
 		return m, fmt.Errorf("page 0 metadata validation failed: %w", err)
 	}

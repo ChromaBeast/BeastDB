@@ -18,7 +18,14 @@ func (d *DiskManager) SpillPage(pageID uint64, pageData []byte) error {
 		d.spillNext++
 		d.spillSlots[pageID] = slot
 	}
-	_, err := d.spill.WriteAt(pageData[:PageSize], slot*PageSize)
+	out := pageData[:PageSize]
+	if d.pc != nil {
+		if err := d.pc.Seal(d.scratch, pageData, pageID); err != nil {
+			return err
+		}
+		out = d.scratch
+	}
+	_, err := d.spill.WriteAt(out, slot*PageSize)
 	return err
 }
 

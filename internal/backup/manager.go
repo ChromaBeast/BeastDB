@@ -67,7 +67,7 @@ func (m *Manager) Create(kind, actor string) (Info, error) {
 
 func (m *Manager) record(id string) Result {
 	r := Result{OK: true, At: time.Now().UTC()}
-	if _, err := Verify(filepath.Join(m.root, id)); err != nil {
+	if _, err := m.verify(filepath.Join(m.root, id)); err != nil {
 		r.OK, r.Error = false, err.Error()
 	}
 	m.mu.Lock()
@@ -195,4 +195,13 @@ func (m *Manager) prune() {
 			m.mu.Unlock()
 		}
 	}
+}
+
+// verify checks a bundle, authenticating the pages of an encrypted one with the
+// engine's own key.
+func (m *Manager) verify(dir string) (Manifest, error) {
+	if enc, ok := m.eng.(Encrypted); ok {
+		return VerifyWith(dir, enc.VerifyCipher())
+	}
+	return Verify(dir)
 }

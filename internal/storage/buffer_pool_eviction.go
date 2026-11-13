@@ -21,7 +21,7 @@ func (bpm *BufferPoolManager) loadPage(pageID uint64) (*SlottedPage, error) {
 		return nil, err
 	}
 
-	page, err := WrapPage(pageData)
+	page, err := WrapPageEnd(pageData, bpm.disk.PageEnd())
 	if err != nil {
 		bpm.pagePool.Put(bufPtr)
 		return nil, err

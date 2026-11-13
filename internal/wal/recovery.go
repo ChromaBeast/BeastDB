@@ -24,6 +24,9 @@ func Replay(path string, applyFn func(rec *Record) error) (RecoveryReport, error
 	}
 	defer file.Close()
 
+	if _, _, err := checkHeader(file, nil); err != nil {
+		return RecoveryReport{}, err
+	}
 	report := RecoveryReport{}
 
 	for {

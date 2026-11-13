@@ -14,27 +14,35 @@ var (
 // SlottedPage manages a single 4096-byte hardware-aligned disk block.
 type SlottedPage struct {
 	data []byte
+	end  uint16 // where tuple data may end: PageSize, or PageDataEnd when encrypted
 }
 
 // NewSlottedPage initializes a fresh 4KB page with zero records and maximum free space.
-func NewSlottedPage(pageID uint64) *SlottedPage {
+func NewSlottedPage(pageID uint64) *SlottedPage { return NewSlottedPageEnd(pageID, PageSize) }
+
+// NewSlottedPageEnd is NewSlottedPage for a page whose last PageSize-end bytes
+// are reserved (the encryption tail).
+func NewSlottedPageEnd(pageID uint64, end int) *SlottedPage {
 	data := make([]byte, PageSize)
 	header := PageHeader{
 		PageID:    pageID,
 		SlotCount: 0,
 		Lower:     PageHeaderSize,
-		Upper:     PageSize,
+		Upper:     uint16(end),
 	}
 	WritePageHeader(data, header)
-	return &SlottedPage{data: data}
+	return &SlottedPage{data: data, end: uint16(end)}
 }
 
 // WrapPage encapsulates an existing 4096-byte disk slice into a SlottedPage manager.
-func WrapPage(data []byte) (*SlottedPage, error) {
+func WrapPage(data []byte) (*SlottedPage, error) { return WrapPageEnd(data, PageSize) }
+
+// WrapPageEnd is WrapPage for a page whose tail past end is reserved.
+func WrapPageEnd(data []byte, end int) (*SlottedPage, error) {
 	if len(data) != PageSize {
 		return nil, ErrInvalidPageSize
 	}
-	return &SlottedPage{data: data}, nil
+	return &SlottedPage{data: data, end: uint16(end)}, nil
 }
 
 // Header returns the page's current metadata.
@@ -126,7 +134,7 @@ func (p *SlottedPage) Compact() {
 	temp := make([]byte, PageSize)
 	copy(temp[:PageHeaderSize], p.data[:PageHeaderSize])
 
-	newUpper := uint16(PageSize)
+	newUpper := p.end
 
 	for i := uint16(0); i < h.SlotCount; i++ {
 		slot := ReadSlot(p.data, i)

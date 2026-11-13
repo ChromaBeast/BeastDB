@@ -96,7 +96,7 @@ func (bpm *BufferPoolManager) NewPage() (*SlottedPage, uint64, error) {
 		return nil, 0, err
 	}
 
-	page := NewSlottedPage(newPageID)
+	page := NewSlottedPageEnd(newPageID, bpm.disk.PageEnd())
 	victim := bpm.frames[victimIdx]
 	victim.PageID = newPageID
 	victim.Pin()

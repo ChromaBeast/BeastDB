@@ -29,7 +29,12 @@ func initFreshV1(disk *storage.DiskManager, bpm *storage.BufferPoolManager, w *w
 		return nil, err
 	}
 
+	var flags uint32
+	if disk.Encrypted() {
+		flags |= storage.MetaFlagEncrypted
+	}
 	storage.EncodeMeta(metaPage.Data(), storage.MetaData{
+		Flags:             flags,
 		Magic:             storage.MetaMagic,
 		Version:           storage.MetaVersion,
 		RootPageID:        tree.RootPageID(),

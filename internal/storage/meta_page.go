@@ -23,6 +23,9 @@ const (
 	MetaVersion uint32 = 1
 )
 
+// MetaFlagEncrypted marks a database whose pages are encrypted (ADR 0002).
+const MetaFlagEncrypted uint32 = 1 << 0
+
 // MetaData holds persistent database-level metadata stored at Page 0.
 type MetaData struct {
 	Magic             uint32
@@ -30,20 +33,22 @@ type MetaData struct {
 	RootPageID        uint64
 	ActiveDataPageID  uint64
 	LastCheckpointLSN uint64
+	Flags             uint32 // MetaFlag* bits; zero in databases written before encryption existed
 }
 
-// EncodeMeta serializes MetaData into the first 32 bytes of Page 0.
+// EncodeMeta serializes MetaData into the first 36 bytes of Page 0.
 func EncodeMeta(page []byte, m MetaData) {
 	binary.LittleEndian.PutUint32(page[0:4], m.Magic)
 	binary.LittleEndian.PutUint32(page[4:8], m.Version)
 	binary.LittleEndian.PutUint64(page[8:16], m.RootPageID)
 	binary.LittleEndian.PutUint64(page[16:24], m.ActiveDataPageID)
 	binary.LittleEndian.PutUint64(page[24:32], m.LastCheckpointLSN)
+	binary.LittleEndian.PutUint32(page[32:36], m.Flags)
 }
 
 // DecodeMeta deserializes and validates MetaData from Page 0 bytes.
 func DecodeMeta(page []byte) (MetaData, error) {
-	if len(page) < 32 {
+	if len(page) < 36 {
 		return MetaData{}, ErrDiskBufferTooSmall
 	}
 	magic := binary.LittleEndian.Uint32(page[0:4])
@@ -61,5 +66,6 @@ func DecodeMeta(page []byte) (MetaData, error) {
 		RootPageID:        binary.LittleEndian.Uint64(page[8:16]),
 		ActiveDataPageID:  binary.LittleEndian.Uint64(page[16:24]),
 		LastCheckpointLSN: binary.LittleEndian.Uint64(page[24:32]),
+		Flags:             binary.LittleEndian.Uint32(page[32:36]),
 	}, nil
 }

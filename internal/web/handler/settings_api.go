@@ -27,6 +27,8 @@ type RuntimeSettings struct {
 	PartitionConfigPath  string
 	DevMode              bool
 	InsecureAuthOverride bool
+	// Encryption is what the open engine reports (never derived from flags).
+	Encryption api.EncryptionInfo
 }
 
 type settingsResponse struct {
@@ -71,10 +73,13 @@ func buildSettings(s RuntimeSettings) settingsResponse {
 			"dev_mode": s.DevMode,
 		},
 		Storage: map[string]any{
-			"data_dir":          s.DataDir,
-			"pool_size_frames":  s.PoolSize,
-			"page_size_bytes":   4096,
-			"wal_checkpoint_mb": s.WALCheckpointMB,
+			"data_dir":           s.DataDir,
+			"pool_size_frames":   s.PoolSize,
+			"page_size_bytes":    4096,
+			"wal_checkpoint_mb":  s.WALCheckpointMB,
+			"encryption_at_rest": s.Encryption.Enabled,
+			"encryption_cipher":  s.Encryption.Cipher,
+			"encryption_key_id":  s.Encryption.KeyID,
 		},
 		Network: map[string]any{
 			"grpc_addr": s.GRPCAddr,
