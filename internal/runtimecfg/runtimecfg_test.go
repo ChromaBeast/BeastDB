@@ -3,6 +3,7 @@ package runtimecfg
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -28,8 +29,13 @@ func TestUpdatePersistsAppliesAndOverridesNextStart(t *testing.T) {
 	if len(seen) != 2 || seen[1].WALCheckpointMB != 128 || seen[1].LoginMaxAttempts != 5 {
 		t.Fatalf("subscriber not notified correctly: %+v", seen)
 	}
-	if info, _ := os.Stat(filepath.Join(dir, FileName)); info == nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("settings file must exist with 0600: %v", info)
+	info, _ := os.Stat(filepath.Join(dir, FileName))
+	if info == nil {
+		t.Fatal("settings file must exist")
+	}
+	// Windows has no Unix permission bits, so only check the mode elsewhere.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("settings file must be 0600: %v", info.Mode().Perm())
 	}
 
 	// A restart with different flag defaults still sees the saved override.
