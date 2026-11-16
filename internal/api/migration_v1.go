@@ -32,7 +32,17 @@ func migrateV1ToV2(dbPath, walPath string, poolSize int) error {
 	if err != nil {
 		return err
 	}
-	defer src.disk.Close()
+	// The old data file must be closed before installMigratedFiles renames
+	// the new one over it: Windows refuses to replace an open file.
+	srcOpen := true
+	closeSrc := func() error {
+		if !srcOpen {
+			return nil
+		}
+		srcOpen = false
+		return src.disk.Close()
+	}
+	defer closeSrc()
 
 	tmpDB, tmpWAL := dbPath+".migrated.tmp", walPath+".migrated.tmp"
 	removeMigrationTemps(tmpDB, tmpWAL)
@@ -64,6 +74,10 @@ func migrateV1ToV2(dbPath, walPath string, poolSize int) error {
 	if err := dst.Close(); err != nil {
 		removeMigrationTemps(tmpDB, tmpWAL)
 		return fmt.Errorf("close migrated database: %w", err)
+	}
+	if err := closeSrc(); err != nil {
+		removeMigrationTemps(tmpDB, tmpWAL)
+		return fmt.Errorf("close version 1 database: %w", err)
 	}
 	if err := installMigratedFiles(dbPath, walPath, tmpDB, tmpWAL, ".v1.bak"); err != nil {
 		return err
