@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"io"
 	"os"
 	"sync"
 )
@@ -25,8 +24,21 @@ type WAL struct {
 	syncErr   error      // sticky: after a failed fsync the log is untrustworthy
 }
 
+// Options tunes OpenWALWithOptions.
+type Options struct {
+	// TruncateCorrupt opens a log that is damaged in the middle by cutting it
+	// at the damage (the cut bytes are saved to <path>.discarded). Without it
+	// such a log fails to open with ErrCorruptLog.
+	TruncateCorrupt bool
+}
+
 // OpenWAL opens an existing WAL file or creates a new one at the specified path.
 func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
+	return OpenWALWithOptions(path, syncOnWrite, Options{})
+}
+
+// OpenWALWithOptions is OpenWAL with options.
+func OpenWALWithOptions(path string, syncOnWrite bool, opts Options) (*WAL, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
@@ -38,8 +50,10 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 		syncOnWrite: syncOnWrite,
 	}
 
-	// Scan existing file to determine the highest existing LSN
-	lastLSN, err := findHighestLSN(file)
+	// Scan the existing file for the highest LSN and cut off anything after
+	// the last valid record. Without the cut, new records would be appended
+	// behind a torn tail and never be reached by a later replay.
+	lastLSN, err := scanAndTrim(file, path, opts.TruncateCorrupt)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -50,7 +64,7 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 	if lastLSN == 0 {
 		archivePath := path + ".bak"
 		if archFile, err := os.Open(archivePath); err == nil {
-			if archLSN, err := findHighestLSN(archFile); err == nil && archLSN > lastLSN {
+			if archLSN, _, err := scanLog(archFile); err == nil && archLSN > lastLSN {
 				lastLSN = archLSN
 			}
 			_ = archFile.Close()
@@ -130,32 +144,6 @@ func (w *WAL) Path() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.path
-}
-
-func findHighestLSN(file *os.File) (uint64, error) {
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return 0, err
-	}
-
-	var highest uint64
-	for {
-		rec, err := DecodeRecord(file)
-		if err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF || err == ErrTornWrite {
-				break
-			}
-			return 0, err
-		}
-		if rec.LSN > highest {
-			highest = rec.LSN
-		}
-	}
-
-	// Reset write offset back to end of file
-	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		return 0, err
-	}
-	return highest, nil
 }
 
 // FileSize returns the current byte size of the WAL file on disk.

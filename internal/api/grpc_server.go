@@ -93,43 +93,45 @@ func (s *GRPCServer) Delete(ctx context.Context, req *beastv1.DeleteRequest) (*b
 	return &beastv1.DeleteResponse{Success: true}, nil
 }
 
-// Scan handles server-streaming range scan requests.
+// Scan chunk limits: the engine lock is held only while one chunk is read
+// into memory, never while it is sent to the client.
+const (
+	scanChunkItems = 256
+	scanChunkBytes = 4 << 20
+)
+
+// Scan handles server-streaming range scan requests. Records are read in
+// chunks and the engine lock is released between chunks, so writes committed
+// during a long scan may or may not appear in it.
 func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingServer[beastv1.KeyValueResponse]) error {
-	cursor, err := s.engine.Scan(req.StartKey, req.EndKey)
-	if err != nil {
-		return status.Errorf(codes.Internal, "scan error: %v", err)
-	}
-	defer cursor.Close()
-
+	start := req.StartKey
 	var sent uint32
-	for req.Limit == 0 || sent < req.Limit {
-		if stream.Context().Err() != nil {
-			return stream.Context().Err()
-		}
-
-		key, rid, ok, err := cursor.Next()
-		if err != nil {
-			return status.Errorf(codes.Internal, "cursor error: %v", err)
-		}
-		if !ok {
-			break
-		}
-
-		val, err := s.engine.ReadTuple(rid)
-		if err != nil {
-			return status.Errorf(codes.Internal, "read tuple error: %v", err)
-		}
-
-		resp := &beastv1.KeyValueResponse{
-			Key:   key,
-			Value: val,
-		}
-		if err := stream.Send(resp); err != nil {
+	for {
+		if err := stream.Context().Err(); err != nil {
 			return err
 		}
-		sent++
+		want := scanChunkItems
+		if req.Limit != 0 && int(req.Limit-sent) < want {
+			want = int(req.Limit - sent)
+		}
+		items, next, more, err := s.engine.ScanChunk(start, req.EndKey, want, scanChunkBytes)
+		if err != nil {
+			return status.Errorf(codes.Internal, "scan error: %v", err)
+		}
+		for _, it := range items {
+			if err := stream.Send(&beastv1.KeyValueResponse{Key: it.Key, Value: it.Value}); err != nil {
+				return err
+			}
+			sent++
+			if req.Limit != 0 && sent >= req.Limit {
+				return nil
+			}
+		}
+		if !more {
+			return nil
+		}
+		start = next
 	}
-	return nil
 }
 
 // BatchWrite executes an atomic batch of put/delete mutations.

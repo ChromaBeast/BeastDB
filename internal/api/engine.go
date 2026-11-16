@@ -2,8 +2,6 @@ package api
 
 import (
 	"encoding/binary"
-	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -24,6 +22,8 @@ type Engine struct {
 	readOnly       bool
 	failed         error          // set by halt; blocks writes until restart
 	reclaim        map[uint64]int // data page -> free bytes after compaction, or unknownFree
+	spaceMapPages  []uint64       // pages of the free-space map saved at the last checkpoint
+	opts           Options
 	mu             sync.RWMutex
 	cq             committer       // group-commit queue (engine_commit.go)
 	pending        []pendingNotify // commit events awaiting the group fsync; guarded by mu
@@ -32,79 +32,14 @@ type Engine struct {
 	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
 }
 
-// NewEngine initializes the database engine components with recovery support.
-func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
-	disk, err := storage.OpenDiskManager(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	return openEngine(disk, dbPath, walPath, poolSize, true)
-}
-
-// openEngine builds the engine on an open data file. dbPath is used only to
-// recreate or migrate the file; crash tests pass a simulated file. syncWAL is
-// always true in production; crash tests that never lose WAL writes turn it
-// off so they do not fsync on every commit.
-func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int, syncWAL bool) (*Engine, error) {
-	bpm := storage.NewBufferPoolManager(disk, poolSize)
-	w, err := wal.OpenWAL(walPath, syncWAL)
-	if err != nil {
-		_ = disk.Close()
-		return nil, err
-	}
-	// Write-ahead barrier: no dirty data page may reach the data file before
-	// the WAL records that describe it are durable (group commit applies pages
-	// before the group's fsync).
-	bpm.SetWALBarrier(w.EnsureDurable)
-
-	if disk.NumPages() == 0 {
-		return initFreshV1(disk, bpm, w)
-	}
-
-	metaPage, err := bpm.FetchPage(storage.MetaPageID)
-	if err != nil {
-		_ = disk.Close()
-		_ = w.Close()
-		return nil, err
-	}
-
-	data := metaPage.Data()
-
-	// A zero meta page means initialization never reached its first sync
-	// (no write is accepted before that), so there is nothing to recover. The
-	// file may be longer than one page because growth is reserved in chunks.
-	if isAllZeros(data) {
-		_ = bpm.UnpinPage(storage.MetaPageID, false)
-		_ = disk.Close()
-		_ = w.Close()
-		_ = os.Remove(dbPath)
-		return NewEngine(dbPath, walPath, poolSize)
-	}
-
-	meta, err := storage.DecodeMeta(data)
-	_ = bpm.UnpinPage(storage.MetaPageID, false)
-	if err != nil {
-		_ = disk.Close()
-		_ = w.Close()
-
-		if isLegacyV0Page(data) {
-			if migErr := migrateV0ToV1(dbPath, walPath, poolSize); migErr != nil {
-				return nil, fmt.Errorf("automatic migration from legacy format failed: %w", migErr)
-			}
-			return NewEngine(dbPath, walPath, poolSize)
-		}
-
-		return nil, err
-	}
-
-	w.SetCurrentLSN(meta.LastCheckpointLSN)
-	tree := index.OpenBPlusTree(meta.RootPageID, bpm)
-	return newEngineInstance(disk, bpm, tree, w, meta.ActiveDataPageID, meta.LastCheckpointLSN)
-}
-
 // CurrentLSN returns the latest Log Sequence Number in the engine's WAL.
 func (e *Engine) CurrentLSN() uint64 {
 	return e.wal.CurrentLSN()
+}
+
+// DurableLSN returns the highest LSN known to be fsynced to the WAL.
+func (e *Engine) DurableLSN() uint64 {
+	return e.wal.DurableLSN()
 }
 
 // WALPath returns the filesystem location of the active WAL file.
@@ -148,31 +83,45 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 		if err != nil {
 			return err
 		}
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		if e.failed != nil {
-			return e.failed
+		if len(batchOps) == 0 {
+			return nil
 		}
-		for _, bOp := range batchOps {
-			if len(bOp.Key) < 8 {
-				continue
-			}
-			k := binary.LittleEndian.Uint64(bOp.Key)
-			if bOp.Type == wal.OpPut {
-				if err := e.applyPutInMemory(k, bOp.Value); err != nil {
-					return e.halt(err)
-				}
-				e.indexValueLocked(k, bOp.Value)
-			} else if bOp.Type == wal.OpDelete {
-				if err := e.applyDeleteInMemory(k); err != nil {
-					return e.halt(err)
-				}
-				e.unindexValueLocked(k)
-			}
-		}
-		return nil
+		return e.commit(func() error { return e.replicatedBatchLocked(value, batchOps) })
 
 	default:
 		return nil
 	}
+}
+
+// replicatedBatchLocked logs a batch received from the leader in this node's
+// WAL, exactly as the leader logged it, and then applies it. Logging keeps the
+// batch across a crash and keeps this node's LSN in step with the leader's.
+func (e *Engine) replicatedBatchLocked(payload []byte, ops []wal.BatchOp) error {
+	if e.failed != nil {
+		return e.failed
+	}
+	lsn, err := e.wal.Append(wal.OpBatch, nil, payload)
+	if err != nil {
+		return e.halt(err)
+	}
+	for _, op := range ops {
+		if len(op.Key) < 8 {
+			continue
+		}
+		k := binary.LittleEndian.Uint64(op.Key)
+		switch op.Type {
+		case wal.OpPut:
+			if err := e.applyPutInMemory(k, op.Value); err != nil {
+				return e.halt(err)
+			}
+			e.indexValueLocked(k, op.Value)
+		case wal.OpDelete:
+			if err := e.applyDeleteInMemory(k); err != nil {
+				return e.halt(err)
+			}
+			e.unindexValueLocked(k)
+		}
+	}
+	e.queueNotify(lsn, wal.OpBatch, nil, payload)
+	return nil
 }

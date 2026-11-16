@@ -33,7 +33,7 @@ func Replay(path string, applyFn func(rec *Record) error) (RecoveryReport, error
 				// Reached clean end of log
 				break
 			}
-			if err == ErrTornWrite || err == io.ErrUnexpectedEOF || err == ErrRecordTooSmall {
+			if isLogEnd(err) {
 				// Torn write detected at tail (e.g. process killed mid-write)
 				report.TornWriteDetected = true
 				break

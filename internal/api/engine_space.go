@@ -86,6 +86,12 @@ func (e *Engine) nextDataPage(size int) (*storage.SlottedPage, uint64, error) {
 			delete(e.reclaim, id)
 			continue
 		}
+		if p.Header().PageID != id {
+			// Not a data page (any more): never compact it as one.
+			_ = e.bpm.UnpinPage(id, false)
+			delete(e.reclaim, id)
+			continue
+		}
 		p.Compact()
 		got := p.FreeSpace()
 		_ = e.bpm.UnpinPage(id, true)
@@ -122,10 +128,20 @@ func (e *Engine) freeTuple(rid storage.RID) {
 		return
 	}
 	_ = page.DeleteTuple(rid.SlotID)
+	empty := page.LiveTuples() == 0
 	_ = e.bpm.UnpinPage(rid.PageID, true)
-	if rid.PageID != e.activeDataPage {
-		e.trackFree(rid.PageID, unknownFree)
+	if rid.PageID == e.activeDataPage {
+		return
 	}
+	if empty {
+		// Nothing on the page is referenced any more: give it back for any
+		// use (index, data or saved maps) instead of tracking its free space.
+		delete(e.reclaim, rid.PageID)
+		if e.bpm.FreePage(rid.PageID) == nil {
+			return
+		}
+	}
+	e.trackFree(rid.PageID, unknownFree)
 }
 
 // applyPutInMemory writes value for key, freeing any tuple the key previously pointed at.

@@ -32,6 +32,8 @@ type BufferPoolManager struct {
 	// applied to pages before their group's fsync completes. Evictions go to
 	// the non-durable spill file and do not need it.
 	walBarrier func() error
+
+	freeHead uint64 // first page of the free list (buffer_pool_freelist.go)
 }
 
 // NewBufferPoolManager creates a pool with a fixed number of in-memory frames.
@@ -78,10 +80,15 @@ func (bpm *BufferPoolManager) FetchPage(pageID uint64) (*SlottedPage, error) {
 	return bpm.loadPage(pageID)
 }
 
-// NewPage allocates a new physical page on disk and loads it into a frame.
+// NewPage returns a pinned, empty page: one taken from the free list if
+// there is one, otherwise a page appended to the file.
 func (bpm *BufferPoolManager) NewPage() (*SlottedPage, uint64, error) {
 	bpm.mu.Lock()
 	defer bpm.mu.Unlock()
+
+	if page, id, ok := bpm.popFreeLocked(); ok {
+		return page, id, nil
+	}
 
 	victimIdx, err := bpm.findVictim()
 	if err != nil {
