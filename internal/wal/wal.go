@@ -24,8 +24,21 @@ type WAL struct {
 	syncErr   error      // sticky: after a failed fsync the log is untrustworthy
 }
 
+// Options tunes OpenWALWithOptions.
+type Options struct {
+	// TruncateCorrupt opens a log that is damaged in the middle by cutting it
+	// at the damage (the cut bytes are saved to <path>.discarded). Without it
+	// such a log fails to open with ErrCorruptLog.
+	TruncateCorrupt bool
+}
+
 // OpenWAL opens an existing WAL file or creates a new one at the specified path.
 func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
+	return OpenWALWithOptions(path, syncOnWrite, Options{})
+}
+
+// OpenWALWithOptions is OpenWAL with options.
+func OpenWALWithOptions(path string, syncOnWrite bool, opts Options) (*WAL, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
@@ -40,7 +53,7 @@ func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
 	// Scan the existing file for the highest LSN and cut off anything after
 	// the last valid record. Without the cut, new records would be appended
 	// behind a torn tail and never be reached by a later replay.
-	lastLSN, err := scanAndTrim(file, path)
+	lastLSN, err := scanAndTrim(file, path, opts.TruncateCorrupt)
 	if err != nil {
 		_ = file.Close()
 		return nil, err

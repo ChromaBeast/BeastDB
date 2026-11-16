@@ -2,10 +2,22 @@ package wal
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
 )
+
+// ErrCorruptLog reports a WAL that is damaged in the middle: a record fails
+// its checks but intact records follow it. Those later records were written,
+// and possibly acknowledged, so the log is not cut silently.
+var ErrCorruptLog = errors.New("wal: log is damaged in the middle")
+
+// maxResyncScan bounds how many bytes after a bad record are searched for a
+// later intact record.
+const maxResyncScan = 256 << 20
 
 // scanLog reads records from the start of file and returns the highest LSN
 // and the offset just past the last valid record. It stops, without error, at
@@ -35,10 +47,11 @@ func isLogEnd(err error) bool {
 
 // scanAndTrim returns the highest LSN in file and truncates it to the last
 // valid record. Bytes that follow an undecodable record are normally a torn
-// tail (a partial frame or zero fill). If they are neither, the log may be
-// damaged in the middle, so they are saved next to the WAL before the cut
-// rather than destroyed.
-func scanAndTrim(file *os.File, path string) (uint64, error) {
+// tail (a partial frame or zero fill). If an intact record with a higher LSN
+// follows the damage, the log is damaged in the middle: that fails with
+// ErrCorruptLog unless truncateCorrupt is set. Anything cut that is not a
+// plain torn tail is saved next to the WAL first.
+func scanAndTrim(file *os.File, path string, truncateCorrupt bool) (uint64, error) {
 	highest, validEnd, err := scanLog(file)
 	if err != nil {
 		return 0, err
@@ -53,6 +66,13 @@ func scanAndTrim(file *os.File, path string) (uint64, error) {
 	}
 
 	if !isPlainTornTail(file, validEnd, size) {
+		at, lsn, found, err := findLaterRecord(file, validEnd, size, highest)
+		if err != nil {
+			return 0, err
+		}
+		if found && !truncateCorrupt {
+			return 0, fmt.Errorf("%w: %s: the record at offset %d is damaged but an intact record (LSN %d) follows at offset %d; restore from a backup, or open with the WAL truncation option to cut the log at the damage and lose what follows", ErrCorruptLog, path, validEnd, lsn, at)
+		}
 		saved := path + ".discarded"
 		if err := copyRange(file, validEnd, size, saved); err != nil {
 			return 0, err
@@ -113,4 +133,27 @@ func copyRange(file *os.File, from, to int64, dstPath string) error {
 		return err
 	}
 	return dst.Close()
+}
+
+// findLaterRecord searches the bytes after a bad record for an intact record
+// with an LSN above highest, which proves the damage is not a torn tail.
+func findLaterRecord(file *os.File, from, size int64, highest uint64) (at int64, lsn uint64, found bool, err error) {
+	n := min(size-from, maxResyncScan)
+	buf := make([]byte, n)
+	if _, err := file.ReadAt(buf, from); err != nil && !errors.Is(err, io.EOF) {
+		return 0, 0, false, err
+	}
+	for off := 1; off+HeaderSize <= len(buf); off++ {
+		recLen := int(uint32(buf[off]) | uint32(buf[off+1])<<8 | uint32(buf[off+2])<<16 | uint32(buf[off+3])<<24)
+		// Only records whose CRC covers the header count as proof: their
+		// checks are strong enough that garbage will not pass by chance.
+		if recLen < HeaderSize || off+recLen > len(buf) || buf[off+12]&headerCRCFlag == 0 {
+			continue
+		}
+		rec, derr := DecodeRecord(bytes.NewReader(buf[off : off+recLen]))
+		if derr == nil && rec.LSN > highest {
+			return from + int64(off), rec.LSN, true, nil
+		}
+	}
+	return 0, 0, false, nil
 }

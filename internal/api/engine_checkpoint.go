@@ -27,7 +27,9 @@ func (e *Engine) Close() error {
 		// in place so the next open redoes the WAL from it.
 		recordErr(e.failed)
 	} else {
-		recordErr(e.persistCheckpointLocked(e.wal.CurrentLSN()))
+		// A clean shutdown also saves the search index, so the next open does
+		// not have to rebuild it by scanning every record.
+		recordErr(e.persistCheckpointWithIndexLocked(e.wal.CurrentLSN(), true))
 	}
 	recordErr(e.wal.Close())
 	recordErr(e.disk.Close())
@@ -70,10 +72,32 @@ func (e *Engine) Checkpoint() error {
 // checkpoint. Recovery redoes the WAL after lsn on exactly this image.
 // Caller holds e.mu exclusively.
 func (e *Engine) persistCheckpointLocked(lsn uint64) error {
+	return e.persistCheckpointWithIndexLocked(lsn, false)
+}
+
+// persistCheckpointWithIndexLocked is persistCheckpointLocked that can also
+// save the search index. Only Close saves it: it is written in full, which is
+// too costly for every periodic checkpoint.
+func (e *Engine) persistCheckpointWithIndexLocked(lsn uint64, saveIndex bool) error {
+	spaceHead, err := e.saveSpaceMap()
+	if err != nil {
+		return fmt.Errorf("save free-space map: %w", err)
+	}
+	var indexHead uint64
+	if saveIndex {
+		if indexHead, err = e.saveIndexSnapshot(); err != nil {
+			return fmt.Errorf("save search index: %w", err)
+		}
+	}
 	if err := e.updateMeta(func(m *storage.MetaData) {
 		m.LastCheckpointLSN = lsn
 		m.ActiveDataPageID = e.activeDataPage
 		m.RootPageID = e.tree.RootPageID()
+		m.SpaceMapHead = spaceHead
+		m.IndexSnapHead = indexHead
+		m.IndexSnapLSN = lsn
+		// Read last: saving the maps above takes and returns free pages.
+		m.FreeListHead = e.bpm.FreeListHead()
 	}); err != nil {
 		return fmt.Errorf("update meta: %w", err)
 	}

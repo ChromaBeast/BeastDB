@@ -152,7 +152,6 @@ func (in *InternalNode) Delete(key uint64) bool {
 	return true
 }
 
-
 // DeleteChild removes the routing entry whose child pointer is childID.
 // Child0 has no entry of its own and cannot be removed this way.
 func (in *InternalNode) DeleteChild(childID uint64) bool {
@@ -168,6 +167,21 @@ func (in *InternalNode) DeleteChild(childID uint64) bool {
 		h.KeyCount--
 		in.SetHeader(h)
 		return true
+	}
+	return false
+}
+
+// ReplaceChild points the entry that refers to oldID (Child0 included) at newID.
+func (in *InternalNode) ReplaceChild(oldID, newID uint64) bool {
+	if in.Child0() == oldID {
+		in.SetChild0(newID)
+		return true
+	}
+	for i := 0; i < int(in.Header().KeyCount); i++ {
+		if in.Child(i) == oldID {
+			in.SetChild(i, newID)
+			return true
+		}
 	}
 	return false
 }

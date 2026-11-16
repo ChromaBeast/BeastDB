@@ -71,3 +71,11 @@ If a follower is partitioned for longer than the leader's WAL retention window, 
 2. Create or fetch the latest backup bundle from the leader or storage repository.
 3. Restore the bundle into the follower's data directory using `beastctl backup restore`.
 4. Restart the follower node; it will automatically reconnect, resume streaming from the restored LSN, and catch up with the leader.
+
+---
+
+## 6. Damaged Data or WAL Files
+
+- **`page N: page checksum mismatch`** on reads or at startup means a data page no longer matches its checksum (disk or filesystem damage). Do not keep writing to the node. Restore the latest backup bundle (`beastctl backup restore`), or resync it from a healthy replica. `beastctl backup verify` checks every page checksum in a bundle, so verify a bundle before relying on it.
+- **`wal: log is damaged in the middle`** at startup means a WAL record failed its checks while later records are intact, so writes after the damage were made and may have been acknowledged. Prefer restoring from a backup or a replica. If losing the writes after the damage is acceptable, start once with `-wal-truncate-corrupt` (or `BEASTDB_WAL_TRUNCATE_CORRUPT=true`): the log is cut at the damage and the cut bytes are kept in `<wal>.discarded` for inspection.
+- A torn or zero-filled WAL tail left by a crash or power loss needs no action: it is removed on the next start.

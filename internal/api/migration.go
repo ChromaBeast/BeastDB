@@ -61,8 +61,8 @@ func findLegacyRootPageID(bpm *storage.BufferPoolManager, numPages uint64) uint6
 	return 0
 }
 
-// migrateV0ToV1 safely extracts all records from a legacy v0 database and installs a fresh v1 format.
-func migrateV0ToV1(dbPath, walPath string, poolSize int) error {
+// migrateV0 extracts all records from a legacy v0 database and installs them in a database of the current format.
+func migrateV0(dbPath, walPath string, poolSize int) error {
 	log.Printf("Detected legacy BeastDB storage format at %q. Initiating automatic migration to v1...", dbPath)
 
 	disk, err := storage.OpenDiskManager(dbPath)
@@ -108,46 +108,29 @@ func migrateV0ToV1(dbPath, walPath string, poolSize int) error {
 
 	tmpDB := dbPath + ".migrated.tmp"
 	tmpWAL := walPath + ".migrated.tmp"
-	_ = os.Remove(tmpDB)
-	_ = os.Remove(tmpWAL)
+	removeMigrationTemps(tmpDB, tmpWAL)
 
 	eng, err := NewEngine(tmpDB, tmpWAL, poolSize)
 	if err != nil {
-		return fmt.Errorf("failed to create temporary v1 engine: %w", err)
+		return fmt.Errorf("failed to create temporary engine: %w", err)
 	}
-
 	for k, v := range records {
 		if err := eng.Put(k, v); err != nil {
 			_ = eng.Close()
-			_ = os.Remove(tmpDB)
-			_ = os.Remove(tmpWAL)
+			removeMigrationTemps(tmpDB, tmpWAL)
 			return fmt.Errorf("failed to insert migrated record %d: %w", k, err)
 		}
 	}
 	if err := eng.Close(); err != nil {
-		return fmt.Errorf("failed to close temporary v1 engine: %w", err)
+		removeMigrationTemps(tmpDB, tmpWAL)
+		return fmt.Errorf("failed to close temporary engine: %w", err)
 	}
-	// The temporary engine's journal is empty after Close; the installed
-	// database gets its own journal next to dbPath on open.
-	_ = os.Remove(storage.JournalPath(tmpDB))
-
 	bakDB := dbPath + ".v0.bak"
-	bakWAL := walPath + ".v0.bak"
-	_ = os.Remove(bakDB)
-	_ = os.Remove(bakWAL)
+	if err := installMigratedFiles(dbPath, walPath, tmpDB, tmpWAL, ".v0.bak"); err != nil {
+		return err
+	}
 
-	if err := os.Rename(dbPath, bakDB); err != nil {
-		return fmt.Errorf("failed to backup legacy database: %w", err)
-	}
-	if _, err := os.Stat(walPath); err == nil {
-		_ = os.Rename(walPath, bakWAL)
-	}
-	if err := os.Rename(tmpDB, dbPath); err != nil {
-		return fmt.Errorf("failed to install migrated database: %w", err)
-	}
-	_ = os.Rename(tmpWAL, walPath)
-
-	log.Printf("Successfully migrated %d records to v1 storage format. Legacy backup saved to %q.", len(records), bakDB)
+	log.Printf("Successfully migrated %d records to the current storage format. Legacy backup saved to %q.", len(records), bakDB)
 	return nil
 }
 

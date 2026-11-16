@@ -40,7 +40,8 @@ func readAll(t *testing.T, d *DiskManager, n uint64) []byte {
 		if err := d.ReadPage(id, buf); err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(buf, filledPage(buf[0])) {
+		// The trailer holds the page checksum, not the test's fill byte.
+		if !bytes.Equal(buf[:PageDataEnd], filledPage(buf[0])[:PageDataEnd]) {
 			t.Fatalf("page %d is torn: mixes versions", id)
 		}
 		out[id] = buf[0]

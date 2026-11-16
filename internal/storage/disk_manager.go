@@ -49,6 +49,11 @@ type DiskManager struct {
 	spillNext  int64            // next free spill slot
 
 	removeOnClose string // spill file path, removed on Close ("" for injected files)
+
+	// checksums is set for version 2 files: pages are stamped when written and
+	// verified when read. A version 1 (or older) file is opened without it,
+	// only so the engine can migrate it; its pages use all 4096 bytes.
+	checksums bool
 }
 
 // JournalPath and SpillPath name the companion files of a data file.
@@ -103,12 +108,64 @@ func OpenDiskManagerFiles(data, journal, spill File) (*DiskManager, error) {
 		return nil, err
 	}
 	d.numPages = uint64(info.Size() / PageSize)
+	if d.checksums, err = d.detectChecksums(); err != nil {
+		return nil, err
+	}
+	// The journal was written before the mode was known; it holds full page
+	// images, so installing it does not depend on the mode.
 	return d, nil
+}
+
+// OpenDiskManagerWithoutChecksums opens path as a file of a format older than
+// version 2: pages are neither stamped nor verified. It exists for tools and
+// tests that must produce such files; the engine never uses it.
+func OpenDiskManagerWithoutChecksums(path string) (*DiskManager, error) {
+	d, err := OpenDiskManager(path)
+	if err != nil {
+		return nil, err
+	}
+	d.checksums = false
+	return d, nil
+}
+
+// Checksums reports whether this file stamps and verifies page checksums
+// (format version 2). The engine migrates files that do not.
+func (d *DiskManager) Checksums() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.checksums
+}
+
+// detectChecksums decides the file's format. An empty file is new and gets
+// checksums. Otherwise the file has them if page 0 claims format version 2,
+// or if any of its first few pages carries a valid checksum: the second test
+// keeps verification on for a version 2 file whose page 0 is damaged, so the
+// damage is reported instead of being mistaken for an older format.
+func (d *DiskManager) detectChecksums() (bool, error) {
+	if d.numPages == 0 {
+		return true, nil
+	}
+	buf := make([]byte, PageSize)
+	for id := uint64(0); id < min(d.numPages, 8); id++ {
+		clear(buf)
+		if _, err := d.file.ReadAt(buf, int64(id*PageSize)); err != nil && !errors.Is(err, io.EOF) {
+			return false, err
+		}
+		if id == 0 {
+			if v, ok := metaVersionOf(buf); ok && v >= MetaVersion {
+				return true, nil
+			}
+		}
+		if !allZero(buf) && checksumValid(id, buf) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ReadPage reads the current version of a page: from the spill file if it was
 // evicted since the last checkpoint, otherwise from the data file. A page past
-// the end of the data file reads as zeros.
+// the end of the data file reads as zeros, whatever pageData held before.
 func (d *DiskManager) ReadPage(pageID uint64, pageData []byte) error {
 	if len(pageData) < PageSize {
 		return ErrDiskBufferTooSmall
@@ -121,9 +178,13 @@ func (d *DiskManager) ReadPage(pageID uint64, pageData []byte) error {
 	if slot, ok := d.spillSlots[pageID]; ok {
 		src, offset = d.spill, slot*PageSize
 	}
-	_, err := src.ReadAt(pageData[:PageSize], offset)
+	n, err := src.ReadAt(pageData[:PageSize], offset)
 	if err != nil && !errors.Is(err, io.EOF) {
 		return err
+	}
+	clear(pageData[n:PageSize]) // the part past the end of the file reads as zeros
+	if d.checksums {
+		return verifyPage(pageID, pageData)
 	}
 	return nil
 }

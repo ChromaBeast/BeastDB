@@ -2,9 +2,6 @@ package api
 
 import (
 	"encoding/binary"
-	"errors"
-	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 
@@ -12,25 +9,6 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
-
-// ErrMetaPageDamaged is returned when page 0 is blank but the database holds
-// data. The file is left untouched for repair or restore.
-var ErrMetaPageDamaged = errors.New("engine: meta page is blank but the database is not empty; refusing to reinitialize")
-
-// dataFileIsZero reports whether every page of the data file is zero-filled.
-func dataFileIsZero(disk *storage.DiskManager) (bool, error) {
-	buf := make([]byte, storage.PageSize)
-	for id := uint64(0); id < disk.NumPages(); id++ {
-		clear(buf)
-		if err := disk.ReadPage(id, buf); err != nil {
-			return false, err
-		}
-		if !isAllZeros(buf) {
-			return false, nil
-		}
-	}
-	return true, nil
-}
 
 // Engine coordinates durable storage, page management, indexing, and WAL recovery.
 type Engine struct {
@@ -44,91 +22,14 @@ type Engine struct {
 	readOnly       bool
 	failed         error          // set by halt; blocks writes until restart
 	reclaim        map[uint64]int // data page -> free bytes after compaction, or unknownFree
+	spaceMapPages  []uint64       // pages of the free-space map saved at the last checkpoint
+	opts           Options
 	mu             sync.RWMutex
 	cq             committer       // group-commit queue (engine_commit.go)
 	pending        []pendingNotify // commit events awaiting the group fsync; guarded by mu
 
 	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
 	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint
-}
-
-// NewEngine initializes the database engine components with recovery support.
-func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
-	disk, err := storage.OpenDiskManager(dbPath)
-	if err != nil {
-		return nil, err
-	}
-	return openEngine(disk, dbPath, walPath, poolSize, true)
-}
-
-// openEngine builds the engine on an open data file. dbPath is used only to
-// recreate or migrate the file; crash tests pass a simulated file. syncWAL is
-// always true in production; crash tests that never lose WAL writes turn it
-// off so they do not fsync on every commit.
-func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int, syncWAL bool) (*Engine, error) {
-	bpm := storage.NewBufferPoolManager(disk, poolSize)
-	w, err := wal.OpenWAL(walPath, syncWAL)
-	if err != nil {
-		_ = disk.Close()
-		return nil, err
-	}
-	// Write-ahead barrier: no dirty data page may reach the data file before
-	// the WAL records that describe it are durable (group commit applies pages
-	// before the group's fsync).
-	bpm.SetWALBarrier(w.EnsureDurable)
-
-	if disk.NumPages() == 0 {
-		return initFreshV1(disk, bpm, w)
-	}
-
-	metaPage, err := bpm.FetchPage(storage.MetaPageID)
-	if err != nil {
-		_ = disk.Close()
-		_ = w.Close()
-		return nil, err
-	}
-
-	data := metaPage.Data()
-
-	// A zero meta page on a file that is zero throughout, with no WAL history,
-	// is a database whose initialization never completed: start over. A zero
-	// meta page in front of real data or WAL records is damage, and recreating
-	// the file would destroy what is left, so refuse to open instead.
-	if isAllZeros(data) {
-		_ = bpm.UnpinPage(storage.MetaPageID, false)
-		empty, zerr := dataFileIsZero(disk)
-		hasWAL := w.CurrentLSN() != 0
-		_ = disk.Close()
-		_ = w.Close()
-		if zerr != nil {
-			return nil, zerr
-		}
-		if !empty || hasWAL {
-			return nil, ErrMetaPageDamaged
-		}
-		_ = os.Remove(dbPath)
-		return NewEngine(dbPath, walPath, poolSize)
-	}
-
-	meta, err := storage.DecodeMeta(data)
-	_ = bpm.UnpinPage(storage.MetaPageID, false)
-	if err != nil {
-		_ = disk.Close()
-		_ = w.Close()
-
-		if isLegacyV0Page(data) {
-			if migErr := migrateV0ToV1(dbPath, walPath, poolSize); migErr != nil {
-				return nil, fmt.Errorf("automatic migration from legacy format failed: %w", migErr)
-			}
-			return NewEngine(dbPath, walPath, poolSize)
-		}
-
-		return nil, err
-	}
-
-	w.SetCurrentLSN(meta.LastCheckpointLSN)
-	tree := index.OpenBPlusTree(meta.RootPageID, bpm)
-	return newEngineInstance(disk, bpm, tree, w, meta.ActiveDataPageID, meta.LastCheckpointLSN)
 }
 
 // CurrentLSN returns the latest Log Sequence Number in the engine's WAL.

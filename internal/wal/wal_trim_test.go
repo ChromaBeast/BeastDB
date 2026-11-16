@@ -3,6 +3,7 @@ package wal
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash/crc32"
 	"os"
 	"path/filepath"
@@ -88,8 +89,9 @@ func TestOpenAcceptsZeroFilledTail(t *testing.T) {
 	}
 }
 
-// Bytes after a bad record that are not a torn tail are kept in a side file.
-func TestOpenSavesNonTailBytes(t *testing.T) {
+// A damaged record followed by intact ones is mid-log damage: the open must
+// fail unless truncation is asked for, and then the cut bytes are kept.
+func TestMidLogCorruption(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "t.wal")
 	writeThree(t, path)
 	data, _ := os.ReadFile(path)
@@ -99,9 +101,19 @@ func TestOpenSavesNonTailBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w, err := OpenWAL(path, false)
+	if _, err := OpenWAL(path, false); !errors.Is(err, ErrCorruptLog) {
+		t.Fatalf("open with mid-log damage: got %v, want ErrCorruptLog", err)
+	}
+	if info, _ := os.Stat(path); info.Size() != int64(len(data)) {
+		t.Fatalf("a refused open must not modify the log")
+	}
+
+	w, err := OpenWALWithOptions(path, false, Options{TruncateCorrupt: true})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if w.CurrentLSN() != 1 {
+		t.Fatalf("LSN after truncation = %d, want 1", w.CurrentLSN())
 	}
 	w.Close()
 	saved, err := os.ReadFile(path + ".discarded")
@@ -110,6 +122,26 @@ func TestOpenSavesNonTailBytes(t *testing.T) {
 	}
 	if !bytes.Equal(saved, data[recLen:]) {
 		t.Fatalf("saved %d bytes, want the %d bytes after the last valid record", len(saved), len(data)-recLen)
+	}
+}
+
+// Garbage after the last record with no intact record behind it is a tail,
+// not mid-log damage: it is cut (and kept) without failing the open.
+func TestGarbageTailIsTrimmed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "t.wal")
+	writeThree(t, path)
+	garbage := bytes.Repeat([]byte{0x05, 0x00, 0x00, 0x00, 0x7E}, 20) // too short to be a frame
+	appendBytes(t, path, garbage)
+	w, err := OpenWAL(path, false)
+	if err != nil {
+		t.Fatalf("garbage tail must not fail the open: %v", err)
+	}
+	if w.CurrentLSN() != 3 {
+		t.Fatalf("LSN = %d, want 3", w.CurrentLSN())
+	}
+	w.Close()
+	if saved, err := os.ReadFile(path + ".discarded"); err != nil || !bytes.Equal(saved, garbage) {
+		t.Fatalf("garbage tail not saved aside: %v", err)
 	}
 }
 

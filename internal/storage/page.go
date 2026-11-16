@@ -5,16 +5,35 @@ import (
 )
 
 var (
-	ErrPageFull         = errors.New("page: insufficient free space")
-	ErrSlotOutOfBounds  = errors.New("page: slot index out of bounds")
-	ErrTupleDeleted     = errors.New("page: tuple is deleted or tombstone")
-	ErrInvalidPageSize  = errors.New("page: data buffer must be exactly 4096 bytes")
-	ErrCorruptPage      = errors.New("page: slot points outside the page")
+	ErrPageFull        = errors.New("page: insufficient free space")
+	ErrSlotOutOfBounds = errors.New("page: slot index out of bounds")
+	ErrTupleDeleted    = errors.New("page: tuple is deleted or tombstone")
+	ErrInvalidPageSize = errors.New("page: data buffer must be exactly 4096 bytes")
+	ErrCorruptPage     = errors.New("page: slot points outside the page")
 )
 
 // SlottedPage manages a single 4096-byte hardware-aligned disk block.
 type SlottedPage struct {
 	data []byte
+}
+
+// InitSlottedPage formats data in place as an empty slotted page.
+func InitSlottedPage(data []byte, pageID uint64) *SlottedPage {
+	clear(data[:PageSize])
+	WritePageHeader(data, PageHeader{PageID: pageID, Lower: PageHeaderSize, Upper: PageDataEnd})
+	return &SlottedPage{data: data[:PageSize]}
+}
+
+// LiveTuples returns the number of slots that hold a tuple.
+func (p *SlottedPage) LiveTuples() int {
+	h := p.Header()
+	n := 0
+	for i := uint16(0); i < h.SlotCount; i++ {
+		if ReadSlot(p.data, i).Offset != 0 {
+			n++
+		}
+	}
+	return n
 }
 
 // NewSlottedPage initializes a fresh 4KB page with zero records and maximum free space.
@@ -24,7 +43,7 @@ func NewSlottedPage(pageID uint64) *SlottedPage {
 		PageID:    pageID,
 		SlotCount: 0,
 		Lower:     PageHeaderSize,
-		Upper:     PageSize,
+		Upper:     PageDataEnd, // the last bytes are the checksum trailer
 	}
 	WritePageHeader(data, header)
 	return &SlottedPage{data: data}
@@ -134,7 +153,18 @@ func (p *SlottedPage) Compact() {
 	temp := make([]byte, PageSize)
 	copy(temp[:PageHeaderSize], p.data[:PageHeaderSize])
 
-	newUpper := uint16(PageSize)
+	// Live tuples are packed below the checksum trailer. A page written by a
+	// version 1 file may hold more than that; it is then compacted against
+	// the full page instead, which keeps every tuple.
+	live := 0
+	for i := uint16(0); i < h.SlotCount; i++ {
+		live += int(ReadSlot(p.data, i).Length)
+	}
+	limit := PageDataEnd
+	if int(h.Lower)+live > PageDataEnd {
+		limit = PageSize
+	}
+	newUpper := uint16(limit)
 
 	for i := uint16(0); i < h.SlotCount; i++ {
 		slot := ReadSlot(p.data, i)
