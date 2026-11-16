@@ -79,10 +79,7 @@ func scanAndTrim(file *os.File, path string, truncateCorrupt bool) (uint64, erro
 		}
 		log.Printf("wal: %d bytes after offset %d of %s are not a torn tail; saved to %s before truncating", size-validEnd, validEnd, path, saved)
 	}
-	if err := file.Truncate(validEnd); err != nil {
-		return 0, err
-	}
-	if err := file.Sync(); err != nil {
+	if err := truncateFile(path, validEnd); err != nil {
 		return 0, err
 	}
 	return highest, nil
@@ -156,4 +153,25 @@ func findLaterRecord(file *os.File, from, size int64, highest uint64) (at int64,
 		}
 	}
 	return 0, 0, false, nil
+}
+
+// truncateFile cuts the file at path to size and syncs it through a separate,
+// non-append handle. The log itself is open with O_APPEND, and on Windows an
+// append-only handle has no right to change the file size ("Access is
+// denied"). The append handle keeps working afterwards: every write goes to
+// the current end of the file.
+func truncateFile(path string, size int64) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	if err := f.Truncate(size); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
