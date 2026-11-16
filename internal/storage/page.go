@@ -9,6 +9,7 @@ var (
 	ErrSlotOutOfBounds  = errors.New("page: slot index out of bounds")
 	ErrTupleDeleted     = errors.New("page: tuple is deleted or tombstone")
 	ErrInvalidPageSize  = errors.New("page: data buffer must be exactly 4096 bytes")
+	ErrCorruptPage      = errors.New("page: slot points outside the page")
 )
 
 // SlottedPage manages a single 4096-byte hardware-aligned disk block.
@@ -101,9 +102,16 @@ func (p *SlottedPage) GetTuple(slotID uint16) ([]byte, error) {
 		return nil, ErrSlotOutOfBounds
 	}
 
+	if PageHeaderSize+(int(slotID)+1)*SlotSize > PageSize {
+		return nil, ErrCorruptPage
+	}
 	slot := ReadSlot(p.data, slotID)
 	if slot.Offset == 0 {
 		return nil, ErrTupleDeleted
+	}
+	// A damaged page must surface as an error, not as a slice-bounds panic.
+	if slot.Offset < PageHeaderSize || int(slot.Offset)+int(slot.Length) > PageSize {
+		return nil, ErrCorruptPage
 	}
 
 	return p.data[slot.Offset : slot.Offset+slot.Length], nil

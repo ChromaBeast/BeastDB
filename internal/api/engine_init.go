@@ -1,6 +1,8 @@
 package api
 
 import (
+	"fmt"
+
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
@@ -63,7 +65,11 @@ func newEngineInstance(disk *storage.DiskManager, bpm *storage.BufferPoolManager
 	})
 
 	if disk.NumPages() > 0 {
-		_ = engine.rebuildSecondaryIndex()
+		if err := engine.rebuildSecondaryIndex(); err != nil {
+			_ = w.Close()
+			_ = disk.Close()
+			return nil, fmt.Errorf("rebuild secondary index: %w", err)
+		}
 	}
 
 	if err := engine.recoverFromWAL(lastCheckpointLSN); err != nil {

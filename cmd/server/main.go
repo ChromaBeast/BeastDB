@@ -107,6 +107,7 @@ func main() {
 
 	if *role == "leader" {
 		repServer := replication.NewLeaderServer(engine.WALPath())
+		repServer.SetDurableLSN(engine.DurableLSN)
 		repServer.RegisterService(grpcServer.RawServer())
 		engine.SetCommitObserver(repServer)
 		replicaSource = repServer

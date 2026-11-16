@@ -22,7 +22,13 @@ func (e *Engine) Close() error {
 		}
 	}
 
-	recordErr(e.persistCheckpointLocked(e.wal.CurrentLSN()))
+	if e.failed != nil {
+		// Memory may hold a half-applied write. Leave the last checkpoint image
+		// in place so the next open redoes the WAL from it.
+		recordErr(e.failed)
+	} else {
+		recordErr(e.persistCheckpointLocked(e.wal.CurrentLSN()))
+	}
 	recordErr(e.wal.Close())
 	recordErr(e.disk.Close())
 	return firstErr
@@ -34,6 +40,9 @@ func (e *Engine) Close() error {
 func (e *Engine) Checkpoint() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.failed != nil {
+		return e.failed // never persist a halted engine's in-memory state
+	}
 
 	// Writes are applied in memory only inside a commit group that fsyncs before
 	// releasing e.mu, so nothing un-synced can exist here; sync anyway so data

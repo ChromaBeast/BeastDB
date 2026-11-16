@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -11,6 +12,25 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
 )
+
+// ErrMetaPageDamaged is returned when page 0 is blank but the database holds
+// data. The file is left untouched for repair or restore.
+var ErrMetaPageDamaged = errors.New("engine: meta page is blank but the database is not empty; refusing to reinitialize")
+
+// dataFileIsZero reports whether every page of the data file is zero-filled.
+func dataFileIsZero(disk *storage.DiskManager) (bool, error) {
+	buf := make([]byte, storage.PageSize)
+	for id := uint64(0); id < disk.NumPages(); id++ {
+		clear(buf)
+		if err := disk.ReadPage(id, buf); err != nil {
+			return false, err
+		}
+		if !isAllZeros(buf) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
 
 // Engine coordinates durable storage, page management, indexing, and WAL recovery.
 type Engine struct {
@@ -70,13 +90,22 @@ func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int,
 
 	data := metaPage.Data()
 
-	// A zero meta page means initialization never reached its first sync
-	// (no write is accepted before that), so there is nothing to recover. The
-	// file may be longer than one page because growth is reserved in chunks.
+	// A zero meta page on a file that is zero throughout, with no WAL history,
+	// is a database whose initialization never completed: start over. A zero
+	// meta page in front of real data or WAL records is damage, and recreating
+	// the file would destroy what is left, so refuse to open instead.
 	if isAllZeros(data) {
 		_ = bpm.UnpinPage(storage.MetaPageID, false)
+		empty, zerr := dataFileIsZero(disk)
+		hasWAL := w.CurrentLSN() != 0
 		_ = disk.Close()
 		_ = w.Close()
+		if zerr != nil {
+			return nil, zerr
+		}
+		if !empty || hasWAL {
+			return nil, ErrMetaPageDamaged
+		}
 		_ = os.Remove(dbPath)
 		return NewEngine(dbPath, walPath, poolSize)
 	}
@@ -105,6 +134,11 @@ func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int,
 // CurrentLSN returns the latest Log Sequence Number in the engine's WAL.
 func (e *Engine) CurrentLSN() uint64 {
 	return e.wal.CurrentLSN()
+}
+
+// DurableLSN returns the highest LSN known to be fsynced to the WAL.
+func (e *Engine) DurableLSN() uint64 {
+	return e.wal.DurableLSN()
 }
 
 // WALPath returns the filesystem location of the active WAL file.
@@ -148,31 +182,45 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 		if err != nil {
 			return err
 		}
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		if e.failed != nil {
-			return e.failed
+		if len(batchOps) == 0 {
+			return nil
 		}
-		for _, bOp := range batchOps {
-			if len(bOp.Key) < 8 {
-				continue
-			}
-			k := binary.LittleEndian.Uint64(bOp.Key)
-			if bOp.Type == wal.OpPut {
-				if err := e.applyPutInMemory(k, bOp.Value); err != nil {
-					return e.halt(err)
-				}
-				e.indexValueLocked(k, bOp.Value)
-			} else if bOp.Type == wal.OpDelete {
-				if err := e.applyDeleteInMemory(k); err != nil {
-					return e.halt(err)
-				}
-				e.unindexValueLocked(k)
-			}
-		}
-		return nil
+		return e.commit(func() error { return e.replicatedBatchLocked(value, batchOps) })
 
 	default:
 		return nil
 	}
+}
+
+// replicatedBatchLocked logs a batch received from the leader in this node's
+// WAL, exactly as the leader logged it, and then applies it. Logging keeps the
+// batch across a crash and keeps this node's LSN in step with the leader's.
+func (e *Engine) replicatedBatchLocked(payload []byte, ops []wal.BatchOp) error {
+	if e.failed != nil {
+		return e.failed
+	}
+	lsn, err := e.wal.Append(wal.OpBatch, nil, payload)
+	if err != nil {
+		return e.halt(err)
+	}
+	for _, op := range ops {
+		if len(op.Key) < 8 {
+			continue
+		}
+		k := binary.LittleEndian.Uint64(op.Key)
+		switch op.Type {
+		case wal.OpPut:
+			if err := e.applyPutInMemory(k, op.Value); err != nil {
+				return e.halt(err)
+			}
+			e.indexValueLocked(k, op.Value)
+		case wal.OpDelete:
+			if err := e.applyDeleteInMemory(k); err != nil {
+				return e.halt(err)
+			}
+			e.unindexValueLocked(k)
+		}
+	}
+	e.queueNotify(lsn, wal.OpBatch, nil, payload)
+	return nil
 }

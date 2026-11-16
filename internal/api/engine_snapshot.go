@@ -31,6 +31,9 @@ func (e *Engine) CreateSnapshot(destDir string) (string, error) {
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.failed != nil {
+		return "", e.failed
+	}
 
 	// 1. Force all dirty buffer pool frames to disk, then the Meta Page
 	if err := e.persistCheckpointLocked(e.wal.CurrentLSN()); err != nil {

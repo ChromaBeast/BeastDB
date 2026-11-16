@@ -95,7 +95,10 @@ func (t *BPlusTree) handleLeafUnderflow(path []uint64, leafID uint64, leafPage *
 			leftH.NextPageID = leaf.Header().NextPageID
 			leftLeaf.SetHeader(leftH)
 
-			parent.Delete(leaf.Key(0))
+			// Drop the parent's entry for the absorbed leaf by child pointer:
+			// its separator stops matching the leaf's first key as soon as
+			// that key is deleted.
+			parent.DeleteChild(leafID)
 			_ = t.bpm.UnpinPage(leftID, true)
 			_ = t.bpm.UnpinPage(parentID, true)
 			return t.bpm.UnpinPage(leafID, true)
@@ -103,7 +106,10 @@ func (t *BPlusTree) handleLeafUnderflow(path []uint64, leafID uint64, leafPage *
 	}
 
 	// --- Fall back to RIGHT sibling ---
-	rightID := leaf.Header().NextPageID
+	// Only a sibling under the same parent qualifies: the next leaf in the
+	// chain may belong to a different parent, whose separators this code
+	// cannot reach.
+	rightID := rightSiblingID(parent, leafID)
 	if rightID != 0 {
 		rightPage, err := t.bpm.FetchPage(rightID)
 		if err == nil {
@@ -130,7 +136,7 @@ func (t *BPlusTree) handleLeafUnderflow(path []uint64, leafID uint64, leafPage *
 			leafH.NextPageID = rightLeaf.Header().NextPageID
 			leaf.SetHeader(leafH)
 
-			parent.Delete(rightLeaf.Key(0))
+			parent.DeleteChild(rightID)
 			_ = t.bpm.UnpinPage(rightID, true)
 			_ = t.bpm.UnpinPage(parentID, true)
 			return t.bpm.UnpinPage(leafID, true)
@@ -155,6 +161,23 @@ func leftSiblingID(parent *InternalNode, leafID uint64) uint64 {
 	for i := 1; i < int(h.KeyCount); i++ {
 		if parent.Child(i) == leafID {
 			return parent.Child(i - 1)
+		}
+	}
+	return 0
+}
+
+// rightSiblingID returns the child that follows leafID in the parent, or 0.
+func rightSiblingID(parent *InternalNode, leafID uint64) uint64 {
+	n := int(parent.Header().KeyCount)
+	if n == 0 {
+		return 0
+	}
+	if parent.Child0() == leafID {
+		return parent.Child(0)
+	}
+	for i := 0; i < n-1; i++ {
+		if parent.Child(i) == leafID {
+			return parent.Child(i + 1)
 		}
 	}
 	return 0

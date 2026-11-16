@@ -18,7 +18,17 @@ type LeaderServer struct {
 	broadcaster *Broadcaster
 	acks        map[string]uint64
 	addrs       map[string]string // replica id -> remote address of its live stream
+	durableLSN  func() uint64     // optional; bounds catch-up to fsynced records
 	mu          sync.RWMutex
+}
+
+// SetDurableLSN supplies the leader's fsynced LSN. Catch-up then stops at it
+// instead of sending records that were appended but not yet fsynced (those
+// reach the follower through the live broadcast once they are durable), so a
+// follower can never hold a write the leader could still lose in a crash.
+// Call it before the server starts serving.
+func (s *LeaderServer) SetDurableLSN(fn func() uint64) {
+	s.durableLSN = fn
 }
 
 // NewLeaderServer creates a replication server tracking connected replicas and log history.
@@ -67,6 +77,9 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 	for _, path := range []string{s.walPath + ".bak", s.walPath} {
 		_, err := wal.Replay(path, func(rec *wal.Record) error {
 			if rec.LSN < req.FromLsn || rec.LSN <= maxReplayedLSN {
+				return nil
+			}
+			if s.durableLSN != nil && rec.LSN > s.durableLSN() {
 				return nil
 			}
 			msg := &beastv1.WALRecordMessage{

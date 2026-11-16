@@ -21,6 +21,13 @@ const (
 	OpDelete     byte = 0x02
 	OpCheckpoint byte = 0x03
 	OpBatch      byte = 0x04
+
+	// headerCRCFlag is set in the on-disk type byte of records whose CRC covers
+	// the header (length, LSN, type, key and value lengths) as well as the
+	// payload. Records written before this flag existed checksum the payload
+	// only and are still readable. Operation types therefore stay below 0x80.
+	headerCRCFlag byte = 0x80
+	crcOffset          = 19 // header bytes before the CRC field
 )
 
 var (
@@ -39,6 +46,7 @@ type Record struct {
 }
 
 // EncodeRecord serializes a log record into a 23-byte header followed by key and value.
+// rec.Type must be below 0x80.
 func EncodeRecord(rec *Record) []byte {
 	keyLen := len(rec.Key)
 	valLen := len(rec.Value)
@@ -49,7 +57,7 @@ func EncodeRecord(rec *Record) []byte {
 
 	binary.LittleEndian.PutUint32(buf[0:4], uint32(recLen))
 	binary.LittleEndian.PutUint64(buf[4:12], rec.LSN)
-	buf[12] = rec.Type
+	buf[12] = rec.Type | headerCRCFlag
 	binary.LittleEndian.PutUint16(buf[13:15], uint16(keyLen))
 	binary.LittleEndian.PutUint32(buf[15:19], uint32(valLen))
 
@@ -57,8 +65,8 @@ func EncodeRecord(rec *Record) []byte {
 	copy(buf[HeaderSize:HeaderSize+keyLen], rec.Key)
 	copy(buf[HeaderSize+keyLen:recLen], rec.Value)
 
-	// Calculate CRC32 over the payload (Key + Value)
-	checksum := crc32.ChecksumIEEE(buf[HeaderSize:recLen])
+	// CRC32 over the header fields and the payload (Key + Value).
+	checksum := crc32.Update(crc32.ChecksumIEEE(buf[:crcOffset]), crc32.IEEETable, buf[HeaderSize:recLen])
 	binary.LittleEndian.PutUint32(buf[19:23], checksum)
 
 	return buf
@@ -81,7 +89,8 @@ func DecodeRecord(r io.Reader) (*Record, error) {
 	}
 
 	lsn := binary.LittleEndian.Uint64(header[4:12])
-	opType := header[12]
+	opType := header[12] &^ headerCRCFlag
+	headerCovered := header[12]&headerCRCFlag != 0
 	keyLen := int(binary.LittleEndian.Uint16(header[13:15]))
 	valLen := int(binary.LittleEndian.Uint32(header[15:19]))
 	expectedChecksum := binary.LittleEndian.Uint32(header[19:23])
@@ -96,7 +105,13 @@ func DecodeRecord(r io.Reader) (*Record, error) {
 		return nil, ErrTornWrite
 	}
 
-	if crc32.ChecksumIEEE(payload) != expectedChecksum {
+	var sum uint32
+	if headerCovered {
+		sum = crc32.Update(crc32.ChecksumIEEE(header[:crcOffset]), crc32.IEEETable, payload)
+	} else {
+		sum = crc32.ChecksumIEEE(payload) // record written before headerCRCFlag
+	}
+	if sum != expectedChecksum {
 		return nil, ErrTornWrite
 	}
 
