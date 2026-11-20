@@ -402,6 +402,7 @@ const (
 	ReplicationService_StreamWAL_FullMethodName = "/beastdb.v1.ReplicationService/StreamWAL"
 	ReplicationService_Ack_FullMethodName       = "/beastdb.v1.ReplicationService/Ack"
 	ReplicationService_Fence_FullMethodName     = "/beastdb.v1.ReplicationService/Fence"
+	ReplicationService_LogEpochs_FullMethodName = "/beastdb.v1.ReplicationService/LogEpochs"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
@@ -414,6 +415,9 @@ type ReplicationServiceClient interface {
 	Ack(ctx context.Context, in *ReplicationAck, opts ...grpc.CallOption) (*AckResponse, error)
 	// Fence freezes a leader's writes at a new epoch and reports its final LSN.
 	Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error)
+	// LogEpochs reports where each leader epoch began in the node's log, so a
+	// fenced former leader can check that its log is a prefix of this one.
+	LogEpochs(ctx context.Context, in *LogEpochsRequest, opts ...grpc.CallOption) (*LogEpochsResponse, error)
 }
 
 type replicationServiceClient struct {
@@ -463,6 +467,16 @@ func (c *replicationServiceClient) Fence(ctx context.Context, in *FenceRequest, 
 	return out, nil
 }
 
+func (c *replicationServiceClient) LogEpochs(ctx context.Context, in *LogEpochsRequest, opts ...grpc.CallOption) (*LogEpochsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LogEpochsResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_LogEpochs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ReplicationServiceServer is the server API for ReplicationService service.
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility.
@@ -473,6 +487,9 @@ type ReplicationServiceServer interface {
 	Ack(context.Context, *ReplicationAck) (*AckResponse, error)
 	// Fence freezes a leader's writes at a new epoch and reports its final LSN.
 	Fence(context.Context, *FenceRequest) (*FenceResponse, error)
+	// LogEpochs reports where each leader epoch began in the node's log, so a
+	// fenced former leader can check that its log is a prefix of this one.
+	LogEpochs(context.Context, *LogEpochsRequest) (*LogEpochsResponse, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -491,6 +508,9 @@ func (UnimplementedReplicationServiceServer) Ack(context.Context, *ReplicationAc
 }
 func (UnimplementedReplicationServiceServer) Fence(context.Context, *FenceRequest) (*FenceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Fence not implemented")
+}
+func (UnimplementedReplicationServiceServer) LogEpochs(context.Context, *LogEpochsRequest) (*LogEpochsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LogEpochs not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
@@ -560,6 +580,24 @@ func _ReplicationService_Fence_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ReplicationService_LogEpochs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogEpochsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).LogEpochs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_LogEpochs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).LogEpochs(ctx, req.(*LogEpochsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -574,6 +612,10 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Fence",
 			Handler:    _ReplicationService_Fence_Handler,
+		},
+		{
+			MethodName: "LogEpochs",
+			Handler:    _ReplicationService_LogEpochs_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

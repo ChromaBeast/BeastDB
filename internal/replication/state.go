@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+
+	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
 // Role is a node's persisted place in the replication topology.
@@ -42,6 +45,25 @@ type State struct {
 	// PromotedAtLSN is the WAL position at which this node became leader by
 	// promotion (0 if it never was promoted).
 	PromotedAtLSN uint64 `json:"promotedAtLSN,omitempty"`
+	// EpochStarts lists where each leader epoch began in this node's log, from
+	// the OpEpoch markers. The WAL keeps only one archived generation, so the
+	// list is kept here to outlive checkpoints. A log written before markers
+	// existed contributes none; its records have epoch 0 (unknown).
+	EpochStarts []wal.EpochMark `json:"epochStarts,omitempty"`
+}
+
+// EpochAt is the epoch of the record at lsn according to EpochStarts: the
+// epoch of the last marker at or before lsn, or 0 when none is (a record from
+// before epochs were logged, or lsn 0).
+func (s State) EpochAt(lsn uint64) uint64 {
+	var e uint64
+	for _, m := range s.EpochStarts {
+		if m.LSN > lsn {
+			break
+		}
+		e = m.Epoch
+	}
+	return e
 }
 
 // ErrEpochRegression is returned when an update would lower the epoch or make
@@ -103,6 +125,51 @@ func (s *StateStore) Set(next State) error {
 		!(cur.Role == RoleLeader && next.Role == RoleFenced) {
 		return fmt.Errorf("%w: %s -> %s at epoch %d", ErrEpochRegression, cur.Role, next.Role, cur.Epoch)
 	}
+	if next.EpochStarts == nil {
+		next.EpochStarts = cur.EpochStarts
+	}
+	if err := writeAtomic(s.path, next); err != nil {
+		return err
+	}
+	s.state = next
+	return nil
+}
+
+// MergeEpochMarks adds markers read from the WAL (or just written to it) to
+// the persisted history. Markers already known are ignored; the result stays
+// in LSN order and is written only when it changed. A marker that would make
+// the epoch go down as the LSN goes up is rejected: the log is inconsistent.
+func (s *StateStore) MergeEpochMarks(marks []wal.EpochMark) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	known := make(map[uint64]uint64, len(s.state.EpochStarts))
+	all := append([]wal.EpochMark(nil), s.state.EpochStarts...)
+	for _, m := range all {
+		known[m.LSN] = m.Epoch
+	}
+	changed := false
+	for _, m := range marks {
+		if e, ok := known[m.LSN]; ok {
+			if e != m.Epoch {
+				return fmt.Errorf("replication: epoch history says LSN %d starts epoch %d, the log says %d", m.LSN, e, m.Epoch)
+			}
+			continue
+		}
+		known[m.LSN] = m.Epoch
+		all = append(all, m)
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].LSN < all[j].LSN })
+	for i := 1; i < len(all); i++ {
+		if all[i].Epoch < all[i-1].Epoch {
+			return fmt.Errorf("replication: epoch %d starts at LSN %d, after epoch %d at LSN %d", all[i].Epoch, all[i].LSN, all[i-1].Epoch, all[i-1].LSN)
+		}
+	}
+	next := s.state
+	next.EpochStarts = all
 	if err := writeAtomic(s.path, next); err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/wal"
 )
 
 // ErrFenceRefused means this leader will not be fenced by that candidate: its
@@ -61,6 +62,14 @@ func NewCluster(engine *api.Engine, dataDir, nodeID string, flag Role, leader *L
 	}
 	c := &Cluster{nodeID: nodeID, engine: engine, state: st, leader: leader}
 	leader.cluster = c
+	if err := c.syncEpochHistory(); err != nil {
+		return nil, err
+	}
+	if role == RoleLeader {
+		if err := c.ensureEpochMarker(); err != nil {
+			return nil, err
+		}
+	}
 	engine.SetReadOnly(role != RoleLeader)
 	leader.SetActive(role != RoleFollower)
 	if role == RoleLeader {
@@ -160,4 +169,33 @@ func (c *Cluster) RunFollower(ctx context.Context, f *FollowerClient) {
 			}
 		}
 	}()
+}
+
+// syncEpochHistory folds the epoch markers found in the WAL into the persisted
+// history, so a marker written just before a crash is not lost to it.
+func (c *Cluster) syncEpochHistory() error {
+	marks, err := c.engine.EpochMarks()
+	if err != nil {
+		return err
+	}
+	return c.state.MergeEpochMarks(marks)
+}
+
+// ensureEpochMarker logs the start of this node's leader epoch in its WAL when
+// the log does not already say the tail belongs to that epoch. Every record
+// written after it, and replicated from it, carries that epoch.
+func (c *Cluster) ensureEpochMarker() error {
+	st := c.state.Get()
+	epoch := st.ServedEpoch
+	if epoch == 0 {
+		epoch = st.Epoch
+	}
+	if st.EpochAt(c.engine.CurrentLSN()) == epoch {
+		return nil
+	}
+	lsn, err := c.engine.AppendEpochMarker(epoch)
+	if err != nil {
+		return fmt.Errorf("replication: log epoch %d start: %w", epoch, err)
+	}
+	return c.state.MergeEpochMarks([]wal.EpochMark{{LSN: lsn, Epoch: epoch}})
 }

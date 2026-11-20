@@ -68,9 +68,10 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 	f.mu.Unlock()
 
 	stream, err := f.client.StreamWAL(ctx, &beastv1.StreamWALRequest{
-		ReplicaId: f.replicaID,
-		FromLsn:   fromLSN,
-		Epoch:     f.epoch(),
+		ReplicaId:    f.replicaID,
+		FromLsn:      fromLSN,
+		Epoch:        f.epoch(),
+		LastLogEpoch: f.logEpoch(),
 	})
 	if err != nil {
 		return err
@@ -89,6 +90,9 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 		}
 
 		if err := f.checkEpoch(msg.Epoch); err != nil {
+			return err
+		}
+		if err := f.checkFrame(msg); err != nil {
 			return err
 		}
 		f.noteLeader(msg.Lsn)
@@ -112,6 +116,9 @@ func (f *FollowerClient) SyncLoop(ctx context.Context) error {
 		f.mu.Lock()
 		f.lastAppliedLSN = msg.Lsn
 		f.mu.Unlock()
+		if err := f.noteMarker(msg); err != nil {
+			return err
+		}
 
 		count++
 		if count >= ackBatchSize {

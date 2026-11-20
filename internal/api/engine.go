@@ -91,6 +91,12 @@ func (e *Engine) ApplyReplicatedRecord(opType byte, key, value []byte) error {
 		}
 		return e.commit(func() error { return e.replicatedBatchLocked(value, batchOps) })
 
+	case wal.OpEpoch:
+		return e.commitReplicated(func() error {
+			_, err := e.epochLocked(value)
+			return err
+		})
+
 	default:
 		return nil
 	}

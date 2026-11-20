@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func TestStateStorePersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := st.Get(); got != (State{}) {
+	if got := st.Get(); !reflect.DeepEqual(got, State{}) {
 		t.Fatalf("fresh node should have zero state, got %+v", got)
 	}
 	want := State{Epoch: 3, Role: RoleLeader, ServedEpoch: 3, PromotedAtLSN: 42}
@@ -24,7 +25,7 @@ func TestStateStorePersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := re.Get(); got != want {
+	if got := re.Get(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("reopened state = %+v, want %+v", got, want)
 	}
 }

@@ -24,6 +24,9 @@ service ReplicationService {
   rpc Ack (ReplicationAck) returns (AckResponse);
   // Fence freezes a leader's writes at a new epoch and reports its final LSN.
   rpc Fence (FenceRequest) returns (FenceResponse);
+  // LogEpochs reports where each leader epoch began in the node's log, so a
+  // fenced former leader can check that its log is a prefix of this one.
+  rpc LogEpochs (LogEpochsRequest) returns (LogEpochsResponse);
 }
 
 message GetRequest {
@@ -76,6 +79,10 @@ message StreamWALRequest {
   // Highest leader epoch the follower has seen. A leader that sees a higher
   // epoch than its own steps down instead of serving.
   uint64 epoch = 3;
+  // Epoch of the follower's last logged record (from the OpEpoch markers in its
+  // WAL), 0 if unknown. The leader refuses a follower whose last record is at
+  // an epoch the leader's log does not have at that LSN (diverged history).
+  uint64 last_log_epoch = 4;
 }
 
 message WALRecordMessage {
@@ -185,4 +192,22 @@ message DropCollectionRequest {
 
 message DropCollectionResponse {
   bool success = 1;
+}
+
+message LogEpochsRequest {
+  string replica_id = 1;
+  // Highest epoch the caller has seen; a leader behind it steps down.
+  uint64 epoch = 2;
+}
+
+message EpochStart {
+  uint64 lsn = 1;
+  uint64 epoch = 2;
+}
+
+message LogEpochsResponse {
+  uint64 epoch = 1;
+  uint64 last_lsn = 2;
+  repeated EpochStart epoch_starts = 3;
+  string role = 4;
 }

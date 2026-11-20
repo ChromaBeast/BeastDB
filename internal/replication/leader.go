@@ -82,6 +82,9 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 		return status.Errorf(codes.FailedPrecondition, "follower is at LSN %d, ahead of this leader (%d): it holds writes this leader never had; rebuild it from this leader",
 			req.FromLsn-1, s.cluster.engine.CurrentLSN())
 	}
+	if err := s.checkLogMatch(req); err != nil {
+		return err
+	}
 	// 1. Subscribe FIRST before reading WAL from disk to eliminate the live-handoff race gap.
 	ch, unsubscribe := s.broadcaster.Subscribe(req.ReplicaId, 1024)
 	defer unsubscribe()

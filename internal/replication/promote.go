@@ -215,6 +215,11 @@ func (c *Cluster) becomeLeader(f *FollowerClient, epoch uint64, res *PromoteResu
 		c.syncStop()
 		<-c.syncDone
 	}
+	// Log where epoch begins before any client write can land. A crash before
+	// this line restarts as leader and writes the marker then (NewCluster).
+	if err := c.ensureEpochMarker(); err != nil {
+		return err
+	}
 	res.AppliedLSN = c.engine.CurrentLSN()
 	c.engine.SetCommitObserver(c.leader)
 	c.leader.SetActive(true)
