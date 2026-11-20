@@ -37,6 +37,7 @@ func main() {
 	adminPassword := flag.String("admin-password", getEnv("BEASTDB_ADMIN_PASSWORD", "admin"), "Initial admin user password (or BEASTDB_ADMIN_PASSWORD)")
 	partitionConfig := flag.String("partition-config", getEnv("BEASTDB_PARTITION_CONFIG", ""), "Path to partitions.json defining Studio partition labels (optional)")
 	apiToken := flag.String("api-token", getEnv("BEASTDB_API_TOKEN", ""), "Bearer token for gRPC authentication (or BEASTDB_API_TOKEN)")
+	leaderToken := flag.String("leader-token", getEnv("BEASTDB_LEADER_TOKEN", ""), "Bearer token this node presents to a leader for replication and rejoin (admin or replication-role token; or BEASTDB_LEADER_TOKEN). Defaults to -api-token, so nodes that share one token need not set it")
 	tlsCert := flag.String("tls-cert", getEnv("BEASTDB_TLS_CERT", ""), "Path to TLS server/client certificate file (PEM)")
 	tlsKey := flag.String("tls-key", getEnv("BEASTDB_TLS_KEY", ""), "Path to TLS server/client private key file (PEM)")
 	tlsCA := flag.String("tls-ca", getEnv("BEASTDB_TLS_CA", ""), "Path to TLS CA certificate file (PEM)")
@@ -49,7 +50,7 @@ func main() {
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
 	logs := logbuf.New(logbuf.DefaultCapacity)
-	for _, secret := range []string{*apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"), nonDefault(*adminPassword)} {
+	for _, secret := range []string{*apiToken, *leaderToken, os.Getenv("BEASTDB_METRICS_TOKEN"), nonDefault(*adminPassword)} {
 		logs.AddSecret(secret)
 	}
 	log.SetOutput(logs.Tee(os.Stderr))
@@ -142,8 +143,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize replication client TLS: %v", err)
 	}
+	peerToken := *leaderToken
+	if peerToken == "" {
+		peerToken = *apiToken
+	}
 	dialLeader := func(addr string) (*grpc.ClientConn, error) {
-		return grpc.NewClient(addr, grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption())
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption()}
+		if peerToken != "" {
+			opts = append(opts, grpc.WithPerRPCCredentials(bearerToken(peerToken)))
+		}
+		return grpc.NewClient(addr, opts...)
 	}
 	cluster.SetRejoinSupport(ctx, dialLeader)
 	switch cluster.Role() {

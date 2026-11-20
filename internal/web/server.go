@@ -167,6 +167,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	mux.Handle("/api/logs", handler.AdminMiddleware(sessions, handler.LogsHandler(sessions, opts.Logs)))
 	opts.Settings.Version = version
 	opts.Settings.Role = role
+	apiH.SetNodeSettings(opts.Settings)
 	mux.Handle("/api/settings", handler.AdminMiddleware(sessions, handler.SettingsHandler(sessions, opts.Settings)))
 	// Operations (checkpoint, replica view) — admin only
 	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))

@@ -3,6 +3,7 @@ package replication
 import (
 	"context"
 	"sort"
+	"time"
 
 	"google.golang.org/grpc/peer"
 )
@@ -17,6 +18,9 @@ type ReplicaInfo struct {
 	Connected bool `json:"connected"`
 	// AckedLSN is the highest LSN the replica has acknowledged (0 if none yet).
 	AckedLSN uint64 `json:"ackedLSN"`
+	// LastAckAgoMS is how long ago the replica last acknowledged anything
+	// (followers send a heartbeat ack about once a second); -1 if never.
+	LastAckAgoMS int64 `json:"lastAckAgoMS"`
 }
 
 // trackAddr remembers the remote address of a replica's stream for Replicas.
@@ -48,7 +52,10 @@ func (s *LeaderServer) Replicas() []ReplicaInfo {
 	}
 	out := make([]ReplicaInfo, 0, len(ids))
 	for id := range ids {
-		info := ReplicaInfo{ID: id, Connected: connected[id], AckedLSN: s.acks[id]}
+		info := ReplicaInfo{ID: id, Connected: connected[id], AckedLSN: s.acks[id], LastAckAgoMS: -1}
+		if at, ok := s.ackAt[id]; ok {
+			info.LastAckAgoMS = time.Since(at).Milliseconds()
+		}
 		if info.Connected {
 			info.Address = s.addrs[id]
 		}

@@ -56,6 +56,8 @@ type ReplicationStatus struct {
 	// Cluster is this node's epoch and promotion state; absent when the node
 	// does not track epochs.
 	Cluster *replication.Status `json:"cluster,omitempty"`
+	// Join describes how to add a follower to this node (see JoinInfo).
+	Join *JoinInfo `json:"join,omitempty"`
 }
 
 // SetReplicationSource wires the leader's replica tracker (nil on followers).
@@ -99,11 +101,13 @@ func (h *APIHandler) GetReplication(w http.ResponseWriter, r *http.Request) {
 	}
 	lsn := h.engine.CurrentLSN()
 	resp := ReplicationStatus{Role: h.role, LSN: lsn, Replicas: []ReplicaStatus{}}
+	nodeRole := replication.Role(h.role)
 	tracked := h.replication != nil
 	if h.cluster != nil {
 		st := h.cluster.Status()
 		resp.Cluster = &st
 		resp.Role = string(st.Role)
+		nodeRole = st.Role
 		// Only a leader (or a fenced former leader) sees replicas.
 		tracked = tracked && st.Role != replication.RoleFollower
 	}
@@ -116,6 +120,10 @@ func (h *APIHandler) GetReplication(w http.ResponseWriter, r *http.Request) {
 			}
 			resp.Replicas = append(resp.Replicas, ReplicaStatus{ReplicaInfo: rep, LagLSN: lag})
 		}
+	}
+	if h.cluster != nil || h.replication != nil {
+		join := buildJoinInfo(h.node, nodeRole, r.Host)
+		resp.Join = &join
 	}
 	writeJSON(w, resp)
 }

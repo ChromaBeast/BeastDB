@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { promoteErrorMessage, promoteGate } from "./promote";
+import { promoteErrorMessage, promoteGate, rejoinErrorMessage, validLeaderAddr } from "./promote";
 import type { ClusterStatus } from "../types";
 
 const follower = (over: Partial<ClusterStatus> = {}): ClusterStatus => ({
@@ -56,5 +56,22 @@ describe("promoteErrorMessage", () => {
   });
   test("falls back to the server text", () => {
     expect(promoteErrorMessage("failed", "disk full")).toBe("disk full");
+  });
+});
+
+describe("rejoin helpers", () => {
+  test("validLeaderAddr accepts host:port only", () => {
+    expect(validLeaderAddr("10.0.0.2:50051")).toBe(true);
+    expect(validLeaderAddr(" db1.internal:50051 ")).toBe(true);
+    expect(validLeaderAddr("[::1]:50051")).toBe(true);
+    for (const bad of ["", "db1", "http://db1:50051", "db1:50051/x", "db1:port", "a b:1"]) {
+      expect(validLeaderAddr(bad)).toBe(false);
+    }
+  });
+
+  test("a refusal says nothing was changed", () => {
+    expect(rejoinErrorMessage("rejoin_refused", "holds 3 records the leader never had")).toContain("nothing was changed");
+    expect(rejoinErrorMessage("not_fenced", "x")).toContain("not fenced");
+    expect(rejoinErrorMessage(undefined, "boom")).toBe("boom");
   });
 });

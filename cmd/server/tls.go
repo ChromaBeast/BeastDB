@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -74,3 +75,14 @@ func loadClientTLS(certFile, keyFile, caFile string) (credentials.TransportCrede
 
 	return credentials.NewTLS(tlsConfig), nil
 }
+
+// bearerToken sends a static Bearer token on every call to the leader.
+type bearerToken string
+
+func (t bearerToken) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{"authorization": "Bearer " + string(t)}, nil
+}
+
+// RequireTransportSecurity is false so a token also works on the plaintext
+// links BeastDB already allows between nodes; use TLS to protect it.
+func (bearerToken) RequireTransportSecurity() bool { return false }

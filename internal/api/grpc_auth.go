@@ -56,6 +56,7 @@ var methodRoles = map[string][]string{
 	"/beastdb.v1.ReplicationService/StreamWAL":    {RoleReplication, RoleAdmin},
 	"/beastdb.v1.ReplicationService/Ack":          {RoleReplication, RoleAdmin},
 	"/beastdb.v1.ReplicationService/Fence":        {RoleReplication, RoleAdmin},
+	"/beastdb.v1.ReplicationService/LogEpochs":    {RoleReplication, RoleAdmin},
 }
 
 func roleAllowed(role, method string) bool {

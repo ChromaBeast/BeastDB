@@ -39,6 +39,7 @@ type APIHandler struct {
 	replication ReplicationSource // leader only; nil elsewhere
 	cluster     ClusterControl    // epoch/role/promotion; nil disables /api/replication/promote
 	audit       *audit.Log        // nil disables auditing
+	node        RuntimeSettings   // start-up configuration, for the join command
 }
 
 // NewAPIHandler creates an APIHandler with engine, session, and partition registry.

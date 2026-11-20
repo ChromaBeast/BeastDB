@@ -58,6 +58,17 @@ export interface ReplicaStatus {
   connected: boolean;
   ackedLSN: number;
   lagLSN: number;
+  /** Milliseconds since the replica last acknowledged anything; -1 if never. */
+  lastAckAgoMS: number;
+}
+
+/** How to add a follower to this node. There is no join protocol: it is a command to run. */
+export interface JoinInfo {
+  available: boolean;
+  reason?: string;
+  leaderAddr?: string;
+  command?: string;
+  notes?: string[];
 }
 
 /** This node's epoch and promotion state (absent when the node does not track epochs). */
@@ -82,6 +93,7 @@ export interface ReplicationStatus {
   tracked: boolean;
   replicas: ReplicaStatus[];
   cluster?: ClusterStatus;
+  join?: JoinInfo;
 }
 
 export interface TelemetryStats {
