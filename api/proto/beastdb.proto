@@ -16,6 +16,10 @@ service BeastDBService {
   rpc CreateCollection (CreateCollectionRequest) returns (CreateCollectionResponse);
   rpc ListCollections (ListCollectionsRequest) returns (ListCollectionsResponse);
   rpc DropCollection (DropCollectionRequest) returns (DropCollectionResponse);
+  // Single-field secondary indexes over JSON records (docs/adr/0005-secondary-indexes.md).
+  rpc CreateIndex (CreateIndexRequest) returns (CreateIndexResponse);
+  rpc ListIndexes (ListIndexesRequest) returns (ListIndexesResponse);
+  rpc DropIndex (DropIndexRequest) returns (DropIndexResponse);
 }
 
 // ReplicationService handles physical WAL streaming from Leader to Followers.
@@ -63,6 +67,72 @@ message ScanRequest {
   // Maximum records to return; 0 means no limit. To resume a limited scan,
   // pass last returned key + 1 as start_key.
   uint32 limit = 3;
+  // Optional: return only records matching an index, in ascending key order
+  // within [start_key, end_key] (ADR 0005). Fails with FAILED_PRECONDITION
+  // while the index is building; it never falls back to a full scan. With a
+  // filter, end_key 0 means no upper bound.
+  IndexFilter filter = 4;
+}
+
+// IndexValue is a typed value for an index filter.
+message IndexValue {
+  oneof value {
+    int64 int_value = 1;
+    string string_value = 2;
+  }
+}
+
+// IndexFilter selects by equality (eq) or by an inclusive range (gte and/or
+// lte). eq excludes gte and lte. Values must have the index's type.
+message IndexFilter {
+  string index = 1;
+  IndexValue eq = 2;
+  IndexValue gte = 3;
+  IndexValue lte = 4;
+}
+
+enum IndexType {
+  INDEX_TYPE_UNSPECIFIED = 0;
+  INDEX_TYPE_INT = 1;
+  INDEX_TYPE_STRING = 2;
+}
+
+message IndexInfo {
+  string name = 1;
+  string collection = 2;  // empty if the prefix is no longer bound to a name
+  uint32 prefix = 3;
+  string field = 4;       // dotted JSON object path
+  IndexType type = 5;
+  string state = 6;       // "building" or "ready"
+  uint64 entries = 7;     // records currently indexed
+  uint64 skipped = 8;     // records in the collection not indexable (not JSON, field missing or wrong type)
+  uint64 examined = 9;    // records examined by the background build
+  int64 created_at = 10;
+}
+
+message CreateIndexRequest {
+  string name = 1;
+  string collection = 2;
+  string field = 3;
+  IndexType type = 4;
+}
+
+message CreateIndexResponse {
+  IndexInfo index = 1;
+}
+
+message ListIndexesRequest {}
+
+message ListIndexesResponse {
+  repeated IndexInfo indexes = 1;
+}
+
+message DropIndexRequest {
+  string name = 1;
+}
+
+message DropIndexResponse {
+  bool success = 1;
 }
 
 message KeyValueResponse {

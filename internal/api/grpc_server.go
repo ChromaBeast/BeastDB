@@ -110,6 +110,9 @@ const (
 // chunks and the engine lock is released between chunks, so writes committed
 // during a long scan may or may not appear in it.
 func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingServer[beastv1.KeyValueResponse]) error {
+	if req.Filter != nil {
+		return s.scanFiltered(req, stream)
+	}
 	start := req.StartKey
 	var sent uint32
 	for {

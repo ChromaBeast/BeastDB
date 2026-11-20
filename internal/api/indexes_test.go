@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +10,10 @@ import (
 	"testing"
 	"time"
 
+	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
 	"github.com/ChromaBeast/beastdb/internal/index"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func waitReady(t *testing.T, e *Engine, name string) {
@@ -277,7 +281,108 @@ func TestIndexConcurrentWritesDuringBuild(t *testing.T) {
 }
 
 func TestIndexCatalogKeyIsReserved(t *testing.T) {
-	if !IsReservedKey(IndexCatalogKey) || !IsReservedKey(CatalogKey) || IsReservedKey(1) {
-		t.Fatal("IsReservedKey")
+	if !IsCatalogKey(IndexCatalogKey) || !IsCatalogKey(CatalogKey) || IsCatalogKey(1) {
+		t.Fatal("IsCatalogKey")
+	}
+}
+
+func TestGRPCIndexesAndFilteredScan(t *testing.T) {
+	client, cleanup := setupTestGRPCServer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if _, err := client.CreateIndex(ctx, &beastv1.CreateIndexRequest{Name: "i", Collection: "users", Field: "age", Type: beastv1.IndexType_INDEX_TYPE_INT}); status.Code(err) != codes.NotFound {
+		t.Fatalf("no collection: %v", err)
+	}
+	created, err := client.CreateCollection(ctx, &beastv1.CreateCollectionRequest{Name: "users"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := uint8(created.Collection.Prefix)
+	for n := uint64(1); n <= 20; n++ {
+		k, _ := CollectionKey(p, n)
+		if _, err := client.Put(ctx, &beastv1.PutRequest{Key: k, Value: userDoc("u", int(n%4))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := client.CreateIndex(ctx, &beastv1.CreateIndexRequest{Name: "i", Collection: "users", Field: "age"}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("missing type: %v", err)
+	}
+	if _, err := client.CreateIndex(ctx, &beastv1.CreateIndexRequest{Name: "by-age", Collection: "users", Field: "age", Type: beastv1.IndexType_INDEX_TYPE_INT}); err != nil {
+		t.Fatal(err)
+	}
+	var list *beastv1.ListIndexesResponse
+	for i := 0; i < 400; i++ {
+		list, err = client.ListIndexes(ctx, &beastv1.ListIndexesRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if list.Indexes[0].State == IndexReady {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if li := list.Indexes[0]; li.State != IndexReady || li.Entries != 20 || li.Collection != "users" || li.Field != "age" {
+		t.Fatalf("list: %+v", li)
+	}
+	scan := func(f *beastv1.IndexFilter, limit uint32) ([]uint64, error) {
+		st, err := client.Scan(ctx, &beastv1.ScanRequest{Limit: limit, Filter: f})
+		if err != nil {
+			return nil, err
+		}
+		var keys []uint64
+		for {
+			r, err := st.Recv()
+			if err == io.EOF {
+				return keys, nil
+			}
+			if err != nil {
+				return keys, err
+			}
+			keys = append(keys, r.Key)
+		}
+	}
+	iv := func(v int64) *beastv1.IndexValue {
+		return &beastv1.IndexValue{Value: &beastv1.IndexValue_IntValue{IntValue: v}}
+	}
+	keys, err := scan(&beastv1.IndexFilter{Index: "by-age", Eq: iv(1)}, 0)
+	if err != nil || len(keys) != 5 {
+		t.Fatalf("eq: %v %v", keys, err)
+	}
+	keys, err = scan(&beastv1.IndexFilter{Index: "by-age", Gte: iv(1), Lte: iv(2)}, 3)
+	if err != nil || len(keys) != 3 {
+		t.Fatalf("range+limit: %v %v", keys, err)
+	}
+	if _, err = scan(&beastv1.IndexFilter{Index: "by-age", Eq: &beastv1.IndexValue{Value: &beastv1.IndexValue_StringValue{StringValue: "x"}}}, 0); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("type mismatch: %v", err)
+	}
+	if _, err = scan(&beastv1.IndexFilter{Index: "nope", Eq: iv(1)}, 0); status.Code(err) != codes.NotFound {
+		t.Fatalf("missing: %v", err)
+	}
+	if _, err := client.Put(ctx, &beastv1.PutRequest{Key: IndexCatalogKey, Value: []byte("x")}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("catalog key writable: %v", err)
+	}
+	if _, err := client.DropCollection(ctx, &beastv1.DropCollectionRequest{Name: "users"}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("drop collection with data/index: %v", err)
+	}
+	if _, err := client.DropIndex(ctx, &beastv1.DropIndexRequest{Name: "by-age"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.DropIndex(ctx, &beastv1.DropIndexRequest{Name: "by-age"}); status.Code(err) != codes.NotFound {
+		t.Fatalf("double drop: %v", err)
+	}
+}
+
+func TestIndexRoleMatrix(t *testing.T) {
+	for m, want := range map[string]map[string]bool{
+		"/beastdb.v1.BeastDBService/ListIndexes": {RoleViewer: true, RoleWriter: true, RoleAdmin: true},
+		"/beastdb.v1.BeastDBService/CreateIndex": {RoleViewer: false, RoleWriter: false, RoleAdmin: true},
+		"/beastdb.v1.BeastDBService/DropIndex":   {RoleViewer: false, RoleWriter: false, RoleAdmin: true},
+	} {
+		for role, ok := range want {
+			if roleAllowed(role, m) != ok {
+				t.Errorf("%s as %s: want %v", m, role, ok)
+			}
+		}
 	}
 }

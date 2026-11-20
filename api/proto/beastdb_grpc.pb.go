@@ -27,6 +27,9 @@ const (
 	BeastDBService_CreateCollection_FullMethodName = "/beastdb.v1.BeastDBService/CreateCollection"
 	BeastDBService_ListCollections_FullMethodName  = "/beastdb.v1.BeastDBService/ListCollections"
 	BeastDBService_DropCollection_FullMethodName   = "/beastdb.v1.BeastDBService/DropCollection"
+	BeastDBService_CreateIndex_FullMethodName      = "/beastdb.v1.BeastDBService/CreateIndex"
+	BeastDBService_ListIndexes_FullMethodName      = "/beastdb.v1.BeastDBService/ListIndexes"
+	BeastDBService_DropIndex_FullMethodName        = "/beastdb.v1.BeastDBService/DropIndex"
 )
 
 // BeastDBServiceClient is the client API for BeastDBService service.
@@ -45,6 +48,10 @@ type BeastDBServiceClient interface {
 	CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error)
 	ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
 	DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*DropCollectionResponse, error)
+	// Single-field secondary indexes over JSON records (docs/adr/0005-secondary-indexes.md).
+	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error)
+	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error)
+	DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*DropIndexResponse, error)
 }
 
 type beastDBServiceClient struct {
@@ -144,6 +151,36 @@ func (c *beastDBServiceClient) DropCollection(ctx context.Context, in *DropColle
 	return out, nil
 }
 
+func (c *beastDBServiceClient) CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateIndexResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_CreateIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *beastDBServiceClient) ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListIndexesResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_ListIndexes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *beastDBServiceClient) DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*DropIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DropIndexResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_DropIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BeastDBServiceServer is the server API for BeastDBService service.
 // All implementations must embed UnimplementedBeastDBServiceServer
 // for forward compatibility.
@@ -160,6 +197,10 @@ type BeastDBServiceServer interface {
 	CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
 	DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error)
+	// Single-field secondary indexes over JSON records (docs/adr/0005-secondary-indexes.md).
+	CreateIndex(context.Context, *CreateIndexRequest) (*CreateIndexResponse, error)
+	ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error)
+	DropIndex(context.Context, *DropIndexRequest) (*DropIndexResponse, error)
 	mustEmbedUnimplementedBeastDBServiceServer()
 }
 
@@ -193,6 +234,15 @@ func (UnimplementedBeastDBServiceServer) ListCollections(context.Context, *ListC
 }
 func (UnimplementedBeastDBServiceServer) DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DropCollection not implemented")
+}
+func (UnimplementedBeastDBServiceServer) CreateIndex(context.Context, *CreateIndexRequest) (*CreateIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateIndex not implemented")
+}
+func (UnimplementedBeastDBServiceServer) ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListIndexes not implemented")
+}
+func (UnimplementedBeastDBServiceServer) DropIndex(context.Context, *DropIndexRequest) (*DropIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropIndex not implemented")
 }
 func (UnimplementedBeastDBServiceServer) mustEmbedUnimplementedBeastDBServiceServer() {}
 func (UnimplementedBeastDBServiceServer) testEmbeddedByValue()                        {}
@@ -352,6 +402,60 @@ func _BeastDBService_DropCollection_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BeastDBService_CreateIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).CreateIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_CreateIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).CreateIndex(ctx, req.(*CreateIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BeastDBService_ListIndexes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListIndexesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).ListIndexes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_ListIndexes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).ListIndexes(ctx, req.(*ListIndexesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BeastDBService_DropIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).DropIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_DropIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).DropIndex(ctx, req.(*DropIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BeastDBService_ServiceDesc is the grpc.ServiceDesc for BeastDBService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -386,6 +490,18 @@ var BeastDBService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DropCollection",
 			Handler:    _BeastDBService_DropCollection_Handler,
+		},
+		{
+			MethodName: "CreateIndex",
+			Handler:    _BeastDBService_CreateIndex_Handler,
+		},
+		{
+			MethodName: "ListIndexes",
+			Handler:    _BeastDBService_ListIndexes_Handler,
+		},
+		{
+			MethodName: "DropIndex",
+			Handler:    _BeastDBService_DropIndex_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

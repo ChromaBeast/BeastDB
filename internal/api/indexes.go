@@ -32,10 +32,6 @@ var (
 	ErrIndexFilter          = errors.New("indexes: filter does not match the index type")
 )
 
-// IsReservedKey reports whether key is a catalog record that only the
-// collection and index APIs may write.
-func IsReservedKey(key uint64) bool { return key == CatalogKey || key == IndexCatalogKey }
-
 func parseFieldPath(field string) ([][]byte, bool) {
 	if len(field) == 0 || len(field) > maxFieldPath {
 		return nil, false
