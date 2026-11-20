@@ -92,7 +92,7 @@ func (c *Cluster) Status() Status {
 	case RoleLeader:
 		out.PromoteBlockedReason = "This node is the leader."
 	case RoleFenced:
-		out.PromoteBlockedReason = fmt.Sprintf("This node was fenced at epoch %d and its data may be behind or diverged; rebuild it as a follower.", st.Epoch)
+		out.PromoteBlockedReason = fmt.Sprintf("This node was fenced at epoch %d and its data may be behind or diverged. Rejoin it from this page or with beastctl rejoin: that succeeds only if its log is a prefix of the new leader's.", st.Epoch)
 	default:
 		c.mu.Lock()
 		f := c.follower

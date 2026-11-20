@@ -31,6 +31,8 @@ type Cluster struct {
 	syncDone  chan struct{}
 	runCtx    context.Context
 	promoting bool
+	rejoining bool
+	dial      RejoinDialer
 }
 
 // NewCluster loads the persisted state, reconciles it with the -role flag
@@ -139,14 +141,19 @@ func (c *Cluster) fence(epoch uint64, candidate string) (uint64, error) {
 // RunFollower attaches the follower and runs its sync loop (reconnecting on
 // error) until ctx ends or the node is promoted.
 func (c *Cluster) RunFollower(ctx context.Context, f *FollowerClient) {
-	f.SetStateStore(c.state)
 	c.mu.Lock()
+	c.attachFollower(ctx, f)
+	c.mu.Unlock()
+}
+
+// attachFollower is RunFollower with c.mu held.
+func (c *Cluster) attachFollower(ctx context.Context, f *FollowerClient) {
+	f.SetStateStore(c.state)
 	c.follower = f
 	c.runCtx = ctx
 	loopCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	c.syncStop, c.syncDone = cancel, done
-	c.mu.Unlock()
 	go func() {
 		defer close(done)
 		var lastErr string

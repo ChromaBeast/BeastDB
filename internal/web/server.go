@@ -172,6 +172,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))
 	mux.Handle("/api/replication", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.GetReplication)))
 	mux.Handle("/api/replication/promote", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostPromote)))
+	mux.Handle("/api/replication/rejoin", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostRejoin)))
 
 	mux.Handle("/api/settings/runtime", handler.AdminMiddleware(sessions, handler.RuntimeSettingsHandler(sessions, opts.Runtime, opts.Audit)))
 	backupsH := handler.AdminMiddleware(sessions, handler.BackupsHandler(sessions, opts.Backups, opts.Audit))

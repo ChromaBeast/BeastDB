@@ -26,6 +26,7 @@ func printUsage() {
 	fmt.Println("  encrypt            Convert a stopped plaintext database to encrypted (--key-file)")
 	fmt.Println("  decrypt            Convert a stopped encrypted database back to plaintext (--key-file)")
 	fmt.Println("  rekey              Re-encrypt a stopped database under a new master key (--key-file, --new-key-file)")
+	fmt.Println("  rejoin             Rejoin a fenced node as a follower of the new leader (refused if it holds writes the leader lacks)")
 	fmt.Println("  get                Retrieve a record value by its 64-bit key")
 	fmt.Println("  put                Store or update a key-value record")
 	fmt.Println("  delete             Tombstone/delete a record by its 64-bit key")
@@ -136,6 +137,15 @@ func main() {
 		_ = fs.Parse(args)
 		_, err := runRestoreKey(*backupDir, *dest, *force, *keyFile)
 		handleErr(err)
+
+	case "rejoin":
+		fs := flag.NewFlagSet("rejoin", flag.ExitOnError)
+		web := fs.String("web", "http://127.0.0.1:8080", "Web (Studio) address of the fenced node")
+		user := fs.String("user", "admin", "Admin username")
+		pwFile := fs.String("password-file", "", "File holding the admin password (else BEASTDB_ADMIN_PASSWORD)")
+		leader := fs.String("leader", "", "gRPC address (host:port) of the current leader")
+		_ = fs.Parse(args)
+		handleErr(runRejoin(*web, *user, *pwFile, *leader))
 
 	case "keygen":
 		fs := flag.NewFlagSet("keygen", flag.ExitOnError)

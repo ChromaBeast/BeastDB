@@ -57,6 +57,7 @@ const (
 	ActionCollectionCreate = "collection.create"
 	ActionCollectionDrop   = "collection.drop"
 	ActionPromote          = "replication.promote"
+	ActionRejoin           = "replication.rejoin"
 )
 
 const maxField = 512

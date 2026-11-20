@@ -138,21 +138,25 @@ func main() {
 	}
 	replicaSource = repServer
 	clusterControl = cluster
+	clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
+	if err != nil {
+		log.Fatalf("Failed to initialize replication client TLS: %v", err)
+	}
+	dialLeader := func(addr string) (*grpc.ClientConn, error) {
+		return grpc.NewClient(addr, grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption())
+	}
+	cluster.SetRejoinSupport(ctx, dialLeader)
 	switch cluster.Role() {
 	case replication.RoleFollower:
 		log.Printf("🔒 Node running in follower mode at epoch %d: engine write path set to read-only.", cluster.Epoch())
-		clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
-		if err != nil {
-			log.Fatalf("Failed to initialize follower client TLS: %v", err)
-		}
-		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption())
+		conn, err := dialLeader(*leaderAddr)
 		if err != nil {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}
 		defer conn.Close()
 		cluster.RunFollower(ctx, replication.NewFollowerClient(*replicaID, engine, conn))
 	case replication.RoleFenced:
-		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Wipe its data directory to rejoin it as a follower.", cluster.Epoch())
+		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Rejoin it as a follower with `beastctl rejoin` (refused if it holds writes the new leader lacks), or wipe its data directory to reseed it.", cluster.Epoch())
 	}
 
 	var partitions []handler.PartitionEntry

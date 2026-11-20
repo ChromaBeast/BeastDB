@@ -222,7 +222,7 @@ func ResolveRole(st State, flag Role) (Role, error) {
 	switch st.Role {
 	case RoleFenced:
 		if flag == RoleFollower {
-			return "", fmt.Errorf("node was fenced at epoch %d: its data may hold writes the current leader never saw; wipe the data directory to rejoin it as a follower", st.Epoch)
+			return "", fmt.Errorf("node was fenced at epoch %d: its data may hold writes the current leader never saw; rejoin it with POST /api/replication/rejoin (beastctl rejoin), which checks that its log is a prefix of the new leader's, or wipe the data directory to reseed it", st.Epoch)
 		}
 		return RoleFenced, nil
 	case RoleLeader:
@@ -234,4 +234,26 @@ func ResolveRole(st State, flag Role) (Role, error) {
 		return RoleFollower, nil
 	}
 	return flag, nil
+}
+
+// becomeFollower moves a fenced node to follower at epoch, the one role change
+// Set refuses at an equal epoch. Only Cluster.Rejoin calls it, after proving
+// the node's log is a prefix of the leader's.
+func (s *StateStore) becomeFollower(epoch uint64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur := s.state
+	if cur.Role != RoleFenced {
+		return fmt.Errorf("%w: %s is not fenced", ErrEpochRegression, cur.Role)
+	}
+	if epoch < cur.Epoch {
+		return fmt.Errorf("%w: have %d, asked for %d", ErrEpochRegression, cur.Epoch, epoch)
+	}
+	next := cur
+	next.Epoch, next.Role, next.FencedFor = epoch, RoleFollower, ""
+	if err := writeAtomic(s.path, next); err != nil {
+		return err
+	}
+	s.state = next
+	return nil
 }

@@ -42,6 +42,11 @@ func startTNode(t *testing.T, id, dir string, flag Role, addr string) *tnode {
 		t.Fatalf("%s: cluster: %v", id, err)
 	}
 	n.serve(addr)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	n.cluster.SetRejoinSupport(ctx, func(addr string) (*grpc.ClientConn, error) {
+		return grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	})
 	t.Cleanup(n.stop)
 	return n
 }

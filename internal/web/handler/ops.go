@@ -24,6 +24,7 @@ type ReplicationSource interface {
 type ClusterControl interface {
 	Status() replication.Status
 	Promote(ctx context.Context, opts replication.PromoteOptions) (replication.PromoteResult, error)
+	Rejoin(ctx context.Context, leaderAddr string) (replication.RejoinResult, error)
 }
 
 // currentRole is the live role when epochs are tracked (it changes on
