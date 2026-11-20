@@ -1,6 +1,6 @@
 # ADR 0003: Encryption at rest
 
-**Status:** accepted and implemented for the first slice (data file, spill file, checkpoint journal, WAL, backups as a consequence), 13 November 2026. Reconciled with storage format version 2 (page checksums, page reuse, saved maps) on 20 November 2026; see "Interaction with format version 2". Items under "Not in this slice" are planned, not built.
+**Status:** accepted and implemented for the first slice (data file, spill file, checkpoint journal, WAL, backups as a consequence), 13 November 2026. Reconciled with storage format version 2 (page checksums, page reuse, saved maps) on 20 November 2026; see "Interaction with format version 2". Second slice, 20 November 2026: environment-variable and command key sources, re-wrap-only master-key rotation, encrypted audit log (see "Second slice" below). Online data-key rotation and rollback detection are designed there and not built. Items under "Not in this slice" are planned, not built.
 
 ## Context
 
@@ -17,7 +17,7 @@ Out of scope (stated so nobody assumes otherwise):
 
 - A compromised running process or host (the key and plaintext are in memory).
 - Someone who holds both the data directory and the master key file.
-- **Rollback**: replacing a page, or the whole file, with an older, valid, authentic copy is not detected. Detecting it needs a Merkle tree or a trusted counter. Truncating the WAL tail is likewise not detected.
+- **Rollback**: replacing a page, or the whole file, with an older, valid, authentic copy is not detected. Detecting it needs a Merkle tree or a trusted counter held outside the attacker's reach (designed, not built: see "Rollback detection"). Truncating the WAL tail, or the newest audit records, is likewise not detected.
 - Metadata that stays visible: file sizes, page count, WAL record count, record lengths and LSNs (see WAL below), and access patterns.
 - Network traffic (TLS already covers gRPC) and the Studio session cookie.
 - Secure erase of the old plaintext files after migration. Filesystems and SSDs cannot promise it.
@@ -61,14 +61,14 @@ master key (32 bytes, operator-supplied)
                                                          └─ HKDF("beastdb wal v1")  ─► WAL key
 ```
 
-- The master key comes from a **key file** (`-encryption-key-file`): 32 raw bytes or 64 hex characters. On Unix the file must not be readable by group or others, or the server refuses to start. Environment variable and KMS sources (envelope encryption with the KEK held by a KMS) are planned and fit behind the same `crypt.KeySource` boundary; they are not built.
+- The master key comes from a **key file** (`-encryption-key-file`): 32 raw bytes or 64 hex characters. On Unix the file must not be readable by group or others, or the server refuses to start. Other sources are described under "Second slice".
 - `<db>.keyring` is a small JSON file holding the wrapped DEK, key ID and format version. It contains no usable secret without the master key. It is created once, before the first encrypted page, by write-to-temp, fsync, rename. **Losing the keyring or the master key loses the data**; the runbook says to back both up separately and to put the key file somewhere other than the data volume.
 - A wrong master key fails the unwrap and the engine reports `ErrWrongKey` at open, before any page is read. A damaged keyring or page reports `ErrTampered`/`ErrAuth`.
-- A separate DEK means master-key rotation can be a cheap re-wrap of 32 bytes (planned), while a DEK change is a full re-encryption.
+- A separate DEK means master-key rotation is a cheap re-wrap of 32 bytes (`beastctl rekey --rewrap-only`, built), while a DEK change is a full re-encryption.
 
 ### Key rotation
 
-In this slice rotation is offline and complete: `beastctl rekey` writes a fresh database with a new random DEK under the new master key, using the same logical copy as the migration, then swaps files. It resets the 2^32 nonce budget. Online rotation and re-wrap-only rotation are planned. Key ID is stored per page (2 bytes) and in the keyring so a future online rotation can mix generations while it runs.
+Master-key rotation without a data rewrite is `beastctl rekey --rewrap-only` (see "Second slice"). Data-key rotation in this slice is offline and complete: `beastctl rekey` (without that flag) writes a fresh database with a new random DEK under the new master key, using the same logical copy as the migration, then swaps files. It resets the 2^32 nonce budget. Online rotation is designed below and not built. Key ID is stored per page (2 bytes) and in the keyring so a future online rotation can mix generations while it runs.
 
 ### WAL
 
@@ -123,12 +123,59 @@ Overhead is measured, not assumed, with `cmd/beastbench --self-contained [--encr
 
 ## Not in this slice (planned)
 
-- KMS and environment-variable key sources; re-wrap-only master-key rotation; online DEK rotation.
-- Encrypting the Studio user store and the audit log (separate files, currently plaintext). Check them if they matter for your threat model.
-- Rollback and WAL-truncation detection.
+- Online DEK rotation and rollback / WAL-truncation detection (designed under "Second slice", not built).
+- Other plaintext files in the data directory: `session.key` (the Studio cookie HMAC secret, mode 0600), the runtime settings file and each backup's `manifest.json`. None holds data records; `session.key` lets someone who copies it forge Studio session cookies.
 - Metrics for the nonce budget.
 - Encrypting `backup` bundles at the byte level beyond what physical page encryption already gives (manifest stays clear).
 - `encrypt`, `decrypt` and `rekey` copy key/value records (the data model that exists today). Any new persistent structure (for example collections, index catalogs) must be added to that copy, or it will be dropped by a migration; a test should enumerate structures when they land.
+
+## Second slice (20 November 2026)
+
+### Key sources
+
+A key source is named by a spec string, accepted by `-encryption-key-file` and `beastctl --key-file` / `--new-key-file`; the server also has `-encryption-key-env NAME` and `-encryption-key-cmd COMMAND`, which build the same spec (at most one may be set).
+
+| Spec | Meaning |
+|---|---|
+| `/path`, `file:/path` | key file (32 raw bytes or 64 hex; Unix mode must not allow group/other access) |
+| `env:NAME` | the environment variable `NAME` (same encodings) |
+| `exec:CMD ARGS` or `exec:["cmd","arg"]` | a program whose standard output is the key |
+
+`exec` is the KMS interface: a small wrapper around the provider's CLI or SDK prints the master key, and BeastDB links no cloud SDK. The command runs directly (no shell, so no quoting or injection surface), with a 30 s timeout and at most 4 KB of stdout read. Its stderr is discarded and error messages carry only the program name and exit status, so a script that echoes the key cannot get it into BeastDB's logs or Studio. The server calls the source each time it opens the database (start-up, and again for a backup or restore tool), so a KMS outage at start-up stops the server instead of silently running unencrypted.
+
+Handling rules: keys are never logged and never appear in `/api/settings`, which reports only the *kind* of source (`file`, `env`, `exec`), read from the open engine. Buffers BeastDB owns (the master key, the unwrapped DEK, the KEK and the page, WAL and audit subkeys) are overwritten after use. Go gives no promise about copies the runtime made, and an environment variable's value stays in the process environment for the life of the process (and in `/proc/<pid>/environ` on Linux), so `env:` is the weakest source; prefer a key file or a command.
+
+### Re-wrap-only rotation
+
+`beastctl rekey --rewrap-only --db D --key-file OLD --new-key-file NEW` replaces the master key and nothing else. It proves the old key opens the keyring and that every page of the data file authenticates under it, wraps the **same** DEK under a KEK derived from the new key, checks that the new document unwraps to the same DEK, and installs it with write-temp, fsync, atomic rename, directory fsync. Before the rename the old key opens the keyring; after it only the new one does; a crash leaves one of the two (a stray `.keyring.tmp` is ignored and overwritten). The data file, journal, WAL and audit log are not touched, so the key ID and every existing page stay valid, and old backups still restore with the master key they were made under (their `keyring.json` is a copy of the old keyring).
+
+What it does not do: it does not change the DEK. Anyone who kept a copy of the old keyring and still holds the old master key can read the data. It also does not reset the 2^32 random-nonce budget. Use `beastctl rekey` without `--rewrap-only` for a new DEK.
+
+### Online data-key rotation (designed, not built)
+
+Not built because it changes three on-disk formats at once (keyring, WAL frames, journal) and its tests need a kill-the-process harness that does not exist yet. Design, so the formats can be chosen once:
+
+- **Keyring v2** holds `keys: [{id, wrapped_dek}]` and `active`. A v1 file reads as one key. v2 is written only when a rotation starts, and an older binary refuses it (one way); the operator opts in with an explicit `beastctl rotate-dek start`.
+- **Order of steps** (each step is crash-safe on its own): (1) write the new DEK, wrapped, into the keyring (atomic replace); (2) switch `active`, so every page written from now on, including spill and journal pages, carries the new key ID; (3) a background pass loads each page through the buffer pool, marks it dirty without changing it and lets the normal checkpoint seal it with the active key, so the existing journal protects the rewrite and the WAL-before-page barrier is unchanged (the records describing the page are already durable); (4) when a read-only scan shows no page with the old ID and a checkpoint has rotated the WAL, retire the old DEK from the keyring.
+- **WAL**: frames carry no key ID today, so rotation needs a per-generation header (or a key ID in the frame) before the WAL can switch keys at a checkpoint; this is the format change that blocks a quick build.
+- **Crash model**: the keyring always contains every key a page might need before any page uses it; a restart finds pages by their stored key ID and resumes the pass; the old DEK is retired only after the verifying scan.
+- **Tests required before it ships**: kill the process (SIGKILL, and a fault-injecting file layer) between each step and in the middle of the page pass, restart, and check that every record reads, every page authenticates and the keyring opens with the master key.
+
+### Audit log and Studio user store
+
+- **User store and API tokens** are records in the engine's own reserved keyspaces (`_sys:` keys), not separate files, so they are encrypted with the data file and replicated and backed up with it. The earlier statement that the user store is a plaintext side file was wrong; a test (`TestAuditLogAndUserStoreFollowEncryption`) checks that neither the user name nor the password hash appears in the encrypted data file.
+- **Audit log (`audit.log`)** is a separate file and is now sealed when the engine is encrypted. Each line is `BAE1 <keyID> <base64(nonce | AES-256-GCM(JSON entry) | tag)>`; the key is an HKDF subkey of the DEK (`"beastdb audit v1"`), the AAD is the key ID and the line number. The sealed JSON is the same entry as before, including `prev` and `hash`, so the hash chain and `Verify()` work unchanged after decryption and the chain survives a migration byte-for-byte in its hashes. A file is wholly plaintext or wholly sealed; a mix is refused, because otherwise forged plaintext lines could be appended to a sealed log. Reordering or removing a line moves its position and fails authentication.
+- **Opening**: plaintext log plus a key: converted to sealed on open (temp file, fsync, atomic rename, chain verified first). Sealed log without a key: refused (`ErrSealed`), never read or extended as plaintext. Plaintext log without a key: opens as before.
+- **Migration**: `beastctl encrypt`, `rekey` and `decrypt` convert `audit.log` beside the data file with the database (the converted copy is prepared and verified before anything is replaced, and the original is kept as `audit.log.pre*.bak` unless `--delete-original`). A crash between the data-file swap and the audit swap is finished by the next open: the prepared file replaces the log only if the log no longer opens with the current key and the prepared one does. `rekey --rewrap-only` keeps the DEK, so the log is unchanged.
+- **Limits**: the number of records, their line lengths and write times (file modification time) are visible. Removing the newest records, or putting back an older sealed copy, still verifies. A plaintext predecessor's bytes may remain in free disk blocks after the swap. Studio shows "Audit log: Encrypted" from the open log, not from configuration.
+
+### Rollback detection (designed, not built)
+
+An attacker with write access to the data directory can restore an older, internally consistent set of files (data file, keyring, WAL, audit log, and any counter file we might add). Nothing stored in that directory can prove freshness, because it is swapped with everything else; so no purely local mechanism detects this, and a Merkle tree over pages (which would change the page format and add write amplification) only moves the question to where the root is kept. Detection needs state outside the attacker's reach.
+
+Design: an **anchor hook**, the same shape as the key command. `-encryption-anchor-cmd` runs `CMD get` and `CMD put`, exchanging a small record `{db id, epoch (ADR 0004), checkpoint LSN, WAL tail LSN, MAC}` with a MAC under an HKDF subkey. The server `put`s after each checkpoint (and may on a timer), and at open refuses with `ErrRollback` if the local `(epoch, LSN)` is behind the anchored one. What backs the anchor (a KMS counter, a versioned object store, a TPM NV counter) is a deployment decision, which is why this is not built here.
+
+Backups and restore: backups are physical copies and need no change (the manifest can carry the LSN). Restoring an older backup is a legitimate rollback, so `beastctl restore` must take an explicit `--reset-anchor` (recorded in the audit log), and `encrypt`, `decrypt` and `rekey` (the WAL restarts at LSN 0) must re-initialise the anchor. Without an anchor configured nothing changes. Until this is built, rollback stays out of scope in the threat model above.
 
 ## Consequences
 

@@ -27,8 +27,11 @@ func TestSettingsReportsEncryptionFromEngineState(t *testing.T) {
 	if off["encryption_at_rest"] != false {
 		t.Fatalf("plaintext engine must report off: %v", off)
 	}
-	on := get(api.EncryptionInfo{Enabled: true, Cipher: "aes-256-gcm", KeyID: 3})
-	if on["encryption_at_rest"] != true || on["encryption_cipher"] != "aes-256-gcm" || on["encryption_key_id"] != float64(3) {
+	if off["audit_log_encrypted"] != false || off["encryption_key_source"] != "" {
+		t.Fatalf("plaintext engine must not report a key source or a sealed audit log: %v", off)
+	}
+	on := get(api.EncryptionInfo{Enabled: true, Cipher: "aes-256-gcm", KeyID: 3, KeySource: "exec"})
+	if on["encryption_at_rest"] != true || on["encryption_cipher"] != "aes-256-gcm" || on["encryption_key_id"] != float64(3) || on["encryption_key_source"] != "exec" {
 		t.Fatalf("encrypted engine: %v", on)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
@@ -24,7 +25,8 @@ type Options struct {
 	// file. Empty means a plaintext database; opening an encrypted one then fails.
 	KeyFile string
 
-	walCipher *wal.Cipher // set by openEngineKeys from the unwrapped keys
+	walCipher   *wal.Cipher   // set by openEngineKeys from the unwrapped keys
+	auditCipher *audit.Cipher // likewise; nil for a plaintext database
 }
 
 // ErrMetaPageDamaged is returned when page 0 is blank but the database holds

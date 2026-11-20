@@ -4,6 +4,7 @@
 package crypt
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
@@ -17,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 const (
@@ -40,13 +40,17 @@ var (
 
 // Keys are the unwrapped keys for one open database.
 type Keys struct {
-	ID   uint16
-	page cipher.AEAD
-	wal  cipher.AEAD
+	ID    uint16
+	page  cipher.AEAD
+	wal   cipher.AEAD
+	audit cipher.AEAD
 }
 
 // PageAEAD returns the AEAD sealing data, journal and spill pages.
 func (k *Keys) PageAEAD() cipher.AEAD { return k.page }
+
+// AuditAEAD returns the AEAD sealing audit log records.
+func (k *Keys) AuditAEAD() cipher.AEAD { return k.audit }
 
 // WALAEAD returns the AEAD sealing WAL frames.
 func (k *Keys) WALAEAD() cipher.AEAD { return k.wal }
@@ -60,10 +64,10 @@ func HasKeyring(dbPath string) bool {
 	return err == nil
 }
 
-// ReadMasterKey loads a master key from a file of 32 raw bytes or 64 hex
+// readKeyFile loads a master key from a file of 32 raw bytes or 64 hex
 // characters (surrounding whitespace ignored). On Unix the file must not be
 // accessible by group or others.
-func ReadMasterKey(path string) ([]byte, error) {
+func readKeyFile(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("crypt: read key file: %w", err)
@@ -71,17 +75,14 @@ func ReadMasterKey(path string) ([]byte, error) {
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		return nil, fmt.Errorf("%w: %s has mode %04o", ErrKeyFilePerm, path, info.Mode().Perm())
 	}
+	if info.Size() > maxKeyOutput {
+		return nil, ErrBadKeyFile
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("crypt: read key file: %w", err)
 	}
-	if len(b) == KeySize {
-		return b, nil
-	}
-	if k, err := hex.DecodeString(strings.TrimSpace(string(b))); err == nil && len(k) == KeySize {
-		return k, nil
-	}
-	return nil, ErrBadKeyFile
+	return parseKey(b)
 }
 
 // GenerateKeyFile writes a new random master key (hex) to path with mode 0600.
@@ -132,6 +133,17 @@ func keysFromDEK(dek []byte, id uint16) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer Zero(pk)
+	defer Zero(wk)
+	ak, err := derive(dek, "beastdb audit v1")
+	if err != nil {
+		return nil, err
+	}
+	defer Zero(ak)
+	aa, err := newAEAD(ak)
+	if err != nil {
+		return nil, err
+	}
 	pa, err := newAEAD(pk)
 	if err != nil {
 		return nil, err
@@ -140,7 +152,103 @@ func keysFromDEK(dek []byte, id uint16) (*Keys, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Keys{ID: id, page: pa, wal: wa}, nil
+	return &Keys{ID: id, page: pa, wal: wa, audit: aa}, nil
+}
+
+// wrapDEK seals dek under a KEK derived from master and returns the keyring
+// document.
+func wrapDEK(master, dek []byte, keyID uint16) (keyringFile, error) {
+	kek, err := derive(master, "beastdb kek v1")
+	if err != nil {
+		return keyringFile{}, err
+	}
+	defer Zero(kek)
+	aead, err := newAEAD(kek)
+	if err != nil {
+		return keyringFile{}, err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return keyringFile{}, err
+	}
+	wrapped := aead.Seal(nonce, nonce, dek, wrapAAD(keyID))
+	return keyringFile{Version: 1, KeyID: keyID, Cipher: CipherName,
+		WrappedDEK: base64.StdEncoding.EncodeToString(wrapped)}, nil
+}
+
+// unwrapDEK opens the keyring document with master. The caller zeroes the DEK.
+func unwrapDEK(kf keyringFile, master []byte) ([]byte, error) {
+	if len(master) != KeySize {
+		return nil, ErrBadKeyFile
+	}
+	if kf.Version != 1 || kf.Cipher != CipherName || kf.KeyID == 0 {
+		return nil, ErrBadKeyring
+	}
+	wrapped, err := base64.StdEncoding.DecodeString(kf.WrappedDEK)
+	if err != nil {
+		return nil, ErrBadKeyring
+	}
+	kek, err := derive(master, "beastdb kek v1")
+	if err != nil {
+		return nil, err
+	}
+	defer Zero(kek)
+	aead, err := newAEAD(kek)
+	if err != nil {
+		return nil, err
+	}
+	n := aead.NonceSize()
+	if len(wrapped) < n+aead.Overhead() {
+		return nil, ErrBadKeyring
+	}
+	dek, err := aead.Open(nil, wrapped[:n], wrapped[n:], wrapAAD(kf.KeyID))
+	if err != nil {
+		return nil, ErrWrongKey
+	}
+	return dek, nil
+}
+
+func readKeyringDoc(path string) (keyringFile, error) {
+	var kf keyringFile
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return kf, fmt.Errorf("%w: %v", ErrBadKeyring, err)
+	}
+	if err := json.Unmarshal(b, &kf); err != nil {
+		return kf, ErrBadKeyring
+	}
+	return kf, nil
+}
+
+// writeKeyringDoc writes the document to a temp file, fsyncs it, renames it
+// over path and fsyncs the directory. A crash leaves either the old file or
+// the new one, never a mix; a leftover .tmp is ignored and overwritten.
+func writeKeyringDoc(path string, kf keyringFile) error {
+	b, _ := json.MarshalIndent(kf, "", "  ")
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); cerr != nil && err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if d, err := os.Open(filepath.Dir(path)); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 // CreateKeyring generates a random DEK, wraps it under master and writes
@@ -155,47 +263,16 @@ func CreateKeyring(dbPath string, master []byte, keyID uint16) (*Keys, error) {
 		return nil, fmt.Errorf("crypt: %s already exists", path)
 	}
 	dek := make([]byte, KeySize)
+	defer Zero(dek)
 	if _, err := rand.Read(dek); err != nil {
 		return nil, err
 	}
-	kek, err := derive(master, "beastdb kek v1")
+	kf, err := wrapDEK(master, dek, keyID)
 	if err != nil {
 		return nil, err
 	}
-	aead, err := newAEAD(kek)
-	if err != nil {
+	if err := writeKeyringDoc(path, kf); err != nil {
 		return nil, err
-	}
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, err
-	}
-	wrapped := aead.Seal(nonce, nonce, dek, wrapAAD(keyID))
-	b, _ := json.MarshalIndent(keyringFile{Version: 1, KeyID: keyID, Cipher: CipherName,
-		WrappedDEK: base64.StdEncoding.EncodeToString(wrapped)}, "", "  ")
-
-	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := f.Write(b); err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); cerr != nil && err == nil {
-		err = cerr
-	}
-	if err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	if d, err := os.Open(filepath.Dir(path)); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
 	}
 	return keysFromDEK(dek, keyID)
 }
@@ -208,38 +285,66 @@ func OpenKeyring(dbPath string, master []byte) (*Keys, error) {
 
 // OpenKeyringFile is OpenKeyring for an explicit keyring path (backup bundles).
 func OpenKeyringFile(path string, master []byte) (*Keys, error) {
-	if len(master) != KeySize {
-		return nil, ErrBadKeyFile
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadKeyring, err)
-	}
-	var kf keyringFile
-	if err := json.Unmarshal(b, &kf); err != nil || kf.Version != 1 || kf.Cipher != CipherName || kf.KeyID == 0 {
-		return nil, ErrBadKeyring
-	}
-	wrapped, err := base64.StdEncoding.DecodeString(kf.WrappedDEK)
-	if err != nil {
-		return nil, ErrBadKeyring
-	}
-	kek, err := derive(master, "beastdb kek v1")
+	kf, err := readKeyringDoc(path)
 	if err != nil {
 		return nil, err
 	}
-	aead, err := newAEAD(kek)
+	dek, err := unwrapDEK(kf, master)
 	if err != nil {
 		return nil, err
 	}
-	if len(wrapped) < aead.NonceSize()+aead.Overhead() {
-		return nil, ErrBadKeyring
-	}
-	n := aead.NonceSize()
-	dek, err := aead.Open(nil, wrapped[:n], wrapped[n:], wrapAAD(kf.KeyID))
-	if err != nil {
-		return nil, ErrWrongKey
-	}
+	defer Zero(dek)
 	return keysFromDEK(dek, kf.KeyID)
+}
+
+// Rewrap changes the master key of an encrypted database without touching a
+// single data page: it unwraps the DEK with oldMaster, wraps the same DEK under
+// newMaster and replaces <dbPath>.keyring atomically. The DEK and key ID do not
+// change, so every page, WAL frame and existing backup stays readable with the
+// new master key. Until the rename the old master key still opens the
+// keyring; after it only the new one does. The new keyring is read back and
+// opened with newMaster before the call returns.
+//
+// Rewrap protects against a later leak of the old master key only for copies
+// of the keyring made after the swap: anyone who kept an older keyring and the
+// old master key still holds the DEK. Replacing the DEK needs a data rewrite
+// (beastctl rekey --rotate-data-key).
+func Rewrap(dbPath string, oldMaster, newMaster []byte) error {
+	if len(newMaster) != KeySize {
+		return ErrBadKeyFile
+	}
+	path := KeyringPath(dbPath)
+	kf, err := readKeyringDoc(path)
+	if err != nil {
+		return err
+	}
+	dek, err := unwrapDEK(kf, oldMaster)
+	if err != nil {
+		return err
+	}
+	defer Zero(dek)
+	nkf, err := wrapDEK(newMaster, dek, kf.KeyID)
+	if err != nil {
+		return err
+	}
+	// Prove the new document unwraps to the same DEK before it replaces the old.
+	chk, err := unwrapDEK(nkf, newMaster)
+	if err != nil || !bytes.Equal(chk, dek) {
+		Zero(chk)
+		return errors.New("crypt: internal error: rewrapped key does not round-trip; keyring left unchanged")
+	}
+	Zero(chk)
+	if err := writeKeyringDoc(path, nkf); err != nil {
+		return err
+	}
+	k, err := OpenKeyring(dbPath, newMaster)
+	if err != nil {
+		return fmt.Errorf("crypt: rewrapped keyring does not open with the new key: %w", err)
+	}
+	if k.ID != kf.KeyID {
+		return ErrBadKeyring
+	}
+	return nil
 }
 
 // KeyringKeyID reads the key ID from the keyring beside dbPath without a key.

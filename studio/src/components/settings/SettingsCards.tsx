@@ -5,7 +5,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { formatBytes } from "../../utils/format";
-import { encryptionLabel, type EncryptionState } from "../../utils/encryption";
+import { auditLogLabel, encryptionLabel, keySourceLabel, type EncryptionState } from "../../utils/encryption";
 
 export type SettingsSection = "general" | "storage" | "networking" | "security" | "limits";
 
@@ -105,6 +105,8 @@ export function settingsCards(s: Settings): { title: string; description: string
         { label: "Buffer pool", value: `${s.storage.pool_size_frames} frames (${formatBytes(s.storage.pool_size_frames * s.storage.page_size_bytes)})` },
         { label: "Page size", value: formatBytes(s.storage.page_size_bytes) },
         { label: "Encryption at rest", value: encryptionLabel(s.storage) },
+        ...(keySourceLabel(s.storage) ? [{ label: "Master key source", value: keySourceLabel(s.storage) }] : []),
+        ...(auditLogLabel(s.storage) ? [{ label: "Audit log", value: auditLogLabel(s.storage) }] : []),
       ],
     },
     {

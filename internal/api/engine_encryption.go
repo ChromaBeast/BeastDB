@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
@@ -18,6 +19,10 @@ type EncryptionInfo struct {
 	Enabled bool   `json:"enabled"`
 	Cipher  string `json:"cipher,omitempty"`
 	KeyID   uint16 `json:"key_id,omitempty"`
+	// KeySource is the kind of master key source in use ("file", "env" or
+	// "exec"), never its name or value. Empty when the engine was opened with
+	// already unwrapped keys.
+	KeySource string `json:"key_source,omitempty"`
 }
 
 // Encryption reports whether pages and WAL are encrypted by this engine.
@@ -25,7 +30,14 @@ func (e *Engine) Encryption() EncryptionInfo {
 	if !e.disk.Encrypted() {
 		return EncryptionInfo{}
 	}
-	return EncryptionInfo{Enabled: true, Cipher: crypt.CipherName, KeyID: e.disk.KeyID()}
+	return EncryptionInfo{Enabled: true, Cipher: crypt.CipherName, KeyID: e.disk.KeyID(), KeySource: e.keySourceKind()}
+}
+
+func (e *Engine) keySourceKind() string {
+	if e.opts.KeyFile == "" {
+		return ""
+	}
+	return crypt.SourceKind(e.opts.KeyFile)
 }
 
 // KeyringPath is the keyring beside the data file, or "" for a plaintext
@@ -41,6 +53,11 @@ func (e *Engine) KeyringPath() string {
 // (nil when plaintext).
 func (e *Engine) VerifyCipher() *storage.PageCipher { return e.disk.VerifyCipher() }
 
+// AuditCipher returns the cipher for the audit log (nil when plaintext). The
+// server opens the audit log with it so the log is sealed whenever the
+// database is.
+func (e *Engine) AuditCipher() *audit.Cipher { return e.opts.auditCipher }
+
 // WALCipher returns the WAL cipher (nil when plaintext) for readers of the log.
 func (e *Engine) WALCipher() *wal.Cipher { return e.wal.Cipher() }
 
@@ -50,8 +67,10 @@ func openEngineKeys(dbPath, walPath string, poolSize int, keys *crypt.Keys, opts
 	if keys != nil {
 		pc = storage.NewPageCipher(keys.PageAEAD(), keys.ID)
 		opts.walCipher = wal.NewCipher(keys.WALAEAD(), keys.ID)
+		opts.auditCipher = audit.NewCipher(keys.AuditAEAD(), keys.ID)
 	} else {
 		opts.walCipher = nil
+		opts.auditCipher = nil
 	}
 	disk, err := storage.OpenDiskManagerEncrypted(dbPath, pc)
 	if err != nil {
@@ -68,6 +87,7 @@ func loadKeys(dbPath, keyFile string, newKeyID uint16) (*crypt.Keys, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer crypt.Zero(master)
 	exists, encrypted, err := storage.FileEncrypted(dbPath)
 	if err != nil {
 		return nil, err
