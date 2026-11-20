@@ -44,6 +44,7 @@ func main() {
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
 	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
+	walTruncateCorrupt := flag.Bool("wal-truncate-corrupt", getEnv("BEASTDB_WAL_TRUNCATE_CORRUPT", "") == "true", "Open even if the WAL is damaged in the middle, cutting it at the damage (acknowledged writes after it are lost; the cut bytes are saved to <wal>.discarded)")
 	flag.Parse()
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
@@ -71,7 +72,7 @@ func main() {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{KeyFile: *encKeyFile})
+	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{TruncateCorruptWAL: *walTruncateCorrupt, KeyFile: *encKeyFile})
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
@@ -129,6 +130,7 @@ func main() {
 	}
 	repServer := replication.NewLeaderServer(engine.WALPath())
 	repServer.SetWALCipher(engine.WALCipher())
+	repServer.SetDurableLSN(engine.DurableLSN)
 	repServer.RegisterService(grpcServer.RawServer())
 	cluster, err := replication.NewCluster(engine, *dataDir, *replicaID, flagRole, repServer)
 	if err != nil {

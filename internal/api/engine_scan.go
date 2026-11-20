@@ -173,3 +173,42 @@ func (e *Engine) ScanPartitionCounts() (map[uint8]int, error) {
 	return counts, nil
 }
 
+
+// KeyValue is one record returned by ScanChunk.
+type KeyValue struct {
+	Key   uint64
+	Value []byte
+}
+
+// ScanChunk reads records in [startKey, endKey] until it has maxItems of them
+// or their values exceed maxBytes, and releases the engine lock before it
+// returns. When more is true, next is the key to resume from. Callers that
+// stream to a network peer use this so a slow peer never holds the lock;
+// consecutive chunks are therefore not one consistent snapshot.
+func (e *Engine) ScanChunk(startKey, endKey uint64, maxItems, maxBytes int) (items []KeyValue, next uint64, more bool, err error) {
+	cursor, err := e.Scan(startKey, endKey)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	defer cursor.Close()
+
+	size := 0
+	for {
+		key, rid, ok, err := cursor.Next()
+		if err != nil {
+			return nil, 0, false, err
+		}
+		if !ok {
+			return items, 0, false, nil
+		}
+		if len(items) > 0 && (len(items) >= maxItems || size >= maxBytes) {
+			return items, key, true, nil
+		}
+		val, err := e.ReadTuple(rid)
+		if err != nil {
+			return nil, 0, false, err
+		}
+		items = append(items, KeyValue{Key: key, Value: val})
+		size += len(val)
+	}
+}

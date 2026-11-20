@@ -95,15 +95,22 @@ func (t *BPlusTree) handleLeafUnderflow(path []uint64, leafID uint64, leafPage *
 			leftH.NextPageID = leaf.Header().NextPageID
 			leftLeaf.SetHeader(leftH)
 
-			parent.Delete(leaf.Key(0))
+			// Drop the parent's entry for the absorbed leaf by child pointer:
+			// its separator stops matching the leaf's first key as soon as
+			// that key is deleted.
+			parent.DeleteChild(leafID)
 			_ = t.bpm.UnpinPage(leftID, true)
-			_ = t.bpm.UnpinPage(parentID, true)
-			return t.bpm.UnpinPage(leafID, true)
+			_ = t.bpm.UnpinPage(leafID, true)
+			t.freePage(leafID)
+			return t.afterChildRemoved(path, parentID, parent)
 		}
 	}
 
 	// --- Fall back to RIGHT sibling ---
-	rightID := leaf.Header().NextPageID
+	// Only a sibling under the same parent qualifies: the next leaf in the
+	// chain may belong to a different parent, whose separators this code
+	// cannot reach.
+	rightID := rightSiblingID(parent, leafID)
 	if rightID != 0 {
 		rightPage, err := t.bpm.FetchPage(rightID)
 		if err == nil {
@@ -130,10 +137,11 @@ func (t *BPlusTree) handleLeafUnderflow(path []uint64, leafID uint64, leafPage *
 			leafH.NextPageID = rightLeaf.Header().NextPageID
 			leaf.SetHeader(leafH)
 
-			parent.Delete(rightLeaf.Key(0))
+			parent.DeleteChild(rightID)
 			_ = t.bpm.UnpinPage(rightID, true)
-			_ = t.bpm.UnpinPage(parentID, true)
-			return t.bpm.UnpinPage(leafID, true)
+			_ = t.bpm.UnpinPage(leafID, true)
+			t.freePage(rightID)
+			return t.afterChildRemoved(path, parentID, parent)
 		}
 	}
 
@@ -155,6 +163,72 @@ func leftSiblingID(parent *InternalNode, leafID uint64) uint64 {
 	for i := 1; i < int(h.KeyCount); i++ {
 		if parent.Child(i) == leafID {
 			return parent.Child(i - 1)
+		}
+	}
+	return 0
+}
+
+// afterChildRemoved runs after a merge removed one of parent's routing
+// entries; parent is pinned and is unpinned here. An internal node left with
+// no keys routes everything to its only child, so it is spliced out: a root
+// hands the root role to that child, any other node is replaced by the child
+// in the grandparent. Either way its page is freed.
+func (t *BPlusTree) afterChildRemoved(path []uint64, parentID uint64, parent *InternalNode) error {
+	if parent.Header().KeyCount > 0 {
+		return t.bpm.UnpinPage(parentID, true)
+	}
+	child := parent.Child0()
+	if err := t.bpm.UnpinPage(parentID, true); err != nil {
+		return err
+	}
+
+	if parentID == t.rootPageID {
+		t.setParent(child, 0, true)
+		t.rootPageID = child
+		if t.onRootChange != nil {
+			t.onRootChange(child)
+		}
+		t.freePage(parentID)
+		return nil
+	}
+	if len(path) < 2 {
+		return nil // no grandparent on record; keep the empty node, which still routes correctly
+	}
+	grandID := path[len(path)-2]
+	grandPage, err := t.bpm.FetchPage(grandID)
+	if err != nil {
+		return nil // same: leaving the node in place is safe
+	}
+	grand := AsInternalNode(grandPage.Data())
+	if !grand.ReplaceChild(parentID, child) {
+		_ = t.bpm.UnpinPage(grandID, false)
+		return nil
+	}
+	_ = t.bpm.UnpinPage(grandID, true)
+	t.setParent(child, grandID, false)
+	t.freePage(parentID)
+	return nil
+}
+
+// freePage returns a page the tree no longer references to the free list.
+// A page that cannot be freed (still pinned by a reader) is left allocated:
+// a leaked page is harmless.
+func (t *BPlusTree) freePage(id uint64) {
+	_ = t.bpm.FreePage(id)
+}
+
+// rightSiblingID returns the child that follows leafID in the parent, or 0.
+func rightSiblingID(parent *InternalNode, leafID uint64) uint64 {
+	n := int(parent.Header().KeyCount)
+	if n == 0 {
+		return 0
+	}
+	if parent.Child0() == leafID {
+		return parent.Child(0)
+	}
+	for i := 0; i < n-1; i++ {
+		if parent.Child(i) == leafID {
+			return parent.Child(i + 1)
 		}
 	}
 	return 0

@@ -22,14 +22,14 @@ func testCipherB(t testing.TB) *PageCipher {
 func TestPageSealOpenRoundTrip(t *testing.T) {
 	c := testCipher(t)
 	plain := make([]byte, PageSize)
-	for i := range PageDataEnd {
+	for i := range EncDataEnd {
 		plain[i] = byte(i * 7)
 	}
 	sealed := make([]byte, PageSize)
 	if err := c.Seal(sealed, plain, 9); err != nil {
 		t.Fatal(err)
 	}
-	if string(sealed[:PageDataEnd]) == string(plain[:PageDataEnd]) {
+	if string(sealed[:EncDataEnd]) == string(plain[:EncDataEnd]) {
 		t.Fatal("sealed page equals plaintext")
 	}
 	if !IsEncryptedPage(sealed) || IsEncryptedPage(plain) {
@@ -49,7 +49,7 @@ func TestPageSealOpenRoundTrip(t *testing.T) {
 	if err := c.Open(sealed, 9); err != nil {
 		t.Fatal(err)
 	}
-	if string(sealed[:PageDataEnd]) != string(plain[:PageDataEnd]) {
+	if string(sealed[:EncDataEnd]) != string(plain[:EncDataEnd]) {
 		t.Fatal("round trip mismatch")
 	}
 	if err := c.Open(make([]byte, PageSize), 0); !errors.Is(err, ErrPageAuth) {
@@ -58,8 +58,8 @@ func TestPageSealOpenRoundTrip(t *testing.T) {
 }
 
 func TestSlottedPageHonoursReservedTail(t *testing.T) {
-	p := NewSlottedPageEnd(1, PageDataEnd)
-	if got := p.FreeSpace(); got != PageDataEnd-PageHeaderSize {
+	p := NewSlottedPageEnd(1, EncDataEnd)
+	if got := p.FreeSpace(); got != EncDataEnd-PageHeaderSize {
 		t.Fatalf("free space %d", got)
 	}
 	for {
@@ -68,10 +68,10 @@ func TestSlottedPageHonoursReservedTail(t *testing.T) {
 		}
 	}
 	p.Compact()
-	if h := p.Header(); int(h.Upper) > PageDataEnd {
+	if h := p.Header(); int(h.Upper) > EncDataEnd {
 		t.Fatalf("Upper %d past reserve", h.Upper)
 	}
-	for _, b := range p.Data()[PageDataEnd:] {
+	for _, b := range p.Data()[EncDataEnd:] {
 		if b != 0 {
 			t.Fatal("tuple data written into the reserved tail")
 		}
@@ -80,7 +80,7 @@ func TestSlottedPageHonoursReservedTail(t *testing.T) {
 		// an empty page must still take MaxRecordSize
 		t.Log("page was not empty; checking fresh page below")
 	}
-	fresh := NewSlottedPageEnd(2, PageDataEnd)
+	fresh := NewSlottedPageEnd(2, EncDataEnd)
 	if _, err := fresh.InsertTuple(make([]byte, 4000)); err != nil {
 		t.Fatalf("MaxRecordSize must fit an encrypted page: %v", err)
 	}

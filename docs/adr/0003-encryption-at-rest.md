@@ -1,6 +1,6 @@
 # ADR 0003: Encryption at rest
 
-**Status:** accepted and implemented for the first slice (data file, spill file, checkpoint journal, WAL, backups as a consequence), 13 November 2026. Items under "Not in this slice" are planned, not built.
+**Status:** accepted and implemented for the first slice (data file, spill file, checkpoint journal, WAL, backups as a consequence), 13 November 2026. Reconciled with storage format version 2 (page checksums, page reuse, saved maps) on 20 November 2026; see "Interaction with format version 2". Items under "Not in this slice" are planned, not built.
 
 ## Context
 
@@ -32,7 +32,7 @@ Candidate rejected: XChaCha20-Poly1305 (24-byte nonce removes the limit) needs `
 
 ### Page layout: the tail of every page is reserved
 
-A page is still exactly 4096 bytes, aligned, and encrypted in place, so there is no stride change and no tag side file. Encrypted databases reserve the **last 32 bytes** of every page. The slotted page's usable end is `PageSize - 32 = 4064` instead of 4096 (`Upper` starts at 4064; `Compact` packs to it). The largest inline tuple (`MaxRecordSize`, 4,000 bytes) plus header and slot still fits.
+A page is still exactly 4096 bytes, aligned, and encrypted in place, so there is no stride change and no tag side file. Encrypted databases reserve the **last 32 bytes** of every page. The slotted page's usable end is `EncDataEnd = PageSize - 32 = 4064` (a plaintext version 2 file ends at `PageDataEnd = 4092`, before its 4-byte checksum trailer). `DiskManager.PageEnd()` returns whichever applies, and the buffer pool, the free list and page chains (`WriteChain`/`ReadChain`) use it instead of a constant. The largest inline tuple (`MaxRecordSize`, 4,000 bytes) plus header and slot still fits.
 
 ```
 0                                          4064              4096
@@ -96,10 +96,22 @@ Backups are physical copies of the data file, so an encrypted database's backup 
 
 ### On-disk format versioning and migration
 
-- `MetaData` gains a 32-bit `Flags` word (bytes 32..36 of page 0); bit 0 = encrypted. Old plaintext databases have zero there, so format version 1 stays valid and nothing existing is rewritten. The flag is inside the authenticated page, so it cannot be cleared by an attacker; the clear `magic` in the page tail is what routes the open path before decryption.
+- `MetaData` gains a 32-bit `Flags` word (bytes 64..68 of page 0, after the version 2 fields); bit 0 = encrypted. Plaintext databases have zero there and nothing existing is rewritten. The flag is inside the authenticated page, so it cannot be cleared by an attacker; the clear `magic` in the page tail is what routes the open path before decryption.
 - Opening an encrypted database without a key fails with `ErrEncryptedNoKey`. Opening a plaintext database with a key configured fails with `ErrNotEncrypted` (it does **not** silently run plaintext while the operator believes it is encrypted).
-- Migration is explicit and offline: `beastctl encrypt`, `decrypt` and `rekey` (all one routine) open the source, replay its WAL, copy every record to a new database in the target mode, close it, and only then swap the files, keeping the originals as `*.preenc.bak` (or `*.prekey.bak`). The plaintext backup it leaves defeats the purpose until it is removed, so the command prints that and offers `--delete-original`, which removes the files but cannot guarantee the bytes are unrecoverable. Page-level in-place conversion was rejected: plaintext pages may use all 4096 bytes and cannot take a 32-byte tail.
+- Migration is explicit and offline: `beastctl encrypt`, `decrypt` and `rekey` (all one routine) open the source, replay its WAL, copy every record to a new database in the target mode, close it, and only then swap the files, keeping the originals as `*.preenc.bak` (or `*.prekey.bak`). The plaintext backup it leaves defeats the purpose until it is removed, so the command prints that and offers `--delete-original`, which removes the files but cannot guarantee the bytes are unrecoverable. Page-level in-place conversion was rejected: plaintext pages may use up to 4092 bytes (4096 in a version 1 file) and cannot take a 32-byte tail.
 - The logical copy re-packs pages, so the migrated file is also compact. Large values (ADR 0001) are copied through the engine and re-chained.
+
+### Interaction with format version 2
+
+Decisions made when this ADR met page checksums, page reuse and saved maps:
+
+- **No separate checksum in an encrypted file.** The AES-GCM tag authenticates the page ID and every byte of the page (a stronger check than CRC-32C), so the version 2 checksum trailer is not written. A CRC over the ciphertext would add nothing, and one over the plaintext would publish a hash of the plaintext beside the ciphertext. `verifyPage`'s rule that an all-zero page is acceptable does not apply either: inside the file an all-zero page is `ErrPageAuth`; only a page past the end of the file reads as zeros.
+- **Encrypted means version 2.** An encrypted file has a version 2 meta page, page reuse, and the saved free-space map and search index (stored in chain pages, which are sealed like every other page). `DiskManager.Checksums()` reports true for it ("version 2 layout, pages integrity-protected") so the engine never tries to migrate it as a version 1 file; automatic v0/v1 migration is for plaintext files only.
+- **Pre-release encrypted layout.** The first encrypted build put the flag word in meta bytes 32..36 on a version 1 meta page; version 2 uses those bytes for the free list head. No release contains that layout. A database written by that build fails to open with `ErrInvalidMetaVersion` and a message naming `beastctl decrypt` of the build that wrote it; it is never migrated automatically.
+- **Plaintext v1 plus a key.** Opening a version 1 (or v0) file with a key is refused with `ErrNotEncrypted` and leaves the file unchanged. `beastctl encrypt` opens the source as plaintext, which migrates v0/v1 to version 2 and replays its WAL tail, then copies the records into a new encrypted database. Opening the file without a key still performs the usual automatic migration.
+- **Saved maps stay valid.** A restart loads the free list, the space map and the index snapshot through the same chain code with `PageEnd()`. A failed read of the space map or snapshot is a hint failure (rebuild), but authentication failure of an ordinary page is an error, as before.
+- **WAL.** The encrypted log keeps the plaintext log's recovery rules: a torn tail is cut at open through a non-append handle (Windows-safe, as for plaintext) so new records are not appended behind it; a frame that fails authentication with an authentic, higher-LSN frame after it is damage in the middle and fails the open with `ErrCorruptLog` (`ErrWALTampered` is the same error); `-wal-truncate-corrupt` cuts at the damage and saves the cut bytes to `<wal>.discarded`. Resynchronisation after damage uses the tag, not a CRC, as proof that a later frame is intact.
+- **Migration swap.** `encrypt`, `decrypt` and `rekey` preserve each original as a hard link or copy before replacing it by atomic rename, so no path is ever missing; the keyring and WAL are installed before the data file, and a crash between steps fails loudly (key or WAL format mismatch) with the preserved originals available for a manual restore.
 
 ### Studio
 

@@ -47,7 +47,7 @@ func (w *WAL) Checkpoint() error {
 		return err
 	}
 	if w.cipher != nil {
-		if err := writeHeader(newFile, w.cipher); err != nil {
+		if err := writeHeader(newFile, w.path, w.cipher); err != nil {
 			_ = newFile.Close()
 			return err
 		}

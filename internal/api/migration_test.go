@@ -14,7 +14,7 @@ import (
 // createLegacyV0Database creates a v0 database layout where Page 0 is the B+ tree root.
 func createLegacyV0Database(t *testing.T, dbPath string, records map[uint64][]byte) {
 	t.Helper()
-	disk, err := storage.OpenDiskManager(dbPath)
+	disk, err := storage.OpenDiskManagerWithoutChecksums(dbPath)
 	if err != nil {
 		t.Fatalf("failed to open disk manager: %v", err)
 	}

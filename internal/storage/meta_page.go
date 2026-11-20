@@ -20,11 +20,15 @@ const (
 	MetaMagic uint32 = 0x53414542
 
 	// MetaVersion is the current on-disk layout format version.
-	MetaVersion uint32 = 1
-)
+	//   1: original layout.
+	//   2: every page ends with a checksum trailer (see page_checksum.go), and
+	//      the meta page also records the free page list, the free-space map
+	//      and the search index snapshot.
+	MetaVersion uint32 = 2
 
-// MetaFlagEncrypted marks a database whose pages are encrypted (ADR 0003).
-const MetaFlagEncrypted uint32 = 1 << 0
+	// metaSize is the number of meta page bytes in use.
+	metaSize = 68
+)
 
 // MetaData holds persistent database-level metadata stored at Page 0.
 type MetaData struct {
@@ -33,22 +37,48 @@ type MetaData struct {
 	RootPageID        uint64
 	ActiveDataPageID  uint64
 	LastCheckpointLSN uint64
-	Flags             uint32 // MetaFlag* bits; zero in databases written before encryption existed
+
+	// Version 2 fields (zero in a version 1 file).
+	FreeListHead  uint64 // first page of the free page list, 0 if empty
+	SpaceMapHead  uint64 // first page of the saved free-space map, 0 if none
+	IndexSnapHead uint64 // first page of the saved search index, 0 if none
+	IndexSnapLSN  uint64 // checkpoint LSN the saved search index matches
+
+	// Flags holds MetaFlag* bits (version 2; zero before encryption existed).
+	Flags uint32
 }
 
-// EncodeMeta serializes MetaData into the first 36 bytes of Page 0.
+// MetaFlagEncrypted marks a database whose pages are encrypted (ADR 0003).
+const MetaFlagEncrypted uint32 = 1 << 0
+
+// EncodeMeta serializes MetaData into the first 68 bytes of Page 0.
 func EncodeMeta(page []byte, m MetaData) {
 	binary.LittleEndian.PutUint32(page[0:4], m.Magic)
 	binary.LittleEndian.PutUint32(page[4:8], m.Version)
 	binary.LittleEndian.PutUint64(page[8:16], m.RootPageID)
 	binary.LittleEndian.PutUint64(page[16:24], m.ActiveDataPageID)
 	binary.LittleEndian.PutUint64(page[24:32], m.LastCheckpointLSN)
-	binary.LittleEndian.PutUint32(page[32:36], m.Flags)
+	binary.LittleEndian.PutUint64(page[32:40], m.FreeListHead)
+	binary.LittleEndian.PutUint64(page[40:48], m.SpaceMapHead)
+	binary.LittleEndian.PutUint64(page[48:56], m.IndexSnapHead)
+	binary.LittleEndian.PutUint64(page[56:64], m.IndexSnapLSN)
+	binary.LittleEndian.PutUint32(page[64:68], m.Flags)
 }
+
+// metaVersionOf returns the format version page 0 claims, if it carries the magic.
+func metaVersionOf(page []byte) (uint32, bool) {
+	if len(page) < 8 || binary.LittleEndian.Uint32(page[0:4]) != MetaMagic {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint32(page[4:8]), true
+}
+
+// MetaVersionOf returns the format version page 0 claims, if it carries the magic.
+func MetaVersionOf(page []byte) (uint32, bool) { return metaVersionOf(page) }
 
 // DecodeMeta deserializes and validates MetaData from Page 0 bytes.
 func DecodeMeta(page []byte) (MetaData, error) {
-	if len(page) < 36 {
+	if len(page) < metaSize {
 		return MetaData{}, ErrDiskBufferTooSmall
 	}
 	magic := binary.LittleEndian.Uint32(page[0:4])
@@ -66,6 +96,29 @@ func DecodeMeta(page []byte) (MetaData, error) {
 		RootPageID:        binary.LittleEndian.Uint64(page[8:16]),
 		ActiveDataPageID:  binary.LittleEndian.Uint64(page[16:24]),
 		LastCheckpointLSN: binary.LittleEndian.Uint64(page[24:32]),
-		Flags:             binary.LittleEndian.Uint32(page[32:36]),
+		FreeListHead:      binary.LittleEndian.Uint64(page[32:40]),
+		SpaceMapHead:      binary.LittleEndian.Uint64(page[40:48]),
+		IndexSnapHead:     binary.LittleEndian.Uint64(page[48:56]),
+		IndexSnapLSN:      binary.LittleEndian.Uint64(page[56:64]),
+		Flags:             binary.LittleEndian.Uint32(page[64:68]),
+	}, nil
+}
+
+// DecodeMetaV1 reads the fields a version 1 meta page holds. It is used only
+// to migrate such a file to the current version.
+func DecodeMetaV1(page []byte) (MetaData, error) {
+	v, ok := metaVersionOf(page)
+	if !ok {
+		return MetaData{}, ErrInvalidMetaMagic
+	}
+	if v != 1 {
+		return MetaData{}, ErrInvalidMetaVersion
+	}
+	return MetaData{
+		Magic:             MetaMagic,
+		Version:           1,
+		RootPageID:        binary.LittleEndian.Uint64(page[8:16]),
+		ActiveDataPageID:  binary.LittleEndian.Uint64(page[16:24]),
+		LastCheckpointLSN: binary.LittleEndian.Uint64(page[24:32]),
 	}, nil
 }

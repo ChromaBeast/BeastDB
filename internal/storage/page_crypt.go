@@ -10,26 +10,26 @@ import (
 	"sync"
 )
 
-// Encrypted page layout (ADR 0003). The last PageReserve bytes of every page
+// Encrypted page layout (ADR 0003). The last EncReserve bytes of every page
 // of an encrypted database hold, in clear:
 //
-//	[PageDataEnd   : +16] AES-GCM tag
-//	[PageDataEnd+16: +28] nonce (random per encryption)
-//	[PageDataEnd+28: +30] key ID (uint16 LE)
-//	[PageDataEnd+30: +32] magic 0xBE01 (uint16 LE)
+//	[EncDataEnd   : +16] AES-GCM tag
+//	[EncDataEnd+16: +28] nonce (random per encryption)
+//	[EncDataEnd+28: +30] key ID (uint16 LE)
+//	[EncDataEnd+30: +32] magic 0xBE01 (uint16 LE)
 //
-// Bytes 0..PageDataEnd-1 are the ciphertext of the slotted page. The AAD is
+// Bytes 0..EncDataEnd-1 are the ciphertext of the slotted page. The AAD is
 // page ID | key ID, so a page moved to another position fails to open.
 const (
-	// PageReserve is the tail of each page of an encrypted database.
-	PageReserve = 32
-	// PageDataEnd is where slotted-page data ends in an encrypted database.
-	PageDataEnd = PageSize - PageReserve
+	// EncReserve is the tail of each page of an encrypted database.
+	EncReserve = 32
+	// EncDataEnd is where slotted-page data ends in an encrypted database.
+	EncDataEnd = PageSize - EncReserve
 
 	pageMagic    = 0xBE01
 	tagSize      = 16
 	nonceSize    = 12
-	tagOff       = PageDataEnd
+	tagOff       = EncDataEnd
 	nonceOff     = tagOff + tagSize
 	keyIDOff     = nonceOff + nonceSize
 	magicOff     = keyIDOff + 2
@@ -80,7 +80,7 @@ func (c *PageCipher) Seal(dst, plain []byte, pageID uint64) error {
 	binary.LittleEndian.PutUint16(dst[keyIDOff:], c.keyID)
 	binary.LittleEndian.PutUint16(dst[magicOff:], pageMagic)
 	a := c.aads.Get().(*[pageAADBytes]byte)
-	c.aead.Seal(dst[:0], nonce, plain[:PageDataEnd], c.setAAD(a, pageID, c.keyID))
+	c.aead.Seal(dst[:0], nonce, plain[:EncDataEnd], c.setAAD(a, pageID, c.keyID))
 	c.aads.Put(a)
 	return nil
 }
@@ -96,12 +96,12 @@ func (c *PageCipher) Open(page []byte, pageID uint64) error {
 		return ErrPageAuth
 	}
 	a := c.aads.Get().(*[pageAADBytes]byte)
-	_, err := c.aead.Open(page[:0], page[nonceOff:nonceOff+nonceSize], page[:PageDataEnd+tagSize], c.setAAD(a, pageID, keyID))
+	_, err := c.aead.Open(page[:0], page[nonceOff:nonceOff+nonceSize], page[:EncDataEnd+tagSize], c.setAAD(a, pageID, keyID))
 	c.aads.Put(a)
 	if err != nil {
 		return ErrPageAuth
 	}
-	clear(page[PageDataEnd:PageSize])
+	clear(page[EncDataEnd:PageSize])
 	return nil
 }
 

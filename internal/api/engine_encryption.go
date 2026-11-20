@@ -13,13 +13,6 @@ import (
 // the file was opened. Only damage or tampering produces it.
 var ErrEncryptionFlagMismatch = errors.New("engine: encryption flag in page 0 does not match the file format")
 
-// Options configures NewEngineWithOptions.
-type Options struct {
-	// KeyFile enables encryption at rest (ADR 0003): the path of the master key
-	// file. Empty means a plaintext database; opening an encrypted one then fails.
-	KeyFile string
-}
-
 // EncryptionInfo is what the running engine actually does, for status APIs.
 type EncryptionInfo struct {
 	Enabled bool   `json:"enabled"`
@@ -51,31 +44,20 @@ func (e *Engine) VerifyCipher() *storage.PageCipher { return e.disk.VerifyCipher
 // WALCipher returns the WAL cipher (nil when plaintext) for readers of the log.
 func (e *Engine) WALCipher() *wal.Cipher { return e.wal.Cipher() }
 
-// NewEngineWithOptions is NewEngine with options.
-func NewEngineWithOptions(dbPath, walPath string, poolSize int, opts Options) (*Engine, error) {
-	var keys *crypt.Keys
-	if opts.KeyFile != "" {
-		var err error
-		if keys, err = loadKeys(dbPath, opts.KeyFile, 1); err != nil {
-			return nil, err
-		}
-	}
-	return openEngineKeys(dbPath, walPath, poolSize, keys)
-}
-
 // openEngineKeys opens the engine with already unwrapped keys (nil: plaintext).
-func openEngineKeys(dbPath, walPath string, poolSize int, keys *crypt.Keys) (*Engine, error) {
+func openEngineKeys(dbPath, walPath string, poolSize int, keys *crypt.Keys, opts Options) (*Engine, error) {
 	var pc *storage.PageCipher
-	var wc *wal.Cipher
 	if keys != nil {
 		pc = storage.NewPageCipher(keys.PageAEAD(), keys.ID)
-		wc = wal.NewCipher(keys.WALAEAD(), keys.ID)
+		opts.walCipher = wal.NewCipher(keys.WALAEAD(), keys.ID)
+	} else {
+		opts.walCipher = nil
 	}
 	disk, err := storage.OpenDiskManagerEncrypted(dbPath, pc)
 	if err != nil {
 		return nil, err
 	}
-	return openEngineCipher(disk, dbPath, walPath, poolSize, true, wc)
+	return openEngine(disk, dbPath, walPath, poolSize, true, opts)
 }
 
 // loadKeys reads the master key and unwraps (or, for a new database, creates)

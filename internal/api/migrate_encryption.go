@@ -92,18 +92,18 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 		}
 	}
 
-	src, err := openEngineKeys(dbPath, walPath, pool, srcKeys)
+	src, err := openEngineKeys(dbPath, walPath, pool, srcKeys, Options{})
 	if err != nil {
 		cleanup()
 		return res, fmt.Errorf("open source: %w", err)
 	}
-	dst, err := openEngineKeys(tmpDB, tmpWAL, pool, dstKeys)
+	dst, err := openEngineKeys(tmpDB, tmpWAL, pool, dstKeys, Options{})
 	if err != nil {
 		_ = src.Close()
 		cleanup()
 		return res, fmt.Errorf("create destination: %w", err)
 	}
-	n, err := copyRecords(src, dst)
+	n, err := copyRecordsTo(src, dst)
 	_ = src.Close()
 	if err == nil {
 		err = dst.Close()
@@ -118,7 +118,7 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 
 	// Prove the new files open with the destination key and hold every record
 	// before anything of the original is touched.
-	check, err := openEngineKeys(tmpDB, tmpWAL, pool, dstKeys)
+	check, err := openEngineKeys(tmpDB, tmpWAL, pool, dstKeys, Options{})
 	if err != nil {
 		cleanup()
 		return res, fmt.Errorf("verify destination: %w", err)
@@ -145,10 +145,10 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 		return res, fmt.Errorf("verify destination: %w", err)
 	}
 
-	return res, swapMigrated(dbPath, walPath, tmpDB, tmpWAL, res.BackupSfx, o.DeleteOriginal, &res)
+	return res, swapMigrated(dbPath, walPath, tmpDB, tmpWAL, res.BackupSfx, o.DeleteOriginal, dstKeys != nil, &res)
 }
 
-func copyRecords(src, dst *Engine) (int, error) {
+func copyRecordsTo(src, dst *Engine) (int, error) {
 	cur, err := src.Scan(0, math.MaxUint64)
 	if err != nil {
 		return 0, err
@@ -188,41 +188,50 @@ func copyRecords(src, dst *Engine) (int, error) {
 	return total, flush()
 }
 
-// swapMigrated moves the originals aside and installs the migrated files. The
-// destination keyring is renamed last-but-one so a crash never leaves an
-// encrypted data file without its keyring: until the final data rename the
-// original data file is still in place.
-func swapMigrated(dbPath, walPath, tmpDB, tmpWAL, sfx string, deleteOrig bool, res *MigrateResult) error {
-	type pair struct{ from, to string }
-	// Originals: data file, WAL (+ archived generation), keyring if any, journal.
-	originals := []string{dbPath, walPath, walPath + ".bak", crypt.KeyringPath(dbPath), storage.JournalPath(dbPath)}
-	for _, p := range originals {
-		if _, err := os.Stat(p); err != nil {
-			continue
-		}
-		if deleteOrig {
-			if err := os.Remove(p); err != nil {
-				return err
+// swapMigrated installs the migrated files. Each original is first preserved
+// as <name><sfx> (a hard link, or a copy), then replaced by an atomic rename, so
+// no step leaves a path without a file. The keyring and WAL go in before the
+// data file; a crash in between fails loudly (a key or WAL format mismatch) and
+// the preserved originals allow a manual restore. With deleteOrig no copy is
+// kept.
+func swapMigrated(dbPath, walPath, tmpDB, tmpWAL, sfx string, deleteOrig, dstEncrypted bool, res *MigrateResult) error {
+	originals := []string{dbPath, walPath, walPath + ".bak", crypt.KeyringPath(dbPath)}
+	if !deleteOrig {
+		for _, p := range originals {
+			if _, err := os.Stat(p); err != nil {
+				continue
 			}
-			continue
+			bak := p + sfx
+			_ = os.Remove(bak)
+			if err := os.Link(p, bak); err != nil {
+				if err := copyFile(p, bak); err != nil {
+					return fmt.Errorf("keep original %s: %w", p, err)
+				}
+			}
+			res.Kept = append(res.Kept, bak)
 		}
-		bak := p + sfx
-		_ = os.Remove(bak)
-		if err := os.Rename(p, bak); err != nil {
-			return fmt.Errorf("keep original %s: %w", p, err)
-		}
-		res.Kept = append(res.Kept, bak)
+		syncDirOf(dbPath)
 	}
-	installs := []pair{{crypt.KeyringPath(tmpDB), crypt.KeyringPath(dbPath)}, {tmpWAL, walPath}, {tmpDB, dbPath}}
-	for _, p := range installs {
-		if _, err := os.Stat(p.from); err != nil {
+	for _, p := range [][2]string{{crypt.KeyringPath(tmpDB), crypt.KeyringPath(dbPath)}, {tmpWAL, walPath}, {tmpDB, dbPath}} {
+		if _, err := os.Stat(p[0]); err != nil {
 			continue
 		}
-		if err := os.Rename(p.from, p.to); err != nil {
-			return fmt.Errorf("install %s: %w", p.to, err)
+		if err := os.Rename(p[0], p[1]); err != nil {
+			return fmt.Errorf("install %s: %w", p[1], err)
 		}
+	}
+	// Originals the new database does not replace: the archived WAL generation,
+	// a keyring that no longer applies (decrypt) and the journal. A decrypted
+	// database must not keep the keyring of the encrypted one.
+	stale := []string{walPath + ".bak", storage.JournalPath(dbPath)}
+	if !dstEncrypted {
+		stale = append(stale, crypt.KeyringPath(dbPath))
+	}
+	for _, p := range stale {
+		_ = os.Remove(p)
 	}
 	_ = os.Remove(storage.JournalPath(tmpDB))
 	_ = os.Remove(storage.SpillPath(tmpDB))
+	syncDirOf(dbPath)
 	return nil
 }

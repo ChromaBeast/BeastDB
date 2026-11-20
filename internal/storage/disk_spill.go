@@ -18,14 +18,19 @@ func (d *DiskManager) SpillPage(pageID uint64, pageData []byte) error {
 		d.spillNext++
 		d.spillSlots[pageID] = slot
 	}
-	out := pageData[:PageSize]
 	if d.pc != nil {
 		if err := d.pc.Seal(d.scratch, pageData, pageID); err != nil {
 			return err
 		}
-		out = d.scratch
+		pageData = d.scratch
+	} else if d.checksums {
+		// Stamp a copy: the caller's buffer belongs to the buffer pool.
+		buf := make([]byte, PageSize)
+		copy(buf, pageData[:PageSize])
+		stampPage(pageID, buf)
+		pageData = buf
 	}
-	_, err := d.spill.WriteAt(out, slot*PageSize)
+	_, err := d.spill.WriteAt(pageData[:PageSize], slot*PageSize)
 	return err
 }
 

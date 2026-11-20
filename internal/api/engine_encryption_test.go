@@ -43,7 +43,9 @@ func (e encEnv) open(t *testing.T, pool int) *Engine {
 	return eng
 }
 
-func value(i int) []byte { return []byte(fmt.Sprintf("%s-%d-%s", secretMarker, i, strings.Repeat("v", 40))) }
+func value(i int) []byte {
+	return []byte(fmt.Sprintf("%s-%d-%s", secretMarker, i, strings.Repeat("v", 40)))
+}
 
 func fillEngine(t *testing.T, eng *Engine, n int) {
 	t.Helper()
@@ -127,7 +129,7 @@ func TestPlaintextEngineReportsEncryptionOff(t *testing.T) {
 
 // copyDir copies the database files as a crash would leave them: no Close, no
 // final checkpoint, spill file and journal as they stand.
-func crashCopy(t *testing.T, env encEnv) encEnv {
+func encCrashCopy(t *testing.T, env encEnv) encEnv {
 	t.Helper()
 	dst := t.TempDir()
 	for _, name := range []string{"beast.bin", "beast.wal", "beast.wal.bak", "beast.bin.keyring", "beast.bin-journal", "master.key"} {
@@ -161,7 +163,7 @@ func TestEncryptedCrashRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	crashed := crashCopy(t, env) // eng is never closed: this is the crash image
+	crashed := encCrashCopy(t, env) // eng is never closed: this is the crash image
 	rec := crashed.open(t, 16)
 	defer rec.Close()
 	for i := 1; i <= 900; i++ {
@@ -189,7 +191,7 @@ func TestEncryptedCrashWithTornWALTail(t *testing.T) {
 	env := newEncEnv(t)
 	eng := env.open(t, 32)
 	fillEngine(t, eng, 50)
-	crashed := crashCopy(t, env)
+	crashed := encCrashCopy(t, env)
 	// A torn final frame: half of a plausible frame appended.
 	f, err := os.OpenFile(crashed.wal, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
@@ -383,7 +385,7 @@ func TestTamperedWALMidLogIsDetected(t *testing.T) {
 	env := newEncEnv(t)
 	eng := env.open(t, 32)
 	fillEngine(t, eng, 30)
-	crashed := crashCopy(t, env) // un-checkpointed: the WAL holds every record
+	crashed := encCrashCopy(t, env) // un-checkpointed: the WAL holds every record
 	_ = eng.Close()
 	info, err := os.Stat(crashed.wal)
 	if err != nil {
@@ -400,7 +402,7 @@ func TestWALFormatMixIsRefused(t *testing.T) {
 	env := newEncEnv(t)
 	eng := env.open(t, 32)
 	fillEngine(t, eng, 5)
-	crashed := crashCopy(t, env)
+	crashed := encCrashCopy(t, env)
 	_ = eng.Close()
 	// Encrypted WAL under a plaintext reader.
 	if _, err := wal.OpenWAL(crashed.wal, false); !errors.Is(err, wal.ErrWALFormat) {

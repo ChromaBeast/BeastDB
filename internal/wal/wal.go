@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"io"
 	"os"
 	"sync"
 )
@@ -18,7 +17,7 @@ type WAL struct {
 	path        string
 	currentLSN  uint64
 	syncOnWrite bool
-	cipher      *Cipher // nil for a plaintext log
+	cipher      *Cipher // nil for a plaintext log (ADR 0003)
 
 	syncMu    sync.Mutex // serializes fsyncs; guards syncedLSN
 	syncedLSN uint64     // highest LSN known to be fsynced
@@ -26,9 +25,21 @@ type WAL struct {
 	syncErr   error      // sticky: after a failed fsync the log is untrustworthy
 }
 
-// OpenWAL opens an existing WAL file or creates a new one at the specified path.
-func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
-	return OpenWALCipher(path, syncOnWrite, nil)
+// Options tunes OpenWALWithOptions.
+type Options struct {
+	// TruncateCorrupt opens a log that is damaged in the middle by cutting it
+	// at the damage (the cut bytes are saved to <path>.discarded). Without it
+	// such a log fails to open with ErrCorruptLog.
+	TruncateCorrupt bool
+
+	// Cipher seals every record (encryption at rest). A log in the other
+	// format fails to open with ErrWALFormat.
+	Cipher *Cipher
+}
+
+// OpenWALCipher opens a log whose records are sealed with c (nil: plaintext).
+func OpenWALCipher(path string, syncOnWrite bool, c *Cipher) (*WAL, error) {
+	return OpenWALWithOptions(path, syncOnWrite, Options{Cipher: c})
 }
 
 // Encrypted reports whether this log seals its records.
@@ -38,9 +49,13 @@ func (w *WAL) Encrypted() bool { return w.cipher != nil }
 // such as replication catch-up, can open the same frames.
 func (w *WAL) Cipher() *Cipher { return w.cipher }
 
-// OpenWALCipher opens or creates a log whose records are sealed with c (nil:
-// plaintext). A log in the other format returns ErrWALFormat.
-func OpenWALCipher(path string, syncOnWrite bool, c *Cipher) (*WAL, error) {
+// OpenWAL opens an existing WAL file or creates a new one at the specified path.
+func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
+	return OpenWALWithOptions(path, syncOnWrite, Options{})
+}
+
+// OpenWALWithOptions is OpenWAL with options.
+func OpenWALWithOptions(path string, syncOnWrite bool, opts Options) (*WAL, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
@@ -50,25 +65,18 @@ func OpenWALCipher(path string, syncOnWrite bool, c *Cipher) (*WAL, error) {
 		file:        file,
 		path:        path,
 		syncOnWrite: syncOnWrite,
-		cipher:      c,
+		cipher:      opts.Cipher,
 	}
 
-	if c != nil {
-		_, empty, err := checkHeader(file, c)
-		if err == nil && empty {
-			err = writeHeader(file, c) // new log, or a header torn at creation
-		}
-		if err != nil {
-			_ = file.Close()
-			return nil, err
-		}
-	} else if _, _, err := checkHeader(file, nil); err != nil {
+	if err := w.prepareFormat(path); err != nil {
 		_ = file.Close()
 		return nil, err
 	}
 
-	// Scan existing file to determine the highest existing LSN
-	lastLSN, err := findHighestLSN(file, c)
+	// Scan the existing file for the highest LSN and cut off anything after
+	// the last valid record. Without the cut, new records would be appended
+	// behind a torn tail and never be reached by a later replay.
+	lastLSN, err := w.scanAndTrim(file, path, opts.TruncateCorrupt)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -79,7 +87,7 @@ func OpenWALCipher(path string, syncOnWrite bool, c *Cipher) (*WAL, error) {
 	if lastLSN == 0 {
 		archivePath := path + ".bak"
 		if archFile, err := os.Open(archivePath); err == nil {
-			if archLSN, err := findHighestLSN(archFile, c); err == nil && archLSN > lastLSN {
+			if archLSN, _, err := w.scanLog(archFile); err == nil && archLSN > lastLSN {
 				lastLSN = archLSN
 			}
 			_ = archFile.Close()
@@ -110,10 +118,10 @@ func (w *WAL) Append(opType byte, key, value []byte) (uint64, error) {
 
 	var encoded []byte
 	if w.cipher != nil {
-		var err error
 		if len(key)+len(value)+HeaderSize > MaxFrameSize {
 			return 0, ErrFrameTooLarge
 		}
+		var err error
 		if encoded, err = w.cipher.encode(rec); err != nil {
 			return 0, err
 		}
@@ -172,35 +180,6 @@ func (w *WAL) Path() string {
 	return w.path
 }
 
-func findHighestLSN(file *os.File, c *Cipher) (uint64, error) {
-	if c != nil {
-		return findHighestLSNEncrypted(file, c)
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return 0, err
-	}
-
-	var highest uint64
-	for {
-		rec, err := DecodeRecord(file)
-		if err != nil {
-			if err == io.EOF || err == io.ErrUnexpectedEOF || err == ErrTornWrite {
-				break
-			}
-			return 0, err
-		}
-		if rec.LSN > highest {
-			highest = rec.LSN
-		}
-	}
-
-	// Reset write offset back to end of file
-	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		return 0, err
-	}
-	return highest, nil
-}
-
 // FileSize returns the current byte size of the WAL file on disk.
 func (w *WAL) FileSize() int64 {
 	w.mu.Lock()
@@ -209,29 +188,4 @@ func (w *WAL) FileSize() int64 {
 		return info.Size()
 	}
 	return 0
-}
-
-func findHighestLSNEncrypted(file *os.File, c *Cipher) (uint64, error) {
-	off, empty, err := checkHeader(file, c)
-	if err != nil {
-		return 0, err
-	}
-	var highest uint64
-	if !empty {
-		if _, err := file.Seek(off, io.SeekStart); err != nil {
-			return 0, err
-		}
-		if _, err := c.scan(file, func(rec *Record) error {
-			if rec.LSN > highest {
-				highest = rec.LSN
-			}
-			return nil
-		}); err != nil {
-			return 0, err
-		}
-	}
-	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		return 0, err
-	}
-	return highest, nil
 }

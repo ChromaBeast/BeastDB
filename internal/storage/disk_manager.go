@@ -51,7 +51,12 @@ type DiskManager struct {
 
 	removeOnClose string // spill file path, removed on Close ("" for injected files)
 
-	pc      *PageCipher // nil for a plaintext database
+	// checksums is set for version 2 files: pages are stamped when written and
+	// verified when read. A version 1 (or older) file is opened without it,
+	// only so the engine can migrate it; its pages use all 4096 bytes.
+	checksums bool
+
+	pc      *PageCipher // nil for a plaintext database (encrypted pages carry a tag, not a checksum)
 	scratch []byte      // PageSize sealing buffer; used under mu (encrypted only)
 }
 
@@ -127,69 +132,69 @@ func OpenDiskManagerFilesEncrypted(data, journal, spill File, pc *PageCipher) (*
 	if err := d.checkFormat(); err != nil {
 		return nil, err
 	}
+	if pc == nil {
+		if d.checksums, err = d.detectChecksums(); err != nil {
+			return nil, err
+		}
+	}
+	// The journal was written before the mode was known; it holds full page
+	// images, so installing it does not depend on the mode.
 	return d, nil
 }
 
-// checkFormat compares the file's format (read from page 0's clear tail) with
-// the configured cipher. An empty file matches either.
-func (d *DiskManager) checkFormat() error {
+// OpenDiskManagerWithoutChecksums opens path as a file of a format older than
+// version 2: pages are neither stamped nor verified. It exists for tools and
+// tests that must produce such files; the engine never uses it.
+func OpenDiskManagerWithoutChecksums(path string) (*DiskManager, error) {
+	d, err := OpenDiskManager(path)
+	if err != nil {
+		return nil, err
+	}
+	d.checksums = false
+	return d, nil
+}
+
+// Checksums reports whether this file stamps and verifies page checksums
+// (format version 2). The engine migrates files that do not.
+//
+// An encrypted file counts: its pages are authenticated by the cipher's tag,
+// which replaces the checksum (ADR 0003), and it is always format version 2.
+func (d *DiskManager) Checksums() bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.checksums || d.pc != nil
+}
+
+// detectChecksums decides the file's format. An empty file is new and gets
+// checksums. Otherwise the file has them if page 0 claims format version 2,
+// or if any of its first few pages carries a valid checksum: the second test
+// keeps verification on for a version 2 file whose page 0 is damaged, so the
+// damage is reported instead of being mistaken for an older format.
+func (d *DiskManager) detectChecksums() (bool, error) {
 	if d.numPages == 0 {
-		return nil
-	}
-	var p [PageSize]byte
-	if _, err := d.file.ReadAt(p[:], 0); err != nil {
-		return err
-	}
-	enc := IsEncryptedPage(p[:])
-	switch {
-	case enc && d.pc == nil:
-		return ErrEncryptedNoKey
-	case !enc && d.pc != nil:
-		return ErrNotEncrypted
-	}
-	return nil
-}
-
-// Encrypted reports whether this disk manager seals pages.
-func (d *DiskManager) Encrypted() bool { return d.pc != nil }
-
-// KeyID returns the key generation of an encrypted database, or 0.
-func (d *DiskManager) KeyID() uint16 {
-	if d.pc == nil {
-		return 0
-	}
-	return d.pc.KeyID()
-}
-
-// PageEnd is where tuple data may end on a page: PageSize, or PageDataEnd
-// when the tail is reserved for the encryption tag.
-func (d *DiskManager) PageEnd() int {
-	if d.pc != nil {
-		return PageDataEnd
-	}
-	return PageSize
-}
-
-// readPhysical reads one physical page into buf (PageSize bytes). unwritten is
-// true when the page lies wholly past the end of src.
-func readPhysical(src File, buf []byte, offset int64) (unwritten bool, err error) {
-	n, err := src.ReadAt(buf[:PageSize], offset)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, err
-	}
-	if n == 0 {
-		clear(buf[:PageSize])
 		return true, nil
 	}
-	if n < PageSize {
-		return false, io.ErrUnexpectedEOF
+	buf := make([]byte, PageSize)
+	for id := uint64(0); id < min(d.numPages, 8); id++ {
+		clear(buf)
+		if _, err := d.file.ReadAt(buf, int64(id*PageSize)); err != nil && !errors.Is(err, io.EOF) {
+			return false, err
+		}
+		if id == 0 {
+			if v, ok := metaVersionOf(buf); ok && v >= MetaVersion {
+				return true, nil
+			}
+		}
+		if !allZero(buf) && checksumValid(id, buf) {
+			return true, nil
+		}
 	}
 	return false, nil
 }
 
 // ReadPage reads the current version of a page: from the spill file if it was
 // evicted since the last checkpoint, otherwise from the data file. A page past
-// the end of the data file reads as zeros.
+// the end of the data file reads as zeros, whatever pageData held before.
 func (d *DiskManager) ReadPage(pageID uint64, pageData []byte) error {
 	if len(pageData) < PageSize {
 		return ErrDiskBufferTooSmall
@@ -202,9 +207,13 @@ func (d *DiskManager) ReadPage(pageID uint64, pageData []byte) error {
 	}
 	if d.pc == nil {
 		defer d.mu.Unlock()
-		_, err := src.ReadAt(pageData[:PageSize], offset)
+		n, err := src.ReadAt(pageData[:PageSize], offset)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
+		}
+		clear(pageData[n:PageSize]) // the part past the end of the file reads as zeros
+		if d.checksums {
+			return verifyPage(pageID, pageData)
 		}
 		return nil
 	}
@@ -283,6 +292,63 @@ func syncDir(path string) {
 	_ = dir.Close()
 }
 
+// checkFormat compares the file's format (read from page 0's clear tail) with
+// the configured cipher. An empty file matches either.
+func (d *DiskManager) checkFormat() error {
+	if d.numPages == 0 {
+		return nil
+	}
+	var p [PageSize]byte
+	if _, err := d.file.ReadAt(p[:], 0); err != nil {
+		return err
+	}
+	enc := IsEncryptedPage(p[:])
+	switch {
+	case enc && d.pc == nil:
+		return ErrEncryptedNoKey
+	case !enc && d.pc != nil:
+		return ErrNotEncrypted
+	}
+	return nil
+}
+
+// Encrypted reports whether this disk manager seals pages.
+func (d *DiskManager) Encrypted() bool { return d.pc != nil }
+
+// KeyID returns the key generation of an encrypted database, or 0.
+func (d *DiskManager) KeyID() uint16 {
+	if d.pc == nil {
+		return 0
+	}
+	return d.pc.KeyID()
+}
+
+// PageEnd is where tuple and chain data may end on a page: EncDataEnd when the
+// tail holds the encryption tag, otherwise PageDataEnd (the checksum trailer).
+func (d *DiskManager) PageEnd() int {
+	if d.pc != nil {
+		return EncDataEnd
+	}
+	return PageDataEnd
+}
+
+// readPhysical reads one physical page into buf (PageSize bytes). unwritten is
+// true when the page lies wholly past the end of src.
+func readPhysical(src File, buf []byte, offset int64) (unwritten bool, err error) {
+	n, err := src.ReadAt(buf[:PageSize], offset)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	if n == 0 {
+		clear(buf[:PageSize])
+		return true, nil
+	}
+	if n < PageSize {
+		return false, io.ErrUnexpectedEOF
+	}
+	return false, nil
+}
+
 // FileEncrypted inspects a data file's clear page tail. exists is false for a
 // missing or empty file, which matches either format.
 func FileEncrypted(path string) (exists, encrypted bool, err error) {
@@ -307,7 +373,7 @@ func FileEncrypted(path string) (exists, encrypted bool, err error) {
 
 // VerifyCipher returns an independent cipher over the same key for checking
 // files (backup verification) concurrently with normal operation, or nil for
-// a plaintext database. A PageCipher itself is not safe for concurrent use.
+// a plaintext database.
 func (d *DiskManager) VerifyCipher() *PageCipher {
 	if d.pc == nil {
 		return nil

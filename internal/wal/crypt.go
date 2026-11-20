@@ -29,9 +29,9 @@ const (
 )
 
 var (
-	// ErrWALTampered: a frame fails authentication although a later frame
-	// authenticates, so it cannot be a torn tail.
-	ErrWALTampered = errors.New("wal: record failed authentication but later records are valid (tampering or corruption)")
+	// ErrWALTampered is ErrCorruptLog: a frame fails authentication although a
+	// later frame authenticates, so it cannot be a torn tail.
+	ErrWALTampered = ErrCorruptLog
 	// ErrWALFormat: an encrypted engine met a plaintext log, or the reverse.
 	ErrWALFormat = errors.New("wal: log encryption format does not match the database (run beastctl encrypt/decrypt)")
 	errFrameAuth = errors.New("wal: frame failed authentication")
@@ -163,15 +163,48 @@ func checkHeader(f *os.File, c *Cipher) (off int64, empty bool, err error) {
 	return encHeaderSize, false, nil
 }
 
-// writeHeader makes f (just created or truncated) a valid empty encrypted log.
-func writeHeader(f *os.File, c *Cipher) error {
-	if err := f.Truncate(0); err != nil {
+// writeHeader makes the file at path (f is its append handle) a valid empty
+// encrypted log. A torn header is cut through a separate handle first: an
+// append-only handle cannot truncate on Windows.
+func writeHeader(f *os.File, path string, c *Cipher) error {
+	if info, err := f.Stat(); err != nil {
 		return err
+	} else if info.Size() > 0 {
+		if err := truncateFile(path, 0); err != nil {
+			return err
+		}
 	}
 	if _, err := f.Write(c.header()); err != nil {
 		return err
 	}
 	return f.Sync()
+}
+
+// prepareFormat checks the log's format against the cipher and gives a new
+// encrypted log its header.
+func (w *WAL) prepareFormat(path string) error {
+	_, empty, err := checkHeader(w.file, w.cipher)
+	if err != nil {
+		return err
+	}
+	if w.cipher != nil && empty {
+		return writeHeader(w.file, path, w.cipher)
+	}
+	return nil
+}
+
+func (w *WAL) scanLog(f *os.File) (uint64, int64, error) {
+	if w.cipher != nil {
+		return scanLogEncrypted(f, w.cipher)
+	}
+	return scanLog(f)
+}
+
+func (w *WAL) scanAndTrim(f *os.File, path string, truncateCorrupt bool) (uint64, error) {
+	if w.cipher != nil {
+		return scanAndTrimEncrypted(f, path, w.cipher, truncateCorrupt)
+	}
+	return scanAndTrim(f, path, truncateCorrupt)
 }
 
 // ReplayWith is Replay for a log written with cipher c (nil: plaintext).
