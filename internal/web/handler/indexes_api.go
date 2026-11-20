@@ -49,7 +49,7 @@ func toIndexEntry(i api.IndexInfo) IndexEntry {
 // IndexesHandler serves /api/indexes: GET lists (any signed-in user),
 // POST {name, collection, field, type} creates and DELETE ?name= drops (admin only).
 func (h *APIHandler) IndexesHandler(w http.ResponseWriter, r *http.Request) {
-	store, ok := h.engine.(IndexStore)
+	store, ok := h.raw.(IndexStore)
 	if !ok {
 		http.Error(w, "Indexes are not supported by this engine", http.StatusNotImplemented)
 		return
@@ -134,7 +134,7 @@ func writeIndexError(w http.ResponseWriter, err error) {
 // getRecordsByIndex serves GET /api/records?index=NAME&eq=V (or gte=/lte=):
 // matching records in ascending key order, paged like the unfiltered scan.
 func (h *APIHandler) getRecordsByIndex(w http.ResponseWriter, r *http.Request, start, end uint64, limit int) {
-	store, ok := h.engine.(IndexStore)
+	store, ok := h.raw.(IndexStore)
 	if !ok {
 		http.Error(w, "Indexes are not supported by this engine", http.StatusNotImplemented)
 		return

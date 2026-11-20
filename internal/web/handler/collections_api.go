@@ -33,7 +33,7 @@ func toEntry(c api.Collection) CollectionEntry {
 // CollectionsHandler serves /api/collections: GET lists (any signed-in user),
 // POST {name, prefix?} creates and DELETE ?name= drops (admin only).
 func (h *APIHandler) CollectionsHandler(w http.ResponseWriter, r *http.Request) {
-	store, ok := h.engine.(CollectionStore)
+	store, ok := h.raw.(CollectionStore)
 	if !ok {
 		http.Error(w, "Collections are not supported by this engine", http.StatusNotImplemented)
 		return

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
@@ -89,4 +91,23 @@ func initTokenStore(engine *api.Engine) *auth.TokenStore {
 		}
 		return records, nil
 	})
+}
+
+// reloadTokens refreshes the token index from storage every interval until ctx ends.
+func reloadTokens(ctx context.Context, ts *auth.TokenStore, interval time.Duration) {
+	if ts == nil {
+		return
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := ts.Reload(); err != nil {
+				log.Printf("token reload failed: %v", err)
+			}
+		}
+	}
 }

@@ -184,6 +184,10 @@ func main() {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}
 		defer conn.Close()
+		// Tokens arrive through replication, so refresh the in-memory index
+		// periodically; otherwise a token revoked on the leader stays valid
+		// here until this node restarts.
+		go reloadTokens(ctx, tokenStore, 15*time.Second)
 		cluster.RunFollower(ctx, replication.NewFollowerClient(*replicaID, engine, conn))
 	case replication.RoleFenced:
 		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Rejoin it as a follower with `beastctl rejoin` (refused if it holds writes the new leader lacks), or wipe its data directory to reseed it.", cluster.Epoch())

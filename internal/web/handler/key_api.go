@@ -91,6 +91,10 @@ func (h *APIHandler) PutKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Record already exists", http.StatusConflict)
 		return
 	}
+	if errors.Is(writeErr, api.ErrSystemKey) {
+		http.Error(w, "Key is in the reserved system partition", http.StatusForbidden)
+		return
+	}
 	if writeErr != nil {
 		http.Error(w, "Engine error", http.StatusInternalServerError)
 		return
@@ -126,7 +130,10 @@ func (h *APIHandler) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, api.ErrCatalogKey.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := h.engine.Delete(key); err != nil {
+	if err := h.engine.Delete(key); errors.Is(err, api.ErrSystemKey) {
+		http.Error(w, "Key is in the reserved system partition", http.StatusForbidden)
+		return
+	} else if err != nil {
 		http.Error(w, "Engine error", http.StatusInternalServerError)
 		return
 	}

@@ -24,6 +24,11 @@ func MessageSizeDialOption() grpc.DialOption {
 	return grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(MaxGRPCMessageSize), grpc.MaxCallSendMsgSize(MaxGRPCMessageSize))
 }
 
+// systemKeyStatus is the reply to any request that names a reserved system key.
+func systemKeyStatus() error {
+	return status.Errorf(codes.PermissionDenied, "%v", ErrSystemKey)
+}
+
 // writeStatus maps engine write errors to gRPC status codes.
 func writeStatus(err error, op string) error {
 	switch {

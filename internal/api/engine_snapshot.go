@@ -77,7 +77,7 @@ func copyFileSynced(srcPath, dstPath string) error {
 		return err
 	}
 	defer src.Close()
-	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	dst, err := os.OpenFile(dstPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}

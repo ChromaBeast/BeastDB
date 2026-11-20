@@ -72,7 +72,7 @@ func (h *APIHandler) PostCheckpoint(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	cp, ok := h.engine.(Checkpointer)
+	cp, ok := h.raw.(Checkpointer)
 	if !ok {
 		http.Error(w, "checkpoint not supported by this engine", http.StatusNotImplemented)
 		return

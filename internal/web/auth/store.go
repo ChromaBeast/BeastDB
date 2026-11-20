@@ -29,13 +29,46 @@ func NewUserStore(e EngineWriter) *UserStore {
 	return &UserStore{engine: e}
 }
 
-// sysUserKey hashes "_sys:user:<username>" into a stable uint64 B+ Tree key.
-// FNV-1a is used for speed — collisions are astronomically unlikely for usernames.
+// sysUserKey maps a username to its key in the reserved system partition
+// (the one that also holds API tokens), which client-facing APIs cannot
+// address. FNV-1a collisions are astronomically unlikely for usernames.
 func sysUserKey(username string) uint64 {
+	return (uint64(TokenPartitionPrefix) << 56) | (legacyUserKey(username) & 0x00ffffffffffffff)
+}
+
+// legacyUserKey is where user records lived before they moved into the system
+// partition: anywhere in the client keyspace.
+func legacyUserKey(username string) uint64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte("_sys:user:"))
 	_, _ = h.Write([]byte(username))
 	return h.Sum64()
+}
+
+// MigrateLegacyUser moves username's record from its pre-system-partition key
+// to the reserved one. It is meant to run once at startup for known accounts;
+// logins never fall back to the legacy key, because clients can write there.
+// It reports whether a record was moved.
+func (s *UserStore) MigrateLegacyUser(username string) (bool, error) {
+	oldKey, newKey := legacyUserKey(username), sysUserKey(username)
+	if oldKey == newKey {
+		return false, nil
+	}
+	if _, exists, err := s.engine.Get(newKey); err != nil || exists {
+		return false, err
+	}
+	data, exists, err := s.engine.Get(oldKey)
+	if err != nil || !exists {
+		return false, err
+	}
+	u, err := UnmarshalUser(data)
+	if err != nil || u.Username != username || u.PasswordHash == "" {
+		return false, nil // some other record that happens to live at that key
+	}
+	if err := s.engine.Put(newKey, data); err != nil {
+		return false, err
+	}
+	return true, s.engine.Delete(oldKey)
 }
 
 // CreateUser hashes the password and persists the user record.
