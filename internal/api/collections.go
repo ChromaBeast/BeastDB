@@ -38,7 +38,7 @@ var (
 	ErrCollectionNotFound    = errors.New("collections: not found")
 	ErrCollectionNotEmpty    = errors.New("collections: collection still holds records")
 	ErrNoFreePrefix          = errors.New("collections: no free prefix left")
-	ErrCatalogKey            = errors.New("collections: key is reserved for the collection catalog")
+	ErrCatalogKey            = errors.New("collections: key is reserved for the collection or index catalog")
 )
 
 // CollectionKey composes a key from a prefix and a 56-bit local key.
@@ -54,8 +54,9 @@ func CollectionRange(prefix uint8) (start, end uint64) {
 	return uint64(prefix) << 56, uint64(prefix)<<56 | maxLocalKey
 }
 
-// IsCatalogKey reports whether key is the reserved catalog record.
-func IsCatalogKey(key uint64) bool { return key == CatalogKey }
+// IsCatalogKey reports whether key is a reserved catalog record (collections
+// or indexes) that only the catalog APIs may write.
+func IsCatalogKey(key uint64) bool { return key == CatalogKey || key == IndexCatalogKey }
 
 func validCollectionName(name string) bool {
 	if len(name) == 0 || len(name) > maxCollectionName {
@@ -206,6 +207,11 @@ func (e *Engine) DropCollection(name string) error {
 		}
 		if has {
 			return ErrCollectionNotEmpty
+		}
+		if hasIdx, err := e.hasIndexesOn(entries[idx].Prefix); err != nil {
+			return err
+		} else if hasIdx {
+			return ErrCollectionHasIndexes
 		}
 		rest := append(entries[:idx:idx], entries[idx+1:]...)
 		if len(rest) == 0 {

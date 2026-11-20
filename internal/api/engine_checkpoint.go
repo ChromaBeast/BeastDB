@@ -12,7 +12,8 @@ import (
 // Close flushes all dirty pages to physical disk and releases file handles.
 func (e *Engine) Close() error {
 	e.stopCommitter() // drain queued writes before tearing down files
-	e.imageMu.Lock()  // wait for a snapshot copy of the data file
+	e.stopIndexBuilds()
+	e.imageMu.Lock() // wait for a snapshot copy of the data file
 	defer e.imageMu.Unlock()
 	e.mu.Lock()
 	defer e.mu.Unlock()

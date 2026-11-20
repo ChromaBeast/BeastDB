@@ -153,3 +153,17 @@ export interface SearchResponse {
 }
 
 
+
+/** One secondary index exactly as /api/indexes reports it (ADR 0005). */
+export interface IndexEntry {
+  name: string;
+  collection: string;
+  prefix: number;
+  field: string;
+  type: "int" | "string";
+  state: "building" | "ready";
+  entries: number;
+  skipped: number;
+  examined: number;
+  createdAt: number;
+}

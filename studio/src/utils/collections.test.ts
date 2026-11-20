@@ -27,4 +27,8 @@ describe("collection registry", () => {
   test("unnamed prefixes keep their generic label when the catalog is empty", () => {
     expect(getPartitionMeta(32).label).toBe("Collection 20");
   });
+
+  test("the reserved catalog prefix is labelled as a system partition, not a collection", () => {
+    expect(getPartitionMeta(255).label).toBe("System catalog");
+  });
 });

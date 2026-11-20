@@ -57,6 +57,8 @@ const (
 	ActionBackupCopy       = "backup.copy"
 	ActionCollectionCreate = "collection.create"
 	ActionCollectionDrop   = "collection.drop"
+	ActionIndexCreate      = "index.create"
+	ActionIndexDrop        = "index.drop"
 	ActionPromote          = "replication.promote"
 	ActionRejoin           = "replication.rejoin"
 

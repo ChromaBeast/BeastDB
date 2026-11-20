@@ -93,6 +93,11 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if r.URL.Query().Get("index") != "" {
+		h.getRecordsByIndex(w, r, startKey, endKey, limit)
+		return
+	}
+
 	records, nextKey, hasMore, err := h.engine.ScanRecordsBounded(startKey, endKey, limit)
 	if err != nil {
 		http.Error(w, "Engine scan error", http.StatusInternalServerError)

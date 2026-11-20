@@ -27,6 +27,9 @@ func printUsage() {
 	fmt.Println("  decrypt            Convert a stopped encrypted database back to plaintext (--key-file)")
 	fmt.Println("  rekey              Re-encrypt a stopped database under a new master key and data key (--key-file, --new-key-file); --rewrap-only changes just the master key, no data rewrite")
 	fmt.Println("  rejoin             Rejoin a fenced node as a follower of the new leader (refused if it holds writes the leader lacks)")
+	fmt.Println("  collections        list | create | drop named collections (key prefixes)")
+	fmt.Println("  index              list | create | drop secondary indexes on JSON fields")
+	fmt.Println("  scan               Stream records in a key range, optionally filtered by an index")
 	fmt.Println("  get                Retrieve a record value by its 64-bit key")
 	fmt.Println("  put                Store or update a key-value record")
 	fmt.Println("  delete             Tombstone/delete a record by its 64-bit key")
@@ -38,6 +41,9 @@ func printUsage() {
 	fmt.Println("  beastctl seed --file ./fixtures/seed.json")
 	fmt.Println("  beastctl put --key 72057594037927936 --value '{\"username\":\"charlie\"}'")
 	fmt.Println("  beastctl get --key 72057594037927936")
+	fmt.Println("  beastctl collections create --name users")
+	fmt.Println("  beastctl index create --name by-age --collection users --field age --type int")
+	fmt.Println("  beastctl scan --index by-age --gte 21 --lte 30 --limit 50")
 }
 
 func main() {
@@ -111,6 +117,64 @@ func main() {
 		key := fs.Uint64("key", 0, "64-bit record key")
 		_ = fs.Parse(args)
 		handleErr(runDelete(*addr, *key))
+
+	case "collections":
+		fs := flag.NewFlagSet("collections", flag.ExitOnError)
+		addr := fs.String("addr", "127.0.0.1:50051", "BeastDB gRPC address")
+		name := fs.String("name", "", "Collection name (create, drop)")
+		prefix := fs.Int("prefix", -1, "create: bind to this key prefix 0-255 (default: first free)")
+		if len(args) < 1 {
+			fmt.Println("Usage: beastctl collections <list|create|drop> [flags]")
+			os.Exit(1)
+		}
+		_ = fs.Parse(args[1:])
+		handleErr(runCollections(*addr, args[0], *name, *prefix))
+
+	case "index":
+		fs := flag.NewFlagSet("index", flag.ExitOnError)
+		addr := fs.String("addr", "127.0.0.1:50051", "BeastDB gRPC address")
+		name := fs.String("name", "", "Index name (create, drop)")
+		collection := fs.String("collection", "", "create: collection to index")
+		field := fs.String("field", "", "create: dotted JSON field path, e.g. address.city")
+		typ := fs.String("type", "", `create: "int" or "string"`)
+		if len(args) < 1 {
+			fmt.Println("Usage: beastctl index <list|create|drop> [flags]")
+			os.Exit(1)
+		}
+		_ = fs.Parse(args[1:])
+		handleErr(runIndexCmd(*addr, args[0], *name, *collection, *field, *typ))
+
+	case "scan":
+		fs := flag.NewFlagSet("scan", flag.ExitOnError)
+		addr := fs.String("addr", "127.0.0.1:50051", "BeastDB gRPC address")
+		var a scanArgs
+		fs.Uint64Var(&a.start, "start", 0, "First key of the range")
+		fs.Uint64Var(&a.end, "end", ^uint64(0), "Last key of the range (inclusive)")
+		fs.Uint64Var(&a.limit, "limit", 0, "Maximum records (0 = no limit)")
+		fs.StringVar(&a.index, "index", "", "Filter through this secondary index")
+		fs.StringVar(&a.eq, "eq", "", "With --index: field equals value")
+		fs.StringVar(&a.gte, "gte", "", "With --index: field >= value")
+		fs.StringVar(&a.lte, "lte", "", "With --index: field <= value")
+		_ = fs.Parse(args)
+		fs.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "eq":
+				a.hasEq = true
+			case "gte":
+				a.hasGte = true
+			case "lte":
+				a.hasLte = true
+			}
+		})
+		if a.index != "" && !a.hasEq && !a.hasGte && !a.hasLte {
+			fmt.Println("Error: --index needs --eq, or --gte and/or --lte.")
+			os.Exit(1)
+		}
+		if a.index == "" && (a.hasEq || a.hasGte || a.hasLte) {
+			fmt.Println("Error: --eq/--gte/--lte need --index.")
+			os.Exit(1)
+		}
+		handleErr(runScan(*addr, a))
 
 	case "backup":
 		fs := flag.NewFlagSet("backup", flag.ExitOnError)

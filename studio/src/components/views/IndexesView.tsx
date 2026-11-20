@@ -7,12 +7,14 @@ import { StatCard, StatGrid } from "../StatCard";
 import { formatBytes } from "../../utils/format";
 import { PartitionTable, PartitionRow } from "../PartitionTable";
 import { BufferPoolCard, PrimaryIndexCard, SecondaryIndexCard } from "../IndexCards";
+import { FieldIndexes } from "../indexes/FieldIndexes";
 import { api } from "../../lib/api-client";
 import { getPartitionMeta } from "../../utils/key-decoder";
 import type { PartitionConfig, TelemetryStats } from "../../types";
 import type { ViewProps } from "./types";
 
-export function IndexesView({ stats, onRefresh }: ViewProps) {
+export function IndexesView({ stats, user, onNotice, onRefresh }: ViewProps) {
+  const [fieldCount, setFieldCount] = useState(0);
   const [counted, setCounted] = useState<TelemetryStats | null>(null);
   const [labels, setLabels] = useState<PartitionConfig[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function IndexesView({ stats, onRefresh }: ViewProps) {
       <PageHeader
         id="indexes-title"
         title="Indexes"
-        subtitle="How records are located: the primary B+ tree and the secondary text index."
+        subtitle="How records are located: the primary B+ tree, the text index and the field indexes you define."
         actions={
           <Button variant="outline" size="sm" onClick={() => { onRefresh(); void load(); }} disabled={loading}>
             <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} aria-hidden />Refresh
@@ -69,7 +71,7 @@ export function IndexesView({ stats, onRefresh }: ViewProps) {
       )}
 
       <StatGrid cols={3}>
-        <StatCard label="Indexes" value="2" hint="primary B+ tree · text index" />
+        <StatCard label="Indexes" value={`${2 + fieldCount}`} hint={`primary B+ tree · text index · ${fieldCount} field`} />
         <StatCard label="Data file" value={storage ? formatBytes(storage.diskSizeBytes) : "—"} hint={`${storage?.totalPages ?? 0} pages × 4 KiB`} />
         <StatCard label="Partitions in use" value={`${rows.length}`} hint={`${rows.reduce((n, r) => n + r.count, 0).toLocaleString()} records`} />
       </StatGrid>
@@ -79,6 +81,8 @@ export function IndexesView({ stats, onRefresh }: ViewProps) {
         <BufferPoolCard storage={storage} />
         <SecondaryIndexCard />
       </div>
+
+      <FieldIndexes canWrite={user?.role === "admin"} onNotice={onNotice} onCount={setFieldCount} />
 
       <PartitionTable rows={rows} />
     </section>
