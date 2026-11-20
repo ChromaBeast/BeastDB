@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -8,8 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // crashCopy copies a live database's files to a new directory, which is the
@@ -267,4 +271,35 @@ func TestScanChunkResumes(t *testing.T) {
 	}
 	// A cursor is not left open between chunks, so a write must not block.
 	mustPut(t, e, 26, "v")
+}
+
+func TestGRPCRejectsSystemKeys(t *testing.T) {
+	e := openAt(t, t.TempDir())
+	defer e.Close()
+	sys := uint64(SystemPartition)<<56 | 42
+	mustPut(t, e, sys, "secret") // as the server's own stores would
+	mustPut(t, e, 1, "user")
+	s := &GRPCServer{engine: e}
+	ctx := context.Background()
+
+	denied := func(name string, err error) {
+		t.Helper()
+		if status.Code(err) != codes.PermissionDenied {
+			t.Fatalf("%s on a system key: got %v, want PermissionDenied", name, err)
+		}
+	}
+	_, err := s.Get(ctx, &beastv1.GetRequest{Key: sys})
+	denied("Get", err)
+	_, err = s.Put(ctx, &beastv1.PutRequest{Key: sys, Value: []byte("x")})
+	denied("Put", err)
+	_, err = s.Delete(ctx, &beastv1.DeleteRequest{Key: sys})
+	denied("Delete", err)
+	_, err = s.BatchWrite(ctx, &beastv1.BatchWriteRequest{Operations: []*beastv1.BatchOperation{
+		{OpType: beastv1.BatchOpType_BATCH_OP_TYPE_PUT, Key: sys, Value: []byte("x")},
+	}})
+	denied("BatchWrite", err)
+
+	if v, _, _ := e.Get(sys); string(v) != "secret" {
+		t.Fatalf("system record was modified: %q", v)
+	}
 }
