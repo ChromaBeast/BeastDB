@@ -23,10 +23,13 @@ type Result struct {
 	Error string    `json:"error,omitempty"`
 }
 
-// Status is a listed backup plus its last known verification.
+// Status is a listed backup plus its last known verification and off-host copy.
 type Status struct {
 	Info
 	Verified *Result `json:"verified"` // nil until verified since this process started
+	// Offsite is the last off-host copy attempt since this process started; nil
+	// when none was made (no destination, paused, or an older backup).
+	Offsite *Result `json:"offsite"`
 }
 
 // Manager owns the backup directory, serialises backups and runs the optional
@@ -36,8 +39,13 @@ type Manager struct {
 	eng  Snapshotter
 
 	run     sync.Mutex // held while a backup is being created
+	copyMu  sync.Mutex // one off-host copy at a time
 	mu      sync.Mutex // guards results and schedule fields
 	results map[string]Result
+	offsite map[string]Result
+	dest    Destination // nil when no off-host destination is configured
+	copyOn  bool
+	onCopy  func(id string, r Result) // observes automatic copies (audit log)
 	every   time.Duration
 	keep    int
 	wake    chan struct{}
@@ -45,7 +53,7 @@ type Manager struct {
 
 // NewManager returns a Manager storing backups under root.
 func NewManager(eng Snapshotter, root string) *Manager {
-	return &Manager{root: root, eng: eng, results: map[string]Result{}, keep: 7, wake: make(chan struct{}, 1)}
+	return &Manager{root: root, eng: eng, results: map[string]Result{}, offsite: map[string]Result{}, keep: 7, copyOn: true, wake: make(chan struct{}, 1)}
 }
 
 // Dir is the backup directory.
@@ -61,8 +69,98 @@ func (m *Manager) Create(kind, actor string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	m.record(info.ID)
+	if m.record(info.ID).OK {
+		m.copyOut(info.ID) // never ship a bundle that failed its own check
+	}
 	return info, nil
+}
+
+// SetDestination sets where finished backups are also copied. Call before
+// Start; nil means local only.
+func (m *Manager) SetDestination(d Destination) {
+	m.mu.Lock()
+	m.dest = d
+	m.mu.Unlock()
+}
+
+// SetOffsite turns the off-host copy of new backups on or off at run time.
+func (m *Manager) SetOffsite(on bool) {
+	m.mu.Lock()
+	m.copyOn = on
+	m.mu.Unlock()
+}
+
+// DestinationInfo describes the configured destination without any secret.
+type DestinationInfo struct {
+	Kind    string `json:"kind"`
+	Where   string `json:"where"`
+	Enabled bool   `json:"enabled"`
+}
+
+// DestinationInfo returns the destination, or nil when none is configured.
+func (m *Manager) DestinationInfo() *DestinationInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.dest == nil {
+		return nil
+	}
+	return &DestinationInfo{Kind: m.dest.Kind(), Where: m.dest.Where(), Enabled: m.copyOn}
+}
+
+// ErrNoDestination is returned by CopyOffsite when none is configured.
+var ErrNoDestination = errors.New("no off-host destination is configured")
+
+// copyOut copies a backup to the destination when one is configured and enabled.
+func (m *Manager) copyOut(id string) {
+	m.mu.Lock()
+	d, on := m.dest, m.copyOn
+	m.mu.Unlock()
+	if d == nil || !on {
+		return
+	}
+	r, err := m.CopyOffsite(id)
+	m.mu.Lock()
+	fn := m.onCopy
+	m.mu.Unlock()
+	if fn != nil && err == nil {
+		fn(id, r)
+	}
+}
+
+// SetCopyObserver registers fn to be told the outcome of each automatic
+// off-host copy (not the ones an admin asks for, whose handler reports them).
+func (m *Manager) SetCopyObserver(fn func(id string, r Result)) {
+	m.mu.Lock()
+	m.onCopy = fn
+	m.mu.Unlock()
+}
+
+// CopyOffsite copies one backup to the destination now (also used to retry a
+// failed copy) and records the outcome. It does not require the automatic
+// copy to be switched on, since an admin asked for it.
+func (m *Manager) CopyOffsite(id string) (Result, error) {
+	m.mu.Lock()
+	d := m.dest
+	m.mu.Unlock()
+	if d == nil {
+		return Result{}, ErrNoDestination
+	}
+	dir, err := m.Path(id)
+	if err != nil {
+		return Result{}, err
+	}
+	m.copyMu.Lock()
+	defer m.copyMu.Unlock()
+	r := Result{OK: true}
+	if err := d.Put(context.Background(), id, dir); err != nil {
+		r.OK, r.Error = false, err.Error()
+		log.Printf("backup %s: off-host copy failed: %v", id, err)
+	}
+	r.At = time.Now().UTC()
+	m.mu.Lock()
+	m.offsite[id] = r
+	m.mu.Unlock()
+	return r, nil
 }
 
 func (m *Manager) record(id string) Result {
@@ -113,6 +211,10 @@ func (m *Manager) List() ([]Status, error) {
 		if r, ok := m.results[in.ID]; ok {
 			r := r
 			out[i].Verified = &r
+		}
+		if r, ok := m.offsite[in.ID]; ok {
+			r := r
+			out[i].Offsite = &r
 		}
 	}
 	return out, nil
@@ -192,6 +294,7 @@ func (m *Manager) prune() {
 			}
 			m.mu.Lock()
 			delete(m.results, in.ID)
+			delete(m.offsite, in.ID)
 			m.mu.Unlock()
 		}
 	}

@@ -45,6 +45,9 @@ func main() {
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
 	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
 	walTruncateCorrupt := flag.Bool("wal-truncate-corrupt", getEnv("BEASTDB_WAL_TRUNCATE_CORRUPT", "") == "true", "Open even if the WAL is damaged in the middle, cutting it at the damage (acknowledged writes after it are lost; the cut bytes are saved to <wal>.discarded)")
+	copyDir := flag.String("backup-copy-dir", getEnv("BEASTDB_BACKUP_COPY_DIR", ""), "Also copy each finished backup into this directory (a mounted share or second disk)")
+	copyExec := flag.String("backup-copy-exec", getEnv("BEASTDB_BACKUP_COPY_EXEC", ""), "Program run as `program <bundle-dir> <backup-id>` after each backup to ship it off this host (aws, rclone, scp wrapper); it holds any credentials")
+	copyTimeout := flag.Duration("backup-copy-timeout", 30*time.Minute, "Time limit for -backup-copy-exec")
 	flag.Parse()
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
@@ -83,7 +86,7 @@ func main() {
 
 	// Settings an admin can change in Studio without a restart; saved values
 	// in runtime-settings.json override the matching flags.
-	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7})
+	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7, BackupOffsite: 1})
 	if rtErr != nil {
 		log.Printf("Warning: ignoring runtime settings file: %v", rtErr)
 	}
@@ -91,7 +94,16 @@ func main() {
 
 	// Server-managed backups (create, verify, download, optional schedule).
 	backups := backup.NewManager(engine, filepath.Join(*dataDir, "backups"))
+	switch {
+	case *copyDir != "" && *copyExec != "":
+		log.Fatal("FATAL: set only one of -backup-copy-dir and -backup-copy-exec")
+	case *copyDir != "":
+		backups.SetDestination(backup.DirDestination{Path: *copyDir})
+	case *copyExec != "":
+		backups.SetDestination(backup.ExecDestination{Program: *copyExec, Timeout: *copyTimeout})
+	}
 	runtimeCfg.Subscribe(func(v runtimecfg.Values) {
+		backups.SetOffsite(v.BackupOffsite == 1)
 		backups.Configure(time.Duration(v.BackupIntervalMinutes)*time.Minute, v.BackupKeep)
 	})
 	backups.Start(ckptCtx)

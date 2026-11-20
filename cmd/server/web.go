@@ -5,6 +5,7 @@ import (
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/audit"
+	"github.com/ChromaBeast/beastdb/internal/backup"
 	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
@@ -33,6 +34,15 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 		log.Fatalf("Failed to open audit log: %v", auditErr)
 	}
 	extra.Audit = auditLog
+	if extra.Backups != nil {
+		extra.Backups.SetCopyObserver(func(id string, r backup.Result) {
+			detail := "copied"
+			if !r.OK {
+				detail = "FAILED: " + r.Error
+			}
+			_ = auditLog.Record("system", audit.ActionBackupCopy, id, detail, "")
+		})
+	}
 
 	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, withBase(withReplication(extra), dataDir, metricsTokens), tokenStore)
 	if webErr != nil {

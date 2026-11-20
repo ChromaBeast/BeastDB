@@ -2,11 +2,11 @@
 import { useState } from "react";
 import { PageHeader } from "../PageHeader";
 import { StatCard, StatGrid } from "../StatCard";
-import { BackupsTable } from "../backups/BackupsTable";
+import { BackupsTable, type Listing } from "../backups/BackupsTable";
+import { RestorePlanner } from "../backups/RestorePlanner";
 import { RuntimeSettingsCard } from "../settings/RuntimeSettings";
 import { CopyCommand } from "../CopyCommand";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { formatBytes } from "../../utils/format";
 import type { ViewProps } from "./types";
@@ -14,15 +14,15 @@ import type { ViewProps } from "./types";
 // Commands mirror the real flags in cmd/beastctl/main.go.
 const BACKUP_CMD = "beastctl backup --db ./data/beast.bin --wal ./data/beast.wal --out ./backup";
 const VERIFY_CMD = "beastctl verify --backup ./backup";
-const RESTORE_CMD = "beastctl restore --backup ./backup --dest ./restored";
+const RESTORE_CMD = "beastctl restore --backup ./backup --new-dir ./restored";
 
 const CHECKLIST = [
-  "Stop the node (or back up a copy of its data directory). beastctl opens the data files directly and there is no file lock.",
-  "Run verify on the bundle before relying on it; restore also verifies first.",
-  "Restore into an empty directory. Without --force it refuses to overwrite an existing beast.bin.",
-  "Restore removes any old beast.wal at the destination and opens the result once to count records.",
-  "Point the server at the restored directory with -data-dir and confirm the record count before cutting over.",
-  "Keep at least one copy off the host. Retention and off-host copy are not managed by BeastDB.",
+  "Prefer --new-dir: it needs a path that does not exist, never overwrites, verifies first and installs only a database that opened cleanly.",
+  "Run verify on the bundle before relying on it; restore also verifies first. An encrypted bundle needs --key-file to authenticate its pages.",
+  "Check the record count it prints, then start a server with -data-dir on the new directory and confirm before cutting over.",
+  "--dest --force overwrites an existing directory. Use it only with the server stopped; beastctl opens the data files directly and there is no file lock.",
+  "A backup holds the writes committed before its checkpoint. Writes made while it was copying are not in it.",
+  "Keep at least one copy off the host: set -backup-copy-dir or -backup-copy-exec when starting the server. Retention applies to the local directory only.",
 ];
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: string }) {
@@ -44,6 +44,7 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
   const [checkpointing, setCheckpointing] = useState(false);
   const [backingUp, setBackingUp] = useState(false);
   const [reload, setReload] = useState(0);
+  const [listing, setListing] = useState<Listing | null>(null);
   const s = stats?.storage;
   const dirty = s?.dirtyPages ?? 0;
   const isAdmin = user?.role === "admin";
@@ -85,10 +86,10 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
       <PageHeader
         id="backups-title"
         title="Backups"
-        subtitle="Create, verify and download backups of this node. Restoring runs offline with beastctl."
+        subtitle="Create, verify, download and copy off-host backups of this node. Restoring is a beastctl command into a new directory."
         actions={
           isAdmin ? (
-            <Button size="sm" onClick={() => void backUpNow()} disabled={backingUp} title="Reads and writes pause while the data file is copied">
+            <Button size="sm" onClick={() => void backUpNow()} disabled={backingUp} title="Reads and writes pause only for a checkpoint, not for the copy">
               {backingUp ? "Backing up…" : "Back up now"}
             </Button>
           ) : undefined
@@ -107,16 +108,20 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
         <StatCard label="Data file" value={formatBytes(s?.diskSizeBytes ?? 0)} hint={`${s?.totalPages ?? 0} pages`} />
       </StatGrid>
 
-      <BackupsTable canWrite={isAdmin} onNotice={onNotice} reloadKey={reload} />
+      <BackupsTable canWrite={isAdmin} onNotice={onNotice} reloadKey={reload} onData={setListing} />
 
       {isAdmin && (
         <RuntimeSettingsCard
+          key={listing?.destination ? "with-destination" : "local-only"}
           title="Automatic backups"
-          description="Off by default. Reads and writes pause while each backup copies the data file, so choose a quiet interval. Manual backups are never pruned."
+          description="Off by default. Each backup pauses reads and writes only for a checkpoint, but the copy competes for disk and delays automatic checkpoints until it ends, so choose a quiet interval. Manual backups are never pruned."
           onNotice={(m, e) => { onNotice(m, e); setReload((n) => n + 1); }}
           fields={[
             { name: "backup_interval_minutes", label: "Back up every", unit: "minutes (0 = off, otherwise 5 or more)" },
             { name: "backup_keep", label: "Keep the newest", unit: "scheduled backups" },
+            ...(listing?.destination
+              ? [{ name: "backup_offsite", label: "Copy new backups off-host", unit: "1 = copy, 0 = pause" }]
+              : []),
           ]}
         />
       )}
@@ -155,14 +160,16 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
           <CardContent className="space-y-3">
             <CopyCommand label="1. Create a bundle (data.bin + manifest.json with SHA-256)" command={BACKUP_CMD} onNotice={onNotice} />
             <CopyCommand label="2. Verify the manifest and checksum" command={VERIFY_CMD} onNotice={onNotice} />
-            <CopyCommand label="3. Restore into a destination directory" command={RESTORE_CMD} onNotice={onNotice} />
+            <CopyCommand label="3. Restore into a new directory (never overwrites)" command={RESTORE_CMD} onNotice={onNotice} />
             <p className="text-xs text-muted-foreground">
-              Add <span className="font-mono">--force</span> to restore only when you intend to overwrite an existing
-              database. Defaults shown match the CLI.
+              Step 1 needs the server stopped. Backups made by this server (above) need no CLI step.
+              Defaults shown match the CLI.
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && <RestorePlanner listing={listing} onNotice={onNotice} />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -180,19 +187,13 @@ export function BackupsView({ stats, user, onNotice, onRefresh }: ViewProps) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm">Not available yet</CardTitle>
+            <CardTitle className="text-sm">Not provided</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-xs">
-            {["Point-in-time recovery (PITR)", "Off-host copy", "Restore from Studio"].map((name) => (
-              <div key={name} className="flex items-center justify-between">
-                <span className="text-foreground">{name}</span>
-                <Badge variant="outline">Planned</Badge>
-              </div>
-            ))}
-            <p className="text-muted-foreground">
-              These have no controls here. Copy bundles off the host yourself (Download above), and restore with the
-              beastctl command, which verifies the bundle first.
-            </p>
+          <CardContent className="space-y-2 text-xs text-muted-foreground">
+            <p><span className="text-foreground">Point-in-time recovery.</span> A backup is a checkpoint image, not a WAL archive. Planned, not built.</p>
+            <p><span className="text-foreground">Restore over the running database.</span> By design there is no button or endpoint for it.</p>
+            <p><span className="text-foreground">Built-in cloud upload.</span> Off-host copy is a directory or a program you supply (the program holds any credentials).</p>
+            <p><span className="text-foreground">Pruning off-host copies.</span> Retention applies to the local directory only.</p>
           </CardContent>
         </Card>
       </div>

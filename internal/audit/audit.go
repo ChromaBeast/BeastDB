@@ -54,6 +54,7 @@ const (
 	ActionBackupCreate     = "backup.create"
 	ActionBackupVerify     = "backup.verify"
 	ActionBackupDownload   = "backup.download"
+	ActionBackupCopy       = "backup.copy"
 	ActionCollectionCreate = "collection.create"
 	ActionCollectionDrop   = "collection.drop"
 	ActionPromote          = "replication.promote"

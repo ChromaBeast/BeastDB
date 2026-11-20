@@ -21,7 +21,7 @@ func printUsage() {
 	fmt.Println("  seed               Seed database with fixture data and display partition stats")
 	fmt.Println("  backup             Create an atomic physical database backup bundle with checksum")
 	fmt.Println("  verify             Validate manifest and checksums of a backup bundle")
-	fmt.Println("  restore            Restore database bundle to target directory with safe overwrite checks")
+	fmt.Println("  restore            Restore a bundle: --new-dir <dir> into a fresh data directory (never overwrites), or --dest <dir> [--force]")
 	fmt.Println("  keygen             Write a new random master key file for encryption at rest")
 	fmt.Println("  encrypt            Convert a stopped plaintext database to encrypted (--key-file)")
 	fmt.Println("  decrypt            Convert a stopped encrypted database back to plaintext (--key-file)")
@@ -133,7 +133,16 @@ func main() {
 		dest := fs.String("dest", "./restored", "Destination directory")
 		force := fs.Bool("force", false, "Overwrite existing files in destination directory")
 		keyFile := fs.String("key-file", "", "Master key file (required for an encrypted bundle)")
+		newDir := fs.String("new-dir", "", "Restore into this NEW data directory instead of --dest: it must not exist (or be empty); never overwrites, verifies first, installs only a database that opened cleanly")
 		_ = fs.Parse(args)
+		if *newDir != "" {
+			if *force || flagSet(fs, "dest") {
+				fmt.Println("Error: --new-dir cannot be combined with --dest or --force.")
+				os.Exit(1)
+			}
+			handleErr(runRestoreNew(*backupDir, *newDir, *keyFile))
+			break
+		}
 		_, err := runRestoreKey(*backupDir, *dest, *force, *keyFile)
 		handleErr(err)
 

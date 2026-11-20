@@ -50,9 +50,10 @@ type Info struct {
 
 // Snapshotter is the slice of the engine a backup needs.
 type Snapshotter interface {
-	// CreateSnapshot flushes dirty pages and copies the data file into dir while
-	// holding the engine lock, so the copy is consistent. Reads and writes wait
-	// for the copy (time grows with the data file size).
+	// CreateSnapshot checkpoints and copies the data file into dir. The engine
+	// lock is held only for the checkpoint, not the copy, so reads and writes
+	// carry on while the file is copied (docs/adr/0005-online-snapshot.md). The
+	// copy holds the writes committed before that checkpoint.
 	CreateSnapshot(dir string) (string, error)
 	StorageMetrics() api.StorageMetrics
 }

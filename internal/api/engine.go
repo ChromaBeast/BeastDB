@@ -25,8 +25,13 @@ type Engine struct {
 	spaceMapPages  []uint64       // pages of the free-space map saved at the last checkpoint
 	opts           Options
 	mu             sync.RWMutex
-	cq             committer       // group-commit queue (engine_commit.go)
-	pending        []pendingNotify // commit events awaiting the group fsync; guarded by mu
+	// imageMu serialises everything that writes the data file after open:
+	// Checkpoint, Close and CreateSnapshot (which holds it while it copies the
+	// file). Lock order: imageMu, then mu.
+	imageMu      sync.Mutex
+	snapshotHook func()          // tests only; see CreateSnapshot
+	cq           committer       // group-commit queue (engine_commit.go)
+	pending      []pendingNotify // commit events awaiting the group fsync; guarded by mu
 
 	lastCkptLSN  atomic.Uint64 // LSN at the last successful checkpoint (metrics)
 	lastCkptUnix atomic.Int64  // unix seconds of the last successful checkpoint

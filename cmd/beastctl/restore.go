@@ -27,6 +27,16 @@ func runRestore(backupDir, destDir string, force bool) (*RestoreResult, error) {
 }
 
 func runRestoreKey(backupDir, destDir string, force bool, keyFile string) (*RestoreResult, error) {
+	res, err := restoreInto(backupDir, destDir, force, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Printf("Restore completed successfully in %v:\n  Destination DB: %s\n  Records loaded: %d\n", res.Duration, res.DestDB, res.RecordCount)
+	return res, nil
+}
+
+// restoreInto does the work of runRestoreKey without printing a summary.
+func restoreInto(backupDir, destDir string, force bool, keyFile string) (*RestoreResult, error) {
 	if backupDir == "" {
 		return nil, errors.New("backup directory is required (--backup)")
 	}
@@ -131,7 +141,6 @@ func runRestoreKey(backupDir, destDir string, force bool, keyFile string) (*Rest
 	}
 
 	elapsed := time.Since(startTime)
-	fmt.Printf("Restore completed successfully in %v:\n  Destination DB: %s\n  Records loaded: %d\n", elapsed, destDB, recordCount)
 
 	return &RestoreResult{
 		Duration:    elapsed,
