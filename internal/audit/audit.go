@@ -56,6 +56,8 @@ const (
 	ActionBackupDownload   = "backup.download"
 	ActionCollectionCreate = "collection.create"
 	ActionCollectionDrop   = "collection.drop"
+	ActionIndexCreate      = "index.create"
+	ActionIndexDrop        = "index.drop"
 	ActionPromote          = "replication.promote"
 )
 
