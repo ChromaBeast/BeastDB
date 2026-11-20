@@ -27,6 +27,10 @@ type Values struct {
 	BackupIntervalMinutes int `json:"backup_interval_minutes"`
 	// BackupKeep is how many scheduled backups are retained (manual ones are never pruned).
 	BackupKeep int `json:"backup_keep"`
+	// BackupOffsite is 1 to copy each new backup to the configured off-host
+	// destination, 0 to pause that. It does nothing when no destination is
+	// configured (the destination itself is a startup flag, never a setting).
+	BackupOffsite int `json:"backup_offsite"`
 }
 
 // Range is the inclusive bound of one setting.
@@ -43,6 +47,7 @@ var Ranges = map[string]Range{
 	// 0 = off; 1-4 are rejected in Validate so a typo cannot flood the disk.
 	"backup_interval_minutes": {0, 10080},
 	"backup_keep":             {1, 365},
+	"backup_offsite":          {0, 1},
 }
 
 func fields(v *Values) map[string]*int {
@@ -52,6 +57,7 @@ func fields(v *Values) map[string]*int {
 		"login_window_seconds":    &v.LoginWindowSeconds,
 		"backup_interval_minutes": &v.BackupIntervalMinutes,
 		"backup_keep":             &v.BackupKeep,
+		"backup_offsite":          &v.BackupOffsite,
 	}
 }
 

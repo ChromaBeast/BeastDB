@@ -49,6 +49,9 @@ func main() {
 	encKeyEnv := flag.String("encryption-key-env", getEnv("BEASTDB_ENCRYPTION_KEY_ENV", ""), "NAME of an environment variable holding the master key (32 raw bytes or 64 hex chars); the key file or command is preferred, see the encryption runbook")
 	encKeyCmd := flag.String("encryption-key-cmd", getEnv("BEASTDB_ENCRYPTION_KEY_CMD", ""), "Command whose stdout is the master key (run without a shell; a JSON array gives exact argv): the hook for a KMS wrapper")
 	walTruncateCorrupt := flag.Bool("wal-truncate-corrupt", getEnv("BEASTDB_WAL_TRUNCATE_CORRUPT", "") == "true", "Open even if the WAL is damaged in the middle, cutting it at the damage (acknowledged writes after it are lost; the cut bytes are saved to <wal>.discarded)")
+	copyDir := flag.String("backup-copy-dir", getEnv("BEASTDB_BACKUP_COPY_DIR", ""), "Also copy each finished backup into this directory (a mounted share or second disk)")
+	copyExec := flag.String("backup-copy-exec", getEnv("BEASTDB_BACKUP_COPY_EXEC", ""), "Program run as `program <bundle-dir> <backup-id>` after each backup to ship it off this host (aws, rclone, scp wrapper); it holds any credentials")
+	copyTimeout := flag.Duration("backup-copy-timeout", 30*time.Minute, "Time limit for -backup-copy-exec")
 	flag.Parse()
 
 	keySpec, err := crypt.SpecFromParts(*encKeyFile, *encKeyEnv, *encKeyCmd)
@@ -92,7 +95,7 @@ func main() {
 
 	// Settings an admin can change in Studio without a restart; saved values
 	// in runtime-settings.json override the matching flags.
-	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7})
+	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7, BackupOffsite: 1})
 	if rtErr != nil {
 		log.Printf("Warning: ignoring runtime settings file: %v", rtErr)
 	}
@@ -100,7 +103,16 @@ func main() {
 
 	// Server-managed backups (create, verify, download, optional schedule).
 	backups := backup.NewManager(engine, filepath.Join(*dataDir, "backups"))
+	switch {
+	case *copyDir != "" && *copyExec != "":
+		log.Fatal("FATAL: set only one of -backup-copy-dir and -backup-copy-exec")
+	case *copyDir != "":
+		backups.SetDestination(backup.DirDestination{Path: *copyDir})
+	case *copyExec != "":
+		backups.SetDestination(backup.ExecDestination{Program: *copyExec, Timeout: *copyTimeout})
+	}
 	runtimeCfg.Subscribe(func(v runtimecfg.Values) {
+		backups.SetOffsite(v.BackupOffsite == 1)
 		backups.Configure(time.Duration(v.BackupIntervalMinutes)*time.Minute, v.BackupKeep)
 	})
 	backups.Start(ckptCtx)
