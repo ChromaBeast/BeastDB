@@ -25,7 +25,7 @@ func printUsage() {
 	fmt.Println("  keygen             Write a new random master key file for encryption at rest")
 	fmt.Println("  encrypt            Convert a stopped plaintext database to encrypted (--key-file)")
 	fmt.Println("  decrypt            Convert a stopped encrypted database back to plaintext (--key-file)")
-	fmt.Println("  rekey              Re-encrypt a stopped database under a new master key (--key-file, --new-key-file)")
+	fmt.Println("  rekey              Re-encrypt a stopped database under a new master key and data key (--key-file, --new-key-file); --rewrap-only changes just the master key, no data rewrite")
 	fmt.Println("  get                Retrieve a record value by its 64-bit key")
 	fmt.Println("  put                Store or update a key-value record")
 	fmt.Println("  delete             Tombstone/delete a record by its 64-bit key")
@@ -149,6 +149,7 @@ func main() {
 		wal := fs.String("wal", "beast.wal", "Path to the WAL file")
 		keyFile := fs.String("key-file", "", "Master key file (encrypt: the new key; decrypt/rekey: the current key)")
 		newKey := fs.String("new-key-file", "", "rekey: the new master key file")
+		rewrap := fs.Bool("rewrap-only", false, "rekey: change only the master key by re-wrapping the data key in <db>.keyring (no data rewrite, data key unchanged)")
 		del := fs.Bool("delete-original", false, "Remove the replaced files instead of keeping *.pre*.bak copies")
 		_ = fs.Parse(args)
 		if *keyFile == "" {
@@ -164,6 +165,10 @@ func main() {
 			if *newKey == "" {
 				fmt.Println("Error: --new-key-file is required for rekey.")
 				os.Exit(1)
+			}
+			if *rewrap {
+				handleErr(runRewrap(*db, *keyFile, *newKey))
+				return
 			}
 			handleErr(runMigrate("Rekey", *db, *wal, *keyFile, *newKey, *del))
 		}

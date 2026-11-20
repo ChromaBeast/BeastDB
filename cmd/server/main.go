@@ -15,6 +15,7 @@ import (
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/backup"
+	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/logbuf"
 	"github.com/ChromaBeast/beastdb/internal/replication"
 	"github.com/ChromaBeast/beastdb/internal/runtimecfg"
@@ -43,9 +44,16 @@ func main() {
 	insecureAuth := flag.Bool("insecure-auth", false, "Permit default credentials on public interfaces (unsafe, for testing only)")
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
-	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
+	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars; env:NAME and exec:CMD specs also accepted) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
+	encKeyEnv := flag.String("encryption-key-env", getEnv("BEASTDB_ENCRYPTION_KEY_ENV", ""), "NAME of an environment variable holding the master key (32 raw bytes or 64 hex chars); the key file or command is preferred, see the encryption runbook")
+	encKeyCmd := flag.String("encryption-key-cmd", getEnv("BEASTDB_ENCRYPTION_KEY_CMD", ""), "Command whose stdout is the master key (run without a shell; a JSON array gives exact argv): the hook for a KMS wrapper")
 	walTruncateCorrupt := flag.Bool("wal-truncate-corrupt", getEnv("BEASTDB_WAL_TRUNCATE_CORRUPT", "") == "true", "Open even if the WAL is damaged in the middle, cutting it at the damage (acknowledged writes after it are lost; the cut bytes are saved to <wal>.discarded)")
 	flag.Parse()
+
+	keySpec, err := crypt.SpecFromParts(*encKeyFile, *encKeyEnv, *encKeyCmd)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
 	logs := logbuf.New(logbuf.DefaultCapacity)
@@ -72,7 +80,7 @@ func main() {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{TruncateCorruptWAL: *walTruncateCorrupt, KeyFile: *encKeyFile})
+	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{TruncateCorruptWAL: *walTruncateCorrupt, KeyFile: keySpec})
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}

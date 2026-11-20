@@ -68,17 +68,41 @@ type Log struct {
 	f    *os.File
 	path string
 	seq  uint64
-	last string // hash of the last record
+	last string  // hash of the last record
+	c    *Cipher // nil: plaintext lines
 }
 
 // Open opens (creating if needed) dir/audit.log, verifies the existing chain
 // and positions for appending. It fails if the existing chain is broken, so a
 // tampered log is noticed at startup instead of being silently extended.
-func Open(dir string) (*Log, error) {
+func Open(dir string) (*Log, error) { return OpenSealed(dir, nil) }
+
+// OpenSealed is Open for an engine with encryption at rest: records are sealed
+// with c (nil means plaintext, as Open). A plaintext log is converted to the
+// sealed format on the way in (atomically, chain unchanged), so enabling
+// encryption needs no separate step. A sealed log opened without a key fails
+// with ErrSealed; it is never read as plaintext or silently extended.
+func OpenSealed(dir string, c *Cipher) (*Log, error) {
 	path := filepath.Join(dir, FileName)
-	l := &Log{path: path}
-	if _, err := os.Stat(path); err == nil {
-		n, last, verr := verifyFile(path)
+	recoverInterrupted(dir, c)
+	sealed, empty, err := fileFormat(path)
+	if err != nil {
+		return nil, err
+	}
+	if sealed && c == nil {
+		return nil, ErrSealed
+	}
+	if !sealed && !empty && c != nil {
+		if _, err := PrepareConvert(dir, nil, c); err != nil {
+			return nil, fmt.Errorf("encrypt audit log: %w", err)
+		}
+		if err := InstallConverted(dir); err != nil {
+			return nil, fmt.Errorf("encrypt audit log: %w", err)
+		}
+	}
+	l := &Log{path: path, c: c}
+	if !empty {
+		n, last, verr := verifyFile(path, c)
 		if verr != nil {
 			return nil, fmt.Errorf("audit log %s is damaged: %w", path, verr)
 		}
@@ -141,7 +165,7 @@ func (l *Log) Record(actor, action, target, detail, ip string) error {
 		Prev: l.last,
 	}
 	e.Hash = hashOf(e)
-	b, err := json.Marshal(e)
+	b, err := l.c.encode(e, e.Seq)
 	if err != nil {
 		return err
 	}
@@ -181,7 +205,7 @@ func (l *Log) List(q Query) ([]Entry, error) {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	all, err := readAll(l.path)
+	all, err := readAll(l.path, l.c)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +232,8 @@ type Status struct {
 	Verified bool   `json:"verified"`
 	// Error describes the first break in the chain when Verified is false.
 	Error string `json:"error,omitempty"`
+	// Encrypted is true when records are written sealed (encryption at rest).
+	Encrypted bool `json:"encrypted"`
 }
 
 // Verify re-reads the whole file and checks every link.
@@ -217,14 +243,14 @@ func (l *Log) Verify() Status {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	n, _, err := verifyFile(l.path)
+	n, _, err := verifyFile(l.path, l.c)
 	if err != nil {
-		return Status{Entries: n, Error: err.Error()}
+		return Status{Entries: n, Error: err.Error(), Encrypted: l.c != nil}
 	}
-	return Status{Entries: n, Verified: true}
+	return Status{Entries: n, Verified: true, Encrypted: l.c != nil}
 }
 
-func readAll(path string) ([]Entry, error) {
+func readAll(path string, c *Cipher) ([]Entry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -236,12 +262,27 @@ func readAll(path string) ([]Entry, error) {
 	var out []Entry
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	sealed := false
 	for sc.Scan() {
-		if len(strings.TrimSpace(sc.Text())) == 0 {
+		text := strings.TrimSpace(sc.Text())
+		if text == "" {
 			continue
 		}
+		isSealed := strings.HasPrefix(text, sealedPrefix)
+		if len(out) == 0 {
+			sealed = isSealed
+			if sealed && c == nil {
+				return nil, ErrSealed
+			}
+		} else if isSealed != sealed {
+			return out, fmt.Errorf("line %d: %w", len(out)+1, ErrMixedFormat)
+		}
 		var e Entry
-		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+		if sealed {
+			if e, err = c.open(text, uint64(len(out)+1)); err != nil {
+				return out, err
+			}
+		} else if err := json.Unmarshal([]byte(text), &e); err != nil {
 			return out, fmt.Errorf("line %d: %w", len(out)+1, err)
 		}
 		out = append(out, e)
@@ -251,23 +292,45 @@ func readAll(path string) ([]Entry, error) {
 
 // verifyFile checks sequence numbers, back-links and hashes. It returns the
 // count of valid records and the last hash.
-func verifyFile(path string) (uint64, string, error) {
-	entries, err := readAll(path)
+func verifyFile(path string, c *Cipher) (uint64, string, error) {
+	entries, err := readAll(path, c)
 	if err != nil {
 		return uint64(len(entries)), "", err
 	}
+	if err := checkChain(entries); err != nil {
+		var ce chainError
+		if errors.As(err, &ce) {
+			return uint64(ce.valid), ce.prev, err
+		}
+		return 0, "", err
+	}
+	prev := ""
+	if len(entries) > 0 {
+		prev = entries[len(entries)-1].Hash
+	}
+	return uint64(len(entries)), prev, nil
+}
+
+type chainError struct {
+	valid int
+	prev  string
+	msg   string
+}
+
+func (c chainError) Error() string { return c.msg }
+
+func checkChain(entries []Entry) error {
 	prev := ""
 	for i, e := range entries {
-		if e.Seq != uint64(i+1) {
-			return uint64(i), prev, fmt.Errorf("record %d: sequence is %d, expected %d (a line was removed or reordered)", i+1, e.Seq, i+1)
-		}
-		if e.Prev != prev {
-			return uint64(i), prev, fmt.Errorf("record %d: does not link to the previous record", e.Seq)
-		}
-		if hashOf(e) != e.Hash {
-			return uint64(i), prev, fmt.Errorf("record %d: contents do not match their hash (edited)", e.Seq)
+		switch {
+		case e.Seq != uint64(i+1):
+			return chainError{i, prev, fmt.Sprintf("record %d: sequence is %d, expected %d (a line was removed or reordered)", i+1, e.Seq, i+1)}
+		case e.Prev != prev:
+			return chainError{i, prev, fmt.Sprintf("record %d: does not link to the previous record", e.Seq)}
+		case hashOf(e) != e.Hash:
+			return chainError{i, prev, fmt.Sprintf("record %d: contents do not match their hash (edited)", e.Seq)}
 		}
 		prev = e.Hash
 	}
-	return uint64(len(entries)), prev, nil
+	return nil
 }

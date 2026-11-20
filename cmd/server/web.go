@@ -28,11 +28,12 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 		log.Fatalf("Failed to initialize session secret: %v", secretErr)
 	}
 
-	auditLog, auditErr := audit.Open(dataDir)
+	auditLog, auditErr := audit.OpenSealed(dataDir, engine.AuditCipher())
 	if auditErr != nil {
 		log.Fatalf("Failed to open audit log: %v", auditErr)
 	}
 	extra.Audit = auditLog
+	extra.Settings.AuditEncrypted = auditLog.Sealed()
 
 	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, withBase(withReplication(extra), dataDir, metricsTokens), tokenStore)
 	if webErr != nil {
