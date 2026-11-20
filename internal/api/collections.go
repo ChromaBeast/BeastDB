@@ -207,6 +207,11 @@ func (e *Engine) DropCollection(name string) error {
 		if has {
 			return ErrCollectionNotEmpty
 		}
+		if hasIdx, err := e.hasIndexesOn(entries[idx].Prefix); err != nil {
+			return err
+		} else if hasIdx {
+			return ErrCollectionHasIndexes
+		}
 		rest := append(entries[:idx:idx], entries[idx+1:]...)
 		if len(rest) == 0 {
 			err = e.DeleteIf(CatalogKey, Condition{Kind: CondValueEquals, Value: raw})
