@@ -22,10 +22,13 @@ import (
 //	POST /api/backups                 create a manual backup now
 //	POST /api/backups/verify?id=      re-check one backup against its manifest
 //	GET  /api/backups/download?id=    stream the bundle as a .tar
+//	POST /api/backups/copy?id=        (re)send one backup to the off-host destination
 //
 // Restore is deliberately not an endpoint: it stays an offline `beastctl restore`.
-// Creating a backup pauses reads and writes for the time it takes to copy the
-// data file, so the response says how long it took.
+// Creating a backup pauses the engine only for a checkpoint; the file copy runs
+// beside normal traffic. The response says how long the whole backup took.
+// The destination itself is a startup flag; this API shows it (kind and path,
+// never arguments or environment) but cannot change it.
 func BackupsHandler(sessions *auth.SessionManager, mgr *backup.Manager, al *audit.Log) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		actor, role, err := sessions.ValidateSession(r)
@@ -49,6 +52,7 @@ func BackupsHandler(sessions *auth.SessionManager, mgr *backup.Manager, al *audi
 			w.Header().Set("Cache-Control", "no-store")
 			writeJSON(w, map[string]any{
 				"dir": mgr.Dir(), "intervalMinutes": int(every / time.Minute), "keep": keep, "backups": list,
+				"destination": mgr.DestinationInfo(),
 			})
 
 		case r.URL.Path == "/api/backups" && r.Method == http.MethodPost:
@@ -81,6 +85,27 @@ func BackupsHandler(sessions *auth.SessionManager, mgr *backup.Manager, al *audi
 				detail = "FAILED: " + res.Error
 			}
 			_ = al.Record(actor, audit.ActionBackupVerify, id, detail, ip)
+			writeJSON(w, res)
+
+		case r.URL.Path == "/api/backups/copy" && r.Method == http.MethodPost:
+			id := r.URL.Query().Get("id")
+			res, err := mgr.CopyOffsite(id)
+			switch {
+			case errors.Is(err, backup.ErrNotFound):
+				http.Error(w, "Backup not found", http.StatusNotFound)
+				return
+			case errors.Is(err, backup.ErrNoDestination):
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			case err != nil:
+				http.Error(w, "Copy failed", http.StatusInternalServerError)
+				return
+			}
+			detail := "copied"
+			if !res.OK {
+				detail = "FAILED: " + res.Error
+			}
+			_ = al.Record(actor, audit.ActionBackupCopy, id, detail, ip)
 			writeJSON(w, res)
 
 		case r.URL.Path == "/api/backups/download" && r.Method == http.MethodGet:

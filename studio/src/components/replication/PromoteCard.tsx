@@ -95,8 +95,8 @@ export function PromoteCard({ cluster, isAdmin, onNotice, onPromoted }: Props) {
           <AlertDialogTitle className="text-base font-semibold">Promote {cluster.nodeID} to leader?</AlertDialogTitle>
           <AlertDialogDescription className="mt-2 text-sm text-muted-foreground">
             The current leader will be fenced at epoch {cluster.epoch + 1} and refuse writes. Clients and other followers
-            must be pointed at this node. The old leader cannot rejoin until its data directory is wiped and it is started
-            as a follower.
+            must be pointed at this node. The old leader can then be rejoined as a follower if everything it holds is also on this node;
+            if it took writes this node never received, rejoin is refused and it needs a reseed.
           </AlertDialogDescription>
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialogCancel asChild>

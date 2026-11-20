@@ -16,6 +16,10 @@ service BeastDBService {
   rpc CreateCollection (CreateCollectionRequest) returns (CreateCollectionResponse);
   rpc ListCollections (ListCollectionsRequest) returns (ListCollectionsResponse);
   rpc DropCollection (DropCollectionRequest) returns (DropCollectionResponse);
+  // Single-field secondary indexes over JSON records (docs/adr/0006-secondary-indexes.md).
+  rpc CreateIndex (CreateIndexRequest) returns (CreateIndexResponse);
+  rpc ListIndexes (ListIndexesRequest) returns (ListIndexesResponse);
+  rpc DropIndex (DropIndexRequest) returns (DropIndexResponse);
 }
 
 // ReplicationService handles physical WAL streaming from Leader to Followers.
@@ -24,6 +28,9 @@ service ReplicationService {
   rpc Ack (ReplicationAck) returns (AckResponse);
   // Fence freezes a leader's writes at a new epoch and reports its final LSN.
   rpc Fence (FenceRequest) returns (FenceResponse);
+  // LogEpochs reports where each leader epoch began in the node's log, so a
+  // fenced former leader can check that its log is a prefix of this one.
+  rpc LogEpochs (LogEpochsRequest) returns (LogEpochsResponse);
 }
 
 message GetRequest {
@@ -63,6 +70,72 @@ message ScanRequest {
   // Maximum records to return; 0 means no limit. To resume a limited scan,
   // pass last returned key + 1 as start_key.
   uint32 limit = 3;
+  // Optional: return only records matching an index, in ascending key order
+  // within [start_key, end_key] (ADR 0006). Fails with FAILED_PRECONDITION
+  // while the index is building; it never falls back to a full scan. With a
+  // filter, end_key 0 means no upper bound.
+  IndexFilter filter = 4;
+}
+
+// IndexValue is a typed value for an index filter.
+message IndexValue {
+  oneof value {
+    int64 int_value = 1;
+    string string_value = 2;
+  }
+}
+
+// IndexFilter selects by equality (eq) or by an inclusive range (gte and/or
+// lte). eq excludes gte and lte. Values must have the index's type.
+message IndexFilter {
+  string index = 1;
+  IndexValue eq = 2;
+  IndexValue gte = 3;
+  IndexValue lte = 4;
+}
+
+enum IndexType {
+  INDEX_TYPE_UNSPECIFIED = 0;
+  INDEX_TYPE_INT = 1;
+  INDEX_TYPE_STRING = 2;
+}
+
+message IndexInfo {
+  string name = 1;
+  string collection = 2;  // empty if the prefix is no longer bound to a name
+  uint32 prefix = 3;
+  string field = 4;       // dotted JSON object path
+  IndexType type = 5;
+  string state = 6;       // "building" or "ready"
+  uint64 entries = 7;     // records currently indexed
+  uint64 skipped = 8;     // records in the collection not indexable (not JSON, field missing or wrong type)
+  uint64 examined = 9;    // records examined by the background build
+  int64 created_at = 10;
+}
+
+message CreateIndexRequest {
+  string name = 1;
+  string collection = 2;
+  string field = 3;
+  IndexType type = 4;
+}
+
+message CreateIndexResponse {
+  IndexInfo index = 1;
+}
+
+message ListIndexesRequest {}
+
+message ListIndexesResponse {
+  repeated IndexInfo indexes = 1;
+}
+
+message DropIndexRequest {
+  string name = 1;
+}
+
+message DropIndexResponse {
+  bool success = 1;
 }
 
 message KeyValueResponse {
@@ -76,6 +149,10 @@ message StreamWALRequest {
   // Highest leader epoch the follower has seen. A leader that sees a higher
   // epoch than its own steps down instead of serving.
   uint64 epoch = 3;
+  // Epoch of the follower's last logged record (from the OpEpoch markers in its
+  // WAL), 0 if unknown. The leader refuses a follower whose last record is at
+  // an epoch the leader's log does not have at that LSN (diverged history).
+  uint64 last_log_epoch = 4;
 }
 
 message WALRecordMessage {
@@ -185,4 +262,22 @@ message DropCollectionRequest {
 
 message DropCollectionResponse {
   bool success = 1;
+}
+
+message LogEpochsRequest {
+  string replica_id = 1;
+  // Highest epoch the caller has seen; a leader behind it steps down.
+  uint64 epoch = 2;
+}
+
+message EpochStart {
+  uint64 lsn = 1;
+  uint64 epoch = 2;
+}
+
+message LogEpochsResponse {
+  uint64 epoch = 1;
+  uint64 last_lsn = 2;
+  repeated EpochStart epoch_starts = 3;
+  string role = 4;
 }

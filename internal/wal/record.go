@@ -21,6 +21,13 @@ const (
 	OpDelete     byte = 0x02
 	OpCheckpoint byte = 0x03
 	OpBatch      byte = 0x04
+	// OpEpoch marks the point in the log where a new leader epoch begins (ADR
+	// 0004). It carries no key; the value is the epoch as 8 little-endian
+	// bytes. Every later record belongs to that epoch until the next marker.
+	// It is an ordinary frame (plaintext or encrypted, same CRC): logs written
+	// before it existed hold none and stay readable, and a reader that does not
+	// know the type skips it on replay.
+	OpEpoch byte = 0x05
 
 	// headerCRCFlag is set in the on-disk type byte of records whose CRC covers
 	// the header (length, LSN, type, key and value lengths) as well as the
@@ -35,6 +42,8 @@ var (
 	ErrRecordTooSmall  = errors.New("wal: record length smaller than header")
 	ErrPayloadTooLarge = errors.New("wal: record payload exceeds max limit")
 	ErrFrameTooLarge   = errors.New("wal: encoded record exceeds MaxFrameSize")
+	// ErrBadEpochMarker means an OpEpoch record does not hold an 8-byte epoch.
+	ErrBadEpochMarker = errors.New("wal: malformed epoch marker")
 )
 
 // Record represents a single state mutation logged for durability.

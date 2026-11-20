@@ -39,6 +39,7 @@ type APIHandler struct {
 	replication ReplicationSource // leader only; nil elsewhere
 	cluster     ClusterControl    // epoch/role/promotion; nil disables /api/replication/promote
 	audit       *audit.Log        // nil disables auditing
+	node        RuntimeSettings   // start-up configuration, for the join command
 }
 
 // NewAPIHandler creates an APIHandler with engine, session, and partition registry.
@@ -90,6 +91,11 @@ func (h *APIHandler) GetRecords(w http.ResponseWriter, r *http.Request) {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 {
 			limit = n
 		}
+	}
+
+	if r.URL.Query().Get("index") != "" {
+		h.getRecordsByIndex(w, r, startKey, endKey, limit)
+		return
 	}
 
 	records, nextKey, hasMore, err := h.engine.ScanRecordsBounded(startKey, endKey, limit)

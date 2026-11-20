@@ -5,6 +5,7 @@ import (
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/audit"
+	"github.com/ChromaBeast/beastdb/internal/backup"
 	"github.com/ChromaBeast/beastdb/internal/web"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 	"github.com/ChromaBeast/beastdb/internal/web/handler"
@@ -18,6 +19,9 @@ var replicaSource handler.ReplicationSource
 // clusterControl is set by main; it carries the node's epoch, role and promotion.
 var clusterControl handler.ClusterControl
 
+// resetAdminTwoFactor is set from -reset-admin-2fa: clear the admin account's second factor at startup.
+var resetAdminTwoFactor bool
+
 func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.Engine, partitions []handler.PartitionEntry, tokenStore *auth.TokenStore, extra web.Options, metricsTokens ...string) func() {
 	if webAddr == "" {
 		return func() {}
@@ -28,11 +32,21 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 		log.Fatalf("Failed to initialize session secret: %v", secretErr)
 	}
 
-	auditLog, auditErr := audit.Open(dataDir)
+	auditLog, auditErr := audit.OpenSealed(dataDir, engine.AuditCipher())
 	if auditErr != nil {
 		log.Fatalf("Failed to open audit log: %v", auditErr)
 	}
 	extra.Audit = auditLog
+	extra.Settings.AuditEncrypted = auditLog.Sealed()
+	if extra.Backups != nil {
+		extra.Backups.SetCopyObserver(func(id string, r backup.Result) {
+			detail := "copied"
+			if !r.OK {
+				detail = "FAILED: " + r.Error
+			}
+			_ = auditLog.Record("system", audit.ActionBackupCopy, id, detail, "")
+		})
+	}
 
 	webSrv, webErr := web.NewServerWithOptions(webAddr, engine, secret, role, Version, partitions, withBase(withReplication(extra), dataDir, metricsTokens), tokenStore)
 	if webErr != nil {
@@ -51,6 +65,14 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 			log.Printf("Admin user already exists (skipping seed): %v", seedErr)
 		} else {
 			log.Printf("Default admin user created. Change the password immediately!")
+		}
+	}
+
+	if resetAdminTwoFactor {
+		if err := store.ResetTOTP("admin"); err != nil {
+			log.Printf("Could not reset admin two-factor: %v", err)
+		} else {
+			log.Printf("Admin two-factor sign-in removed (-reset-admin-2fa). Remove the flag and enrol again in Studio.")
 		}
 	}
 

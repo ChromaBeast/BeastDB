@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = [
   "login.ok", "login.failed", "logout", "token.create", "token.revoke",
   "user.delete", "record.put", "record.delete", "checkpoint", "settings.update",
   "backup.create", "backup.verify", "backup.download",
+  "login.2fa.failed", "2fa.enable", "2fa.disable", "2fa.recovery.regenerate", "2fa.reset",
 ] as const;
 
 const SELECT = "h-8 rounded-md border border-border bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -32,6 +33,9 @@ const PAGE = 100;
 
 const TONE: Record<string, string> = {
   "login.failed": "text-warning",
+  "login.2fa.failed": "text-warning",
+  "2fa.disable": "text-destructive",
+  "2fa.reset": "text-destructive",
   "user.delete": "text-destructive",
   "record.delete": "text-destructive",
   "token.revoke": "text-destructive",

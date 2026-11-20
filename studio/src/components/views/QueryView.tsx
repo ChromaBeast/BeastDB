@@ -1,17 +1,22 @@
 "use client";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, History, Play } from "lucide-react";
 import { PageHeader } from "../PageHeader";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
 import { QueryResults } from "../QueryResults";
+import { CopyCommand } from "../CopyCommand";
+import { api } from "../../lib/api-client";
+import type { IndexEntry } from "../../types";
+import { FilterOp, OP_LABEL, beastctlCommand, buildFilterQuery, httpRequest, pythonSnippet } from "../../utils/query-builder";
 import { EMPTY_PARAMS, QueryMode, QueryOutcome, QueryParams, describeQuery, runQuery } from "../query-runner";
 import type { ViewProps } from "./types";
 
 const MODES: { id: QueryMode; label: string; hint: string }[] = [
   { id: "get", label: "Get key", hint: "Exact lookup in the primary B+ tree by 64-bit key." },
   { id: "scan", label: "Scan range", hint: "Ordered range scan over the primary index; leave bounds empty for the full key space." },
+  { id: "filter", label: "Filter by index", hint: "Look records up through a secondary index (ADR 0006). Equality or an inclusive range on one indexed field; results come back in key order." },
   { id: "search", label: "Search text", hint: "Match value text. Uses the secondary index when it can, otherwise scans up to Max scan records." },
 ];
 
@@ -24,7 +29,33 @@ export function QueryView({ onNotice }: ViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<QueryParams[]>([]);
+  const [indexes, setIndexes] = useState<IndexEntry[]>([]);
+  const [indexesError, setIndexesError] = useState<string | null>(null);
   const seq = useRef(0);
+
+  useEffect(() => {
+    let live = true;
+    api<IndexEntry[]>("/api/indexes")
+      .then((list) => { if (live) setIndexes(list ?? []); })
+      .catch((e) => { if (live) setIndexesError((e as Error).message); });
+    return () => { live = false; };
+  }, []);
+
+  const chosen = indexes.find((i) => i.name === params.indexName);
+  // Commands come from the same validation the Run button uses, so they never describe a query the server would reject.
+  const commands = useMemo(() => {
+    if (params.mode !== "filter" || !chosen) return null;
+    try {
+      const q = buildFilterQuery({
+        index: chosen, op: params.op, value: params.value, value2: params.value2,
+        limit: Math.max(1, Math.floor(Number(params.limit)) || 50),
+        start: /^\d+$/.test(params.start.trim()) ? params.start.trim() : undefined,
+      });
+      return { beastctl: beastctlCommand(q), python: pythonSnippet(q, chosen.type), http: httpRequest(q) };
+    } catch {
+      return null;
+    }
+  }, [params, chosen]);
 
   const set = (patch: Partial<QueryParams>) => setParams((p) => ({ ...p, ...patch }));
 
@@ -33,7 +64,7 @@ export function QueryView({ onNotice }: ViewProps) {
     setRunning(true);
     setError(null);
     try {
-      const res = await runQuery(p);
+      const res = await runQuery(p, indexes);
       if (id !== seq.current) return;
       setOutcome(res);
       setHistory((h) => [p, ...h.filter((x) => describeQuery(x) !== describeQuery(p))].slice(0, 10));
@@ -45,7 +76,7 @@ export function QueryView({ onNotice }: ViewProps) {
     } finally {
       if (id === seq.current) setRunning(false);
     }
-  }, [onNotice]);
+  }, [onNotice, indexes]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -95,6 +126,40 @@ export function QueryView({ onNotice }: ViewProps) {
             <Input aria-label="Limit" type="number" min={1} max={500} className={inputCls} placeholder="Limit" value={params.limit} onChange={(e) => set({ limit: e.target.value })} />
           </div>
         )}
+        {params.mode === "filter" && (
+          indexes.length === 0 ? (
+            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+              {indexesError ?? "No secondary indexes yet. Create one on the Indexes page to filter by a JSON field."}
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <select
+                aria-label="Index"
+                className="h-9 rounded-md border border-input bg-background px-2 font-mono text-[13px]"
+                value={params.indexName}
+                onChange={(e) => set({ indexName: e.target.value, value: "", value2: "" })}
+              >
+                <option value="">Choose an index…</option>
+                {indexes.map((i) => (
+                  <option key={i.name} value={i.name}>{i.name} — {i.collection || `0x${i.prefix.toString(16)}`}.{i.field} ({i.type}){i.state === "ready" ? "" : " · building"}</option>
+                ))}
+              </select>
+              <select
+                aria-label="Operator"
+                className="h-9 rounded-md border border-input bg-background px-2 text-[13px]"
+                value={params.op}
+                onChange={(e) => set({ op: e.target.value as FilterOp })}
+              >
+                {(Object.keys(OP_LABEL) as FilterOp[]).map((o) => <option key={o} value={o}>{OP_LABEL[o]}</option>)}
+              </select>
+              <Input aria-label={params.op === "between" ? "Lower bound" : "Value"} className={inputCls} placeholder={params.op === "between" ? "Lower bound" : "Value"} value={params.value} onChange={(e) => set({ value: e.target.value })} />
+              {params.op === "between" && (
+                <Input aria-label="Upper bound" className={`${inputCls}`} placeholder="Upper bound" value={params.value2} onChange={(e) => set({ value2: e.target.value })} />
+              )}
+              <Input aria-label="Limit" type="number" min={1} max={500} className={inputCls} placeholder="Limit" value={params.limit} onChange={(e) => set({ limit: e.target.value })} />
+            </div>
+          )
+        )}
         {params.mode === "search" && (
           <div className="grid gap-3 sm:grid-cols-[1fr_140px_120px]">
             <Input aria-label="Search text" className={inputCls} placeholder="Text to find in values (min 2 chars)" value={params.q} onChange={(e) => set({ q: e.target.value })} />
@@ -110,6 +175,16 @@ export function QueryView({ onNotice }: ViewProps) {
           </Button>
         </div>
       </Card>
+
+      {commands && (
+        <Card className="space-y-3 p-5">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Same query elsewhere</h2>
+          <CopyCommand label="beastctl" command={commands.beastctl} onNotice={onNotice} />
+          <CopyCommand label="Python (gRPC stubs)" command={commands.python} onNotice={onNotice} />
+          <CopyCommand label="Studio HTTP API" command={commands.http} onNotice={onNotice} />
+          <p className="text-xs text-muted-foreground">beastctl reads <code className="font-mono">BEASTDB_API_TOKEN</code> from the environment. The address assumes the default gRPC port.</p>
+        </Card>
+      )}
 
       {error && (
         <div role="alert" className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">

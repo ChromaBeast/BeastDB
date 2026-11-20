@@ -12,6 +12,9 @@ import (
 // Close flushes all dirty pages to physical disk and releases file handles.
 func (e *Engine) Close() error {
 	e.stopCommitter() // drain queued writes before tearing down files
+	e.stopIndexBuilds()
+	e.imageMu.Lock() // wait for a snapshot copy of the data file
+	defer e.imageMu.Unlock()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -40,6 +43,8 @@ func (e *Engine) Close() error {
 // After a checkpoint, crash recovery only needs to scan the new (empty) WAL.
 // Safe to call periodically (e.g., every N writes or on a timer).
 func (e *Engine) Checkpoint() error {
+	e.imageMu.Lock() // not while a snapshot is copying the data file
+	defer e.imageMu.Unlock()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.failed != nil {

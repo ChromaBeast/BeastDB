@@ -27,6 +27,9 @@ const (
 	BeastDBService_CreateCollection_FullMethodName = "/beastdb.v1.BeastDBService/CreateCollection"
 	BeastDBService_ListCollections_FullMethodName  = "/beastdb.v1.BeastDBService/ListCollections"
 	BeastDBService_DropCollection_FullMethodName   = "/beastdb.v1.BeastDBService/DropCollection"
+	BeastDBService_CreateIndex_FullMethodName      = "/beastdb.v1.BeastDBService/CreateIndex"
+	BeastDBService_ListIndexes_FullMethodName      = "/beastdb.v1.BeastDBService/ListIndexes"
+	BeastDBService_DropIndex_FullMethodName        = "/beastdb.v1.BeastDBService/DropIndex"
 )
 
 // BeastDBServiceClient is the client API for BeastDBService service.
@@ -45,6 +48,10 @@ type BeastDBServiceClient interface {
 	CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error)
 	ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
 	DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*DropCollectionResponse, error)
+	// Single-field secondary indexes over JSON records (docs/adr/0006-secondary-indexes.md).
+	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error)
+	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error)
+	DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*DropIndexResponse, error)
 }
 
 type beastDBServiceClient struct {
@@ -144,6 +151,36 @@ func (c *beastDBServiceClient) DropCollection(ctx context.Context, in *DropColle
 	return out, nil
 }
 
+func (c *beastDBServiceClient) CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateIndexResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_CreateIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *beastDBServiceClient) ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListIndexesResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_ListIndexes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *beastDBServiceClient) DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*DropIndexResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DropIndexResponse)
+	err := c.cc.Invoke(ctx, BeastDBService_DropIndex_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // BeastDBServiceServer is the server API for BeastDBService service.
 // All implementations must embed UnimplementedBeastDBServiceServer
 // for forward compatibility.
@@ -160,6 +197,10 @@ type BeastDBServiceServer interface {
 	CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
 	DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error)
+	// Single-field secondary indexes over JSON records (docs/adr/0006-secondary-indexes.md).
+	CreateIndex(context.Context, *CreateIndexRequest) (*CreateIndexResponse, error)
+	ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error)
+	DropIndex(context.Context, *DropIndexRequest) (*DropIndexResponse, error)
 	mustEmbedUnimplementedBeastDBServiceServer()
 }
 
@@ -193,6 +234,15 @@ func (UnimplementedBeastDBServiceServer) ListCollections(context.Context, *ListC
 }
 func (UnimplementedBeastDBServiceServer) DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DropCollection not implemented")
+}
+func (UnimplementedBeastDBServiceServer) CreateIndex(context.Context, *CreateIndexRequest) (*CreateIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateIndex not implemented")
+}
+func (UnimplementedBeastDBServiceServer) ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListIndexes not implemented")
+}
+func (UnimplementedBeastDBServiceServer) DropIndex(context.Context, *DropIndexRequest) (*DropIndexResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DropIndex not implemented")
 }
 func (UnimplementedBeastDBServiceServer) mustEmbedUnimplementedBeastDBServiceServer() {}
 func (UnimplementedBeastDBServiceServer) testEmbeddedByValue()                        {}
@@ -352,6 +402,60 @@ func _BeastDBService_DropCollection_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BeastDBService_CreateIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).CreateIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_CreateIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).CreateIndex(ctx, req.(*CreateIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BeastDBService_ListIndexes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListIndexesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).ListIndexes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_ListIndexes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).ListIndexes(ctx, req.(*ListIndexesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _BeastDBService_DropIndex_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DropIndexRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BeastDBServiceServer).DropIndex(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BeastDBService_DropIndex_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BeastDBServiceServer).DropIndex(ctx, req.(*DropIndexRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // BeastDBService_ServiceDesc is the grpc.ServiceDesc for BeastDBService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -387,6 +491,18 @@ var BeastDBService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "DropCollection",
 			Handler:    _BeastDBService_DropCollection_Handler,
 		},
+		{
+			MethodName: "CreateIndex",
+			Handler:    _BeastDBService_CreateIndex_Handler,
+		},
+		{
+			MethodName: "ListIndexes",
+			Handler:    _BeastDBService_ListIndexes_Handler,
+		},
+		{
+			MethodName: "DropIndex",
+			Handler:    _BeastDBService_DropIndex_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -402,6 +518,7 @@ const (
 	ReplicationService_StreamWAL_FullMethodName = "/beastdb.v1.ReplicationService/StreamWAL"
 	ReplicationService_Ack_FullMethodName       = "/beastdb.v1.ReplicationService/Ack"
 	ReplicationService_Fence_FullMethodName     = "/beastdb.v1.ReplicationService/Fence"
+	ReplicationService_LogEpochs_FullMethodName = "/beastdb.v1.ReplicationService/LogEpochs"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
@@ -414,6 +531,9 @@ type ReplicationServiceClient interface {
 	Ack(ctx context.Context, in *ReplicationAck, opts ...grpc.CallOption) (*AckResponse, error)
 	// Fence freezes a leader's writes at a new epoch and reports its final LSN.
 	Fence(ctx context.Context, in *FenceRequest, opts ...grpc.CallOption) (*FenceResponse, error)
+	// LogEpochs reports where each leader epoch began in the node's log, so a
+	// fenced former leader can check that its log is a prefix of this one.
+	LogEpochs(ctx context.Context, in *LogEpochsRequest, opts ...grpc.CallOption) (*LogEpochsResponse, error)
 }
 
 type replicationServiceClient struct {
@@ -463,6 +583,16 @@ func (c *replicationServiceClient) Fence(ctx context.Context, in *FenceRequest, 
 	return out, nil
 }
 
+func (c *replicationServiceClient) LogEpochs(ctx context.Context, in *LogEpochsRequest, opts ...grpc.CallOption) (*LogEpochsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LogEpochsResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_LogEpochs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ReplicationServiceServer is the server API for ReplicationService service.
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility.
@@ -473,6 +603,9 @@ type ReplicationServiceServer interface {
 	Ack(context.Context, *ReplicationAck) (*AckResponse, error)
 	// Fence freezes a leader's writes at a new epoch and reports its final LSN.
 	Fence(context.Context, *FenceRequest) (*FenceResponse, error)
+	// LogEpochs reports where each leader epoch began in the node's log, so a
+	// fenced former leader can check that its log is a prefix of this one.
+	LogEpochs(context.Context, *LogEpochsRequest) (*LogEpochsResponse, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -491,6 +624,9 @@ func (UnimplementedReplicationServiceServer) Ack(context.Context, *ReplicationAc
 }
 func (UnimplementedReplicationServiceServer) Fence(context.Context, *FenceRequest) (*FenceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Fence not implemented")
+}
+func (UnimplementedReplicationServiceServer) LogEpochs(context.Context, *LogEpochsRequest) (*LogEpochsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method LogEpochs not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
@@ -560,6 +696,24 @@ func _ReplicationService_Fence_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ReplicationService_LogEpochs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogEpochsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).LogEpochs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_LogEpochs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).LogEpochs(ctx, req.(*LogEpochsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -574,6 +728,10 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Fence",
 			Handler:    _ReplicationService_Fence_Handler,
+		},
+		{
+			MethodName: "LogEpochs",
+			Handler:    _ReplicationService_LogEpochs_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

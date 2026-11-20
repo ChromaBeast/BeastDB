@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	beastv1 "github.com/ChromaBeast/beastdb/api/proto"
 	"github.com/ChromaBeast/beastdb/internal/wal"
@@ -19,6 +20,7 @@ type LeaderServer struct {
 	walCipher   *wal.Cipher // nil for a plaintext log (ADR 0003)
 	broadcaster *Broadcaster
 	acks        map[string]uint64
+	ackAt       map[string]time.Time // when each replica's last ack arrived
 	addrs       map[string]string // replica id -> remote address of its live stream
 	durableLSN  func() uint64     // optional; bounds catch-up to fsynced records
 	mu          sync.RWMutex
@@ -45,6 +47,7 @@ func NewLeaderServer(walPath string) *LeaderServer {
 		walPath:     walPath,
 		broadcaster: NewBroadcaster(),
 		acks:        make(map[string]uint64),
+		ackAt:       make(map[string]time.Time),
 		addrs:       make(map[string]string),
 	}
 }
@@ -81,6 +84,9 @@ func (s *LeaderServer) StreamWAL(req *beastv1.StreamWALRequest, stream grpc.Serv
 	if s.cluster != nil && req.FromLsn > 0 && req.FromLsn-1 > s.cluster.engine.CurrentLSN() {
 		return status.Errorf(codes.FailedPrecondition, "follower is at LSN %d, ahead of this leader (%d): it holds writes this leader never had; rebuild it from this leader",
 			req.FromLsn-1, s.cluster.engine.CurrentLSN())
+	}
+	if err := s.checkLogMatch(req); err != nil {
+		return err
 	}
 	// 1. Subscribe FIRST before reading WAL from disk to eliminate the live-handoff race gap.
 	ch, unsubscribe := s.broadcaster.Subscribe(req.ReplicaId, 1024)
@@ -146,6 +152,7 @@ func (s *LeaderServer) Ack(ctx context.Context, req *beastv1.ReplicationAck) (*b
 	}
 	s.mu.Lock()
 	s.acks[req.ReplicaId] = req.AcknowledgedLsn
+	s.ackAt[req.ReplicaId] = time.Now()
 	s.mu.Unlock()
 	resp := &beastv1.AckResponse{Success: true, Epoch: s.servedEpoch()}
 	if s.cluster != nil {

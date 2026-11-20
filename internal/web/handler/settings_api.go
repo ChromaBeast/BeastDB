@@ -29,6 +29,8 @@ type RuntimeSettings struct {
 	InsecureAuthOverride bool
 	// Encryption is what the open engine reports (never derived from flags).
 	Encryption api.EncryptionInfo
+	// AuditEncrypted is whether the open audit log writes sealed records.
+	AuditEncrypted bool
 }
 
 type settingsResponse struct {
@@ -73,13 +75,15 @@ func buildSettings(s RuntimeSettings) settingsResponse {
 			"dev_mode": s.DevMode,
 		},
 		Storage: map[string]any{
-			"data_dir":           s.DataDir,
-			"pool_size_frames":   s.PoolSize,
-			"page_size_bytes":    4096,
-			"wal_checkpoint_mb":  s.WALCheckpointMB,
-			"encryption_at_rest": s.Encryption.Enabled,
-			"encryption_cipher":  s.Encryption.Cipher,
-			"encryption_key_id":  s.Encryption.KeyID,
+			"data_dir":              s.DataDir,
+			"pool_size_frames":      s.PoolSize,
+			"page_size_bytes":       4096,
+			"wal_checkpoint_mb":     s.WALCheckpointMB,
+			"encryption_at_rest":    s.Encryption.Enabled,
+			"encryption_cipher":     s.Encryption.Cipher,
+			"encryption_key_id":     s.Encryption.KeyID,
+			"encryption_key_source": s.Encryption.KeySource,
+			"audit_log_encrypted":   s.AuditEncrypted,
 		},
 		Network: map[string]any{
 			"grpc_addr": s.GRPCAddr,

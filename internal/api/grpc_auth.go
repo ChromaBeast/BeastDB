@@ -53,9 +53,13 @@ var methodRoles = map[string][]string{
 	"/beastdb.v1.BeastDBService/ListCollections":  {RoleViewer, RoleWriter, RoleAdmin},
 	"/beastdb.v1.BeastDBService/CreateCollection": {RoleAdmin},
 	"/beastdb.v1.BeastDBService/DropCollection":   {RoleAdmin},
+	"/beastdb.v1.BeastDBService/ListIndexes":      {RoleViewer, RoleWriter, RoleAdmin},
+	"/beastdb.v1.BeastDBService/CreateIndex":      {RoleAdmin},
+	"/beastdb.v1.BeastDBService/DropIndex":        {RoleAdmin},
 	"/beastdb.v1.ReplicationService/StreamWAL":    {RoleReplication, RoleAdmin},
 	"/beastdb.v1.ReplicationService/Ack":          {RoleReplication, RoleAdmin},
 	"/beastdb.v1.ReplicationService/Fence":        {RoleReplication, RoleAdmin},
+	"/beastdb.v1.ReplicationService/LogEpochs":    {RoleReplication, RoleAdmin},
 }
 
 func roleAllowed(role, method string) bool {

@@ -94,6 +94,9 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 		RateLimiter: rateLimiter,
 		Audit:       opts.Audit,
 	}
+	if opts.Runtime != nil {
+		deps.Require2FAAdmins = func() bool { return opts.Runtime.Get().Require2FAAdmins == 1 }
+	}
 
 	mux := http.NewServeMux()
 
@@ -117,6 +120,10 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	// Public auth routes
 	mux.HandleFunc("/login", handler.LoginHandler(deps))
 	mux.HandleFunc("/logout", handler.LogoutHandler(deps))
+	// Second sign-in step: public routes, but each needs the short-lived pending cookie from a correct password.
+	mux.HandleFunc("/login/2fa", handler.TwoFactorLoginHandler(deps))
+	mux.HandleFunc("/login/2fa/setup", handler.TwoFactorLoginSetupHandler(deps))
+	mux.HandleFunc("/login/2fa/enable", handler.TwoFactorLoginEnableHandler(deps))
 
 	// Protected dashboard — serves index.html
 	dashboardFS := http.FileServer(http.FS(staticFS))
@@ -127,6 +134,7 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	mux.Handle("/api/me", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetMe)))
 	mux.Handle("/api/records", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetRecords)))
 	mux.Handle("/api/collections", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.CollectionsHandler)))
+	mux.Handle("/api/indexes", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.IndexesHandler)))
 	mux.Handle("/api/partitions", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.GetPartitions)))
 
 	// Protected key-value CRUD routes
@@ -145,6 +153,12 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 
 	// Search route — authenticated users only
 	mux.Handle("/api/search", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.SearchRecords)))
+
+	// Own second-factor management (any signed-in user) and admin reset of another user's
+	twoFactorH := handler.AuthMiddleware(sessions, handler.TwoFactorAccountHandler(deps))
+	mux.Handle("/api/account/2fa", twoFactorH)
+	mux.Handle("/api/account/2fa/", twoFactorH)
+	mux.Handle("/api/users/2fa-reset", handler.AdminMiddleware(sessions, handler.TwoFactorResetHandler(deps)))
 
 	// User bulk-delete route — admin only
 	mux.Handle("/api/user", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.DeleteUser)))
@@ -167,11 +181,13 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	mux.Handle("/api/logs", handler.AdminMiddleware(sessions, handler.LogsHandler(sessions, opts.Logs)))
 	opts.Settings.Version = version
 	opts.Settings.Role = role
+	apiH.SetNodeSettings(opts.Settings)
 	mux.Handle("/api/settings", handler.AdminMiddleware(sessions, handler.SettingsHandler(sessions, opts.Settings)))
 	// Operations (checkpoint, replica view) — admin only
 	mux.Handle("/api/checkpoint", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostCheckpoint)))
 	mux.Handle("/api/replication", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.GetReplication)))
 	mux.Handle("/api/replication/promote", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostPromote)))
+	mux.Handle("/api/replication/rejoin", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.PostRejoin)))
 
 	mux.Handle("/api/settings/runtime", handler.AdminMiddleware(sessions, handler.RuntimeSettingsHandler(sessions, opts.Runtime, opts.Audit)))
 	backupsH := handler.AdminMiddleware(sessions, handler.BackupsHandler(sessions, opts.Backups, opts.Audit))

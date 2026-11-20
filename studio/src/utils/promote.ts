@@ -17,7 +17,7 @@ export function promoteGate(cluster: ClusterStatus | undefined, isAdmin: boolean
   if (!cluster) return { enabled: false, reason: "This node does not report cluster state." };
   if (cluster.role === "leader") return { enabled: false, reason: "This node is already the leader." };
   if (cluster.role === "fenced") {
-    return { enabled: false, reason: `Fenced at epoch ${cluster.epoch}: rebuild this node as a follower before it can lead.` };
+    return { enabled: false, reason: `Fenced at epoch ${cluster.epoch}: it cannot lead. Rejoin it as a follower of the new leader below.` };
   }
   if (!cluster.promotable) {
     return { enabled: false, reason: cluster.promoteBlockedReason || "Not caught up with the leader." };
@@ -34,6 +34,26 @@ export function promoteErrorMessage(code: string | undefined, error: string): st
       return "The old leader is fenced but this node had not caught up in time. Nothing was promoted; try again.";
     case "fence_refused":
       return `The old leader refused to be fenced: ${error}`;
+    default:
+      return error;
+  }
+}
+
+/** host:port with no scheme, path or spaces, as the rejoin endpoint requires. */
+export function validLeaderAddr(addr: string): boolean {
+  const a = addr.trim();
+  return /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9._-]+):\d{1,5}$/.test(a);
+}
+
+/** Message for a failed rejoin call, using the server's error code. */
+export function rejoinErrorMessage(code: string | undefined, error: string): string {
+  switch (code) {
+    case "rejoin_refused":
+      return `${error}. The node stays fenced and nothing was changed.`;
+    case "not_fenced":
+      return "This node is not fenced, so there is nothing to rejoin.";
+    case "unavailable":
+      return "This process cannot dial a leader for rejoin.";
     default:
       return error;
   }

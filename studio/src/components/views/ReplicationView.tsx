@@ -6,13 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { PromoteCard } from "../replication/PromoteCard";
+import { RejoinCard } from "../replication/RejoinCard";
+import { formatAckAge, replicaState, replicaStateLabel, summarizeReplicas } from "../../utils/replicas";
 import type { ReplicationStatus } from "../../types";
 import type { ViewProps } from "./types";
 
 const POLL_MS = 5000;
-
-const FOLLOWER_CMD = `go run ./cmd/server -role follower -leader-addr <leader-host>:50051 \\
-  -replica-id replica-1 -data-dir ./data-follower -port 50052 -web-addr 127.0.0.1:8081`;
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
@@ -51,7 +50,8 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
   const role = data?.role ?? stats?.role ?? "standalone";
   const lsn = data?.lsn ?? stats?.lsn ?? 0;
   const replicas = data?.replicas ?? [];
-  const connected = replicas.filter((r) => r.connected).length;
+  const summary = summarizeReplicas(replicas);
+  const connected = summary.connected;
   const isLeader = role === "leader";
 
   return (
@@ -81,6 +81,10 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
 
       {isAdmin && data?.cluster && (
         <PromoteCard cluster={data.cluster} isAdmin={isAdmin} onNotice={onNotice} onPromoted={() => void load()} />
+      )}
+
+      {isAdmin && data?.cluster?.role === "fenced" && (
+        <RejoinCard cluster={data.cluster} onNotice={onNotice} onRejoined={() => void load()} />
       )}
 
       <Card>
@@ -113,7 +117,8 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
                     <th className="py-2 pr-4 font-medium">Address</th>
                     <th className="py-2 pr-4 font-medium">State</th>
                     <th className="py-2 pr-4 text-right font-medium">Acked LSN</th>
-                    <th className="py-2 text-right font-medium">Lag (LSN)</th>
+                    <th className="py-2 pr-4 text-right font-medium">Lag (LSN)</th>
+                    <th className="py-2 text-right font-medium">Last ack</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -122,12 +127,13 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
                       <td className="py-2.5 pr-4 font-mono text-foreground">{r.id}</td>
                       <td className="py-2.5 pr-4 font-mono text-muted-foreground">{r.address || "—"}</td>
                       <td className="py-2.5 pr-4">
-                        <Badge variant={r.connected ? "lime" : "outline"}>{r.connected ? "streaming" : "disconnected"}</Badge>
+                        <Badge variant={replicaState(r) === "streaming" ? "lime" : "outline"}>{replicaStateLabel(replicaState(r))}</Badge>
                       </td>
                       <td className="py-2.5 pr-4 text-right font-mono">{r.ackedLSN.toLocaleString()}</td>
-                      <td className={`py-2.5 text-right font-mono ${r.lagLSN > 0 ? "text-warning" : "text-foreground"}`}>
+                      <td className={`py-2.5 pr-4 text-right font-mono ${r.lagLSN > 0 ? "text-warning" : "text-foreground"}`}>
                         {r.lagLSN.toLocaleString()}
                       </td>
+                      <td className="py-2.5 text-right font-mono text-muted-foreground">{formatAckAge(r.lastAckAgoMS)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -135,25 +141,50 @@ export function ReplicationView({ stats, user, onNotice }: ViewProps) {
             </div>
           )}
           {data?.tracked && replicas.length > 0 && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Lag is leader LSN minus the replica&apos;s last acknowledgement. Acks are recorded as followers apply
-              records, and a disconnected replica keeps its last ack until the leader restarts. To promote a replica,
-              open Studio on that replica: promotion runs on the node being promoted.
-            </p>
+            <div className="mt-3 space-y-1.5 text-xs text-muted-foreground">
+              <p data-testid="replica-summary">
+                {summary.connected} connected, {summary.lagging} behind or silent, {summary.disconnected} disconnected.
+              </p>
+              <p>
+                Lag is the leader&apos;s current LSN minus the replica&apos;s last acknowledged LSN, so it is only as fresh
+                as the last ack (followers ack at least once a second while connected). A disconnected replica keeps its
+                last ack until the leader restarts. To promote a replica, open Studio on that replica: promotion runs on
+                the node being promoted.
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Start a follower</CardTitle>
+          <CardTitle className="text-sm">Add a replica</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <CopyCommand label="Follower node (flags from cmd/server)" command={FOLLOWER_CMD} onNotice={onNotice} />
+          {!isAdmin ? (
+            <p className="text-sm text-muted-foreground">Visible to admin users only.</p>
+          ) : !data?.join ? (
+            <p className="text-sm text-muted-foreground">
+              This node does not report how to join a follower to it.
+            </p>
+          ) : !data.join.available ? (
+            <p className="text-sm text-muted-foreground" data-testid="join-unavailable">
+              {data.join.reason}
+            </p>
+          ) : (
+            <>
+              <CopyCommand label="Run on the new follower's machine" command={data.join.command ?? ""} onNotice={onNotice} />
+              <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground" data-testid="join-notes">
+                {data.join.notes?.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            </>
+          )}
           <p className="text-xs text-muted-foreground">
-            A follower runs read-only and streams the leader&apos;s WAL, replaying its archived generation first. Use a
-            unique <span className="font-mono">-replica-id</span> and its own data directory. Promotion is manual; automatic
-            failover is not implemented.
+            Studio cannot start or register a replica: there is no join protocol. A follower is a process started with
+            these flags; the leader sees it when it opens a WAL stream. It runs read-only and replays the leader&apos;s
+            WAL from the start. Promotion is manual and failover is not automatic.
           </p>
         </CardContent>
       </Card>

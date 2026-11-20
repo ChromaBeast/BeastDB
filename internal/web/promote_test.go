@@ -18,6 +18,15 @@ type fakeCluster struct {
 	res    replication.PromoteResult
 	err    error
 	calls  []replication.PromoteOptions
+
+	rejoinRes   replication.RejoinResult
+	rejoinErr   error
+	rejoinCalls []string
+}
+
+func (f *fakeCluster) Rejoin(_ context.Context, addr string) (replication.RejoinResult, error) {
+	f.rejoinCalls = append(f.rejoinCalls, addr)
+	return f.rejoinRes, f.rejoinErr
 }
 
 func (f *fakeCluster) Status() replication.Status { return f.status }
@@ -170,5 +179,53 @@ func TestReplicationStatusIncludesClusterAndHidesReplicasOnFollower(t *testing.T
 	}
 	if body.Role != "follower" || body.Tracked || body.Cluster == nil || body.Cluster.Epoch != 3 || body.Cluster.PromoteBlockedReason == "" {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func rejoinEntries(t *testing.T, log *audit.Log) []audit.Entry {
+	t.Helper()
+	es, err := log.List(audit.Query{Action: audit.ActionRejoin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return es
+}
+
+func TestRejoinEndpointIsAdminOnlyAndAudited(t *testing.T) {
+	fc := &fakeCluster{status: replication.Status{NodeID: "n1"},
+		rejoinRes: replication.RejoinResult{Epoch: 2, LeaderAddr: "10.0.0.2:50051", AppliedLSN: 7, LeaderLSN: 9}}
+	srv, log, admin, viewer := promoteServer(t, fc)
+	body := `{"leaderAddr":"10.0.0.2:50051"}`
+
+	if rec := postJSON(srv, "/api/replication/rejoin", body, nil); rec.Code != http.StatusForbidden {
+		t.Fatalf("anonymous: %d", rec.Code)
+	}
+	if rec := postJSON(srv, "/api/replication/rejoin", body, viewer); rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer: %d", rec.Code)
+	}
+	if len(fc.rejoinCalls) != 0 || len(rejoinEntries(t, log)) != 0 {
+		t.Fatal("a rejected request must not reach Rejoin or the audit log")
+	}
+	for _, bad := range []string{`{}`, `{"leaderAddr":"http://x/y"}`, `not json`} {
+		if rec := postJSON(srv, "/api/replication/rejoin", bad, admin); rec.Code != http.StatusBadRequest {
+			t.Errorf("body %q: %d, want 400", bad, rec.Code)
+		}
+	}
+
+	if rec := postJSON(srv, "/api/replication/rejoin", body, admin); rec.Code != http.StatusOK {
+		t.Fatalf("admin: %d %s", rec.Code, rec.Body)
+	}
+	es := rejoinEntries(t, log)
+	if len(es) != 1 || !strings.Contains(es[0].Detail, "prefix") || es[0].Target != "n1" {
+		t.Fatalf("audit = %+v", es)
+	}
+
+	fc.rejoinErr = &replication.RejoinRefusal{Reason: "holds 3 record(s) the leader never had", UnreplicatedRecords: 3}
+	rec := postJSON(srv, "/api/replication/rejoin", body, admin)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"unreplicatedRecords":3`) || !strings.Contains(rec.Body.String(), "rejoin_refused") {
+		t.Fatalf("refusal: %d %s", rec.Code, rec.Body)
+	}
+	if es := rejoinEntries(t, log); len(es) != 2 || !strings.Contains(es[0].Detail+es[1].Detail, "refused") {
+		t.Fatalf("refusal not audited: %+v", es)
 	}
 }

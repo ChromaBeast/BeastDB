@@ -15,6 +15,7 @@ import (
 
 	"github.com/ChromaBeast/beastdb/internal/api"
 	"github.com/ChromaBeast/beastdb/internal/backup"
+	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/logbuf"
 	"github.com/ChromaBeast/beastdb/internal/replication"
 	"github.com/ChromaBeast/beastdb/internal/runtimecfg"
@@ -35,21 +36,33 @@ func main() {
 	replicaID := flag.String("replica-id", getEnv("BEASTDB_REPLICA_ID", "replica-1"), "Unique identifier for this replica node")
 	webAddr := flag.String("web-addr", getEnv("BEASTDB_WEB_ADDR", "127.0.0.1:8080"), "Address for the web admin console (empty to disable)")
 	adminPassword := flag.String("admin-password", getEnv("BEASTDB_ADMIN_PASSWORD", "admin"), "Initial admin user password (or BEASTDB_ADMIN_PASSWORD)")
+	resetAdmin2FA := flag.Bool("reset-admin-2fa", false, "Remove the admin account's two-factor sign-in at startup (lost device and recovery codes)")
 	partitionConfig := flag.String("partition-config", getEnv("BEASTDB_PARTITION_CONFIG", ""), "Path to partitions.json defining Studio partition labels (optional)")
 	apiToken := flag.String("api-token", getEnv("BEASTDB_API_TOKEN", ""), "Bearer token for gRPC authentication (or BEASTDB_API_TOKEN)")
+	leaderToken := flag.String("leader-token", getEnv("BEASTDB_LEADER_TOKEN", ""), "Bearer token this node presents to a leader for replication and rejoin (admin or replication-role token; or BEASTDB_LEADER_TOKEN). Defaults to -api-token, so nodes that share one token need not set it")
 	tlsCert := flag.String("tls-cert", getEnv("BEASTDB_TLS_CERT", ""), "Path to TLS server/client certificate file (PEM)")
 	tlsKey := flag.String("tls-key", getEnv("BEASTDB_TLS_KEY", ""), "Path to TLS server/client private key file (PEM)")
 	tlsCA := flag.String("tls-ca", getEnv("BEASTDB_TLS_CA", ""), "Path to TLS CA certificate file (PEM)")
 	insecureAuth := flag.Bool("insecure-auth", false, "Permit default credentials on public interfaces (unsafe, for testing only)")
 	devMode := flag.Bool("dev", false, "Run in ephemeral emulator mode with temporary storage auto-purged on exit")
 	walCheckpointMB := flag.Int("wal-checkpoint-mb", getEnvInt("BEASTDB_WAL_CHECKPOINT_MB", 64), "Checkpoint and rotate the WAL once it exceeds this many MiB")
-	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
+	encKeyFile := flag.String("encryption-key-file", getEnv("BEASTDB_ENCRYPTION_KEY_FILE", ""), "Master key file (32 raw bytes or 64 hex chars; env:NAME and exec:CMD specs also accepted) enabling encryption at rest; see docs/adr/0003-encryption-at-rest.md")
+	encKeyEnv := flag.String("encryption-key-env", getEnv("BEASTDB_ENCRYPTION_KEY_ENV", ""), "NAME of an environment variable holding the master key (32 raw bytes or 64 hex chars); the key file or command is preferred, see the encryption runbook")
+	encKeyCmd := flag.String("encryption-key-cmd", getEnv("BEASTDB_ENCRYPTION_KEY_CMD", ""), "Command whose stdout is the master key (run without a shell; a JSON array gives exact argv): the hook for a KMS wrapper")
 	walTruncateCorrupt := flag.Bool("wal-truncate-corrupt", getEnv("BEASTDB_WAL_TRUNCATE_CORRUPT", "") == "true", "Open even if the WAL is damaged in the middle, cutting it at the damage (acknowledged writes after it are lost; the cut bytes are saved to <wal>.discarded)")
+	copyDir := flag.String("backup-copy-dir", getEnv("BEASTDB_BACKUP_COPY_DIR", ""), "Also copy each finished backup into this directory (a mounted share or second disk)")
+	copyExec := flag.String("backup-copy-exec", getEnv("BEASTDB_BACKUP_COPY_EXEC", ""), "Program run as `program <bundle-dir> <backup-id>` after each backup to ship it off this host (aws, rclone, scp wrapper); it holds any credentials")
+	copyTimeout := flag.Duration("backup-copy-timeout", 30*time.Minute, "Time limit for -backup-copy-exec")
 	flag.Parse()
+
+	keySpec, err := crypt.SpecFromParts(*encKeyFile, *encKeyEnv, *encKeyCmd)
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
 
 	// Tee the std logger into an in-memory tail for Studio; stderr output is unchanged.
 	logs := logbuf.New(logbuf.DefaultCapacity)
-	for _, secret := range []string{*apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"), nonDefault(*adminPassword)} {
+	for _, secret := range []string{*apiToken, *leaderToken, os.Getenv("BEASTDB_METRICS_TOKEN"), nonDefault(*adminPassword)} {
 		logs.AddSecret(secret)
 	}
 	log.SetOutput(logs.Tee(os.Stderr))
@@ -72,7 +85,7 @@ func main() {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 
-	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{TruncateCorruptWAL: *walTruncateCorrupt, KeyFile: *encKeyFile})
+	engine, err := api.NewEngineWithOptions(filepath.Join(*dataDir, "beast.bin"), filepath.Join(*dataDir, "beast.wal"), *poolSize, api.Options{TruncateCorruptWAL: *walTruncateCorrupt, KeyFile: keySpec})
 	if err != nil {
 		log.Fatalf("Failed to initialize database engine: %v", err)
 	}
@@ -83,7 +96,7 @@ func main() {
 
 	// Settings an admin can change in Studio without a restart; saved values
 	// in runtime-settings.json override the matching flags.
-	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7})
+	runtimeCfg, rtErr := runtimecfg.Load(*dataDir, runtimecfg.Values{WALCheckpointMB: *walCheckpointMB, LoginMaxAttempts: 5, LoginWindowSeconds: 30, BackupKeep: 7, BackupOffsite: 1})
 	if rtErr != nil {
 		log.Printf("Warning: ignoring runtime settings file: %v", rtErr)
 	}
@@ -91,7 +104,16 @@ func main() {
 
 	// Server-managed backups (create, verify, download, optional schedule).
 	backups := backup.NewManager(engine, filepath.Join(*dataDir, "backups"))
+	switch {
+	case *copyDir != "" && *copyExec != "":
+		log.Fatal("FATAL: set only one of -backup-copy-dir and -backup-copy-exec")
+	case *copyDir != "":
+		backups.SetDestination(backup.DirDestination{Path: *copyDir})
+	case *copyExec != "":
+		backups.SetDestination(backup.ExecDestination{Program: *copyExec, Timeout: *copyTimeout})
+	}
 	runtimeCfg.Subscribe(func(v runtimecfg.Values) {
+		backups.SetOffsite(v.BackupOffsite == 1)
 		backups.Configure(time.Duration(v.BackupIntervalMinutes)*time.Minute, v.BackupKeep)
 	})
 	backups.Start(ckptCtx)
@@ -138,21 +160,33 @@ func main() {
 	}
 	replicaSource = repServer
 	clusterControl = cluster
+	clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
+	if err != nil {
+		log.Fatalf("Failed to initialize replication client TLS: %v", err)
+	}
+	peerToken := *leaderToken
+	if peerToken == "" {
+		peerToken = *apiToken
+	}
+	dialLeader := func(addr string) (*grpc.ClientConn, error) {
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption()}
+		if peerToken != "" {
+			opts = append(opts, grpc.WithPerRPCCredentials(bearerToken(peerToken)))
+		}
+		return grpc.NewClient(addr, opts...)
+	}
+	cluster.SetRejoinSupport(ctx, dialLeader)
 	switch cluster.Role() {
 	case replication.RoleFollower:
 		log.Printf("🔒 Node running in follower mode at epoch %d: engine write path set to read-only.", cluster.Epoch())
-		clientCreds, err := loadClientTLS(*tlsCert, *tlsKey, *tlsCA)
-		if err != nil {
-			log.Fatalf("Failed to initialize follower client TLS: %v", err)
-		}
-		conn, err := grpc.NewClient(*leaderAddr, grpc.WithTransportCredentials(clientCreds), api.MessageSizeDialOption())
+		conn, err := dialLeader(*leaderAddr)
 		if err != nil {
 			log.Fatalf("Failed to dial leader node: %v", err)
 		}
 		defer conn.Close()
 		cluster.RunFollower(ctx, replication.NewFollowerClient(*replicaID, engine, conn))
 	case replication.RoleFenced:
-		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Wipe its data directory to rejoin it as a follower.", cluster.Epoch())
+		log.Printf("🔒 Node was fenced at epoch %d: it stays read-only. Rejoin it as a follower with `beastctl rejoin` (refused if it holds writes the new leader lacks), or wipe its data directory to reseed it.", cluster.Epoch())
 	}
 
 	var partitions []handler.PartitionEntry
@@ -192,6 +226,7 @@ func main() {
 		},
 	}
 	webOpts.Cluster = clusterControl
+	resetAdminTwoFactor = *resetAdmin2FA
 	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, webOpts, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
 	defer stopWeb()
 

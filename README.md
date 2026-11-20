@@ -70,12 +70,15 @@ Standalone binary for scripting, CI pipelines, and disaster recovery — no brow
 go build -o beastctl ./cmd/beastctl
 
 beastctl ping    --addr 127.0.0.1:50051                        # Health check + latency
-beastctl backup  --db-dir ./data --out backup.tar.gz           # Atomic physical backup bundle
-beastctl verify  --bundle backup.tar.gz                        # Validate SHA-256 manifest
-beastctl restore --bundle backup.tar.gz --target-dir ./data    # Clean-host disaster recovery
+beastctl backup  --db ./data/beast.bin --wal ./data/beast.wal --out ./bk   # Offline backup bundle (server stopped)
+beastctl verify  --backup ./bk                                 # Check manifest, checksum, page 0
+beastctl restore --backup ./bk --new-dir ./restored            # Restore into a NEW directory (never overwrites)
 beastctl export  --out export.json --partition 0x01            # Logical snapshot export
 beastctl import  --file export.json                            # Bulk load records
 beastctl seed    --file examples/fixtures/seed.json            # Load fixtures with partition stats
+beastctl collections create --name users                       # Named collection (key prefix)
+beastctl index create --name by-age --collection users --field age --type int
+beastctl scan --index by-age --gte 21 --lte 30 --limit 50    # Filtered scan through the index
 beastctl get     --key 72057594037927936                       # Point read by 64-bit key
 beastctl put     --key 72057594037927936 --value '{"name":"x"}' # Write a record
 ```

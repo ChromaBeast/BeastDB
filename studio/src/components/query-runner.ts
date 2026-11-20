@@ -1,8 +1,9 @@
 import { api } from "../lib/api-client";
 import { parseUniversalRecord } from "../utils/data-parser";
-import type { UniversalRecord } from "../types";
+import type { IndexEntry, UniversalRecord } from "../types";
+import { FilterOp, buildFilterQuery } from "../utils/query-builder";
 
-export type QueryMode = "get" | "scan" | "search";
+export type QueryMode = "get" | "scan" | "search" | "filter";
 
 /** Raw (string) form values for every mode; only the active mode's fields are read. */
 export interface QueryParams {
@@ -14,6 +15,11 @@ export interface QueryParams {
   q: string;
   prefix: string;
   maxScan: string;
+  /** filter mode: secondary index name, operator and value(s) */
+  indexName: string;
+  op: FilterOp;
+  value: string;
+  value2: string;
 }
 
 export interface QueryOutcome {
@@ -27,6 +33,7 @@ export interface QueryOutcome {
 
 export const EMPTY_PARAMS: QueryParams = {
   mode: "get", key: "", start: "", end: "", limit: "50", q: "", prefix: "", maxScan: "2500",
+  indexName: "", op: "eq", value: "", value2: "",
 };
 
 const U64_MAX = (1n << 64n) - 1n;
@@ -61,12 +68,13 @@ interface ListResponse {
 /** Short human label for a history entry. */
 export function describeQuery(p: QueryParams): string {
   if (p.mode === "get") return `GET ${p.key.trim()}`;
+  if (p.mode === "filter") return `FILTER ${p.indexName} ${p.op} ${p.value.trim()}${p.op === "between" ? ` .. ${p.value2.trim()}` : ""}`;
   if (p.mode === "search") return `SEARCH "${p.q.trim()}"${p.prefix.trim() ? ` @${p.prefix.trim()}` : ""}`;
   return `SCAN ${p.start.trim() || "min"} .. ${p.end.trim() || "max"}`;
 }
 
 /** Validates the form and calls the matching existing endpoint. Throws Error with a UI-ready message. */
-export async function runQuery(p: QueryParams): Promise<QueryOutcome> {
+export async function runQuery(p: QueryParams, indexes: IndexEntry[] = []): Promise<QueryOutcome> {
   const t0 = performance.now();
   const done = (o: Omit<QueryOutcome, "ms">): QueryOutcome => ({ ...o, ms: performance.now() - t0 });
 
@@ -75,6 +83,22 @@ export async function runQuery(p: QueryParams): Promise<QueryOutcome> {
     const k = u64("Key", p.key);
     const r = await api<RawItem>(`/api/key?k=${k}`);
     return done({ records: [parseUniversalRecord({ keyText: r.keyText ?? k, value: r.value })], hasMore: false });
+  }
+
+  if (p.mode === "filter") {
+    const idx = indexes.find((i) => i.name === p.indexName);
+    if (!idx) throw new Error("Choose an index.");
+    if (idx.state !== "ready") throw new Error(`Index "${idx.name}" is still building; try again when it is ready.`);
+    const { params } = buildFilterQuery({
+      index: idx, op: p.op, value: p.value, value2: p.value2, limit: posInt("Limit", p.limit, 500),
+      start: p.start.trim() ? u64("Start", p.start) : undefined,
+    });
+    const r = await api<ListResponse>(`/api/records?${new URLSearchParams(params)}`);
+    return done({
+      records: r.records.map(parseUniversalRecord),
+      hasMore: r.hasMore,
+      nextKey: r.hasMore ? r.nextKeyText : undefined,
+    });
   }
 
   if (p.mode === "scan") {

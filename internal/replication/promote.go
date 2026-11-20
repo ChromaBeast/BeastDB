@@ -92,7 +92,7 @@ func (c *Cluster) Status() Status {
 	case RoleLeader:
 		out.PromoteBlockedReason = "This node is the leader."
 	case RoleFenced:
-		out.PromoteBlockedReason = fmt.Sprintf("This node was fenced at epoch %d and its data may be behind or diverged; rebuild it as a follower.", st.Epoch)
+		out.PromoteBlockedReason = fmt.Sprintf("This node was fenced at epoch %d and its data may be behind or diverged. Rejoin it from this page or with beastctl rejoin: that succeeds only if its log is a prefix of the new leader's.", st.Epoch)
 	default:
 		c.mu.Lock()
 		f := c.follower
@@ -214,6 +214,11 @@ func (c *Cluster) becomeLeader(f *FollowerClient, epoch uint64, res *PromoteResu
 	if c.syncStop != nil {
 		c.syncStop()
 		<-c.syncDone
+	}
+	// Log where epoch begins before any client write can land. A crash before
+	// this line restarts as leader and writes the marker then (NewCluster).
+	if err := c.ensureEpochMarker(); err != nil {
+		return err
 	}
 	res.AppliedLSN = c.engine.CurrentLSN()
 	c.engine.SetCommitObserver(c.leader)

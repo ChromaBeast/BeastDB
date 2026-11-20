@@ -18,6 +18,8 @@ export interface KeyDecoded {
   itemHash: number;
 }
 
+const CATALOG_PREFIX = 0xff;
+
 let prefixRegistry: Record<number, PartitionMeta> = {};
 let inferredRegistry: Record<number, PartitionMeta> = {};
 // Named collections from the server catalog (ADR 0002). They win over partitions.json.
@@ -50,6 +52,10 @@ export function getPartitionMeta(prefix: number): PartitionMeta {
   if (name) {
     const base = prefixRegistry[prefix] ?? inferredRegistry[prefix];
     return { label: name, color: base?.color ?? getDeterministicColor(prefix), description: base?.description };
+  }
+  if (prefix === CATALOG_PREFIX) {
+    // Reserved for the collection catalog record (ADR 0002); never a user collection.
+    return { label: "System catalog", color: "slate", description: "Reserved: holds the collection catalog" };
   }
   return prefixRegistry[prefix] ?? inferredRegistry[prefix] ?? {
     label: `Collection ${prefix.toString(16).padStart(2, "0").toUpperCase()}`,

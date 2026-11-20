@@ -6,6 +6,9 @@ import (
 	"math"
 	"os"
 
+	"path/filepath"
+
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 )
@@ -60,6 +63,7 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 		if err != nil {
 			return res, err
 		}
+		defer crypt.Zero(master)
 		if srcKeys, err = crypt.OpenKeyring(dbPath, master); err != nil {
 			return res, err
 		}
@@ -71,7 +75,7 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 
 	tmpDB, tmpWAL := dbPath+".migrating", walPath+".migrating"
 	cleanup := func() {
-		for _, p := range []string{tmpDB, tmpWAL, storage.JournalPath(tmpDB), storage.SpillPath(tmpDB), crypt.KeyringPath(tmpDB)} {
+		for _, p := range []string{filepath.Join(filepath.Dir(dbPath), audit.FileName+audit.MigrationSuffix), tmpDB, tmpWAL, storage.JournalPath(tmpDB), storage.SpillPath(tmpDB), crypt.KeyringPath(tmpDB)} {
 			_ = os.Remove(p)
 		}
 	}
@@ -83,6 +87,7 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 		if err != nil {
 			return res, err
 		}
+		defer crypt.Zero(master)
 		id := uint16(1)
 		if srcKeys != nil {
 			id = srcKeys.ID + 1
@@ -145,7 +150,27 @@ func MigrateEncryption(dbPath, walPath string, o MigrateOptions) (MigrateResult,
 		return res, fmt.Errorf("verify destination: %w", err)
 	}
 
-	return res, swapMigrated(dbPath, walPath, tmpDB, tmpWAL, res.BackupSfx, o.DeleteOriginal, dstKeys != nil, &res)
+	// The audit log beside the data file is converted with it: sealed under the
+	// destination keys, or back to plaintext. The converted copy is prepared
+	// now, before anything is replaced, so a damaged log stops the migration
+	// early; it is installed right after the data file. A crash between the two
+	// is finished by audit.OpenSealed at the next start.
+	auditDir := filepath.Dir(dbPath)
+	var srcAudit, dstAudit *audit.Cipher
+	if srcKeys != nil {
+		srcAudit = audit.NewCipher(srcKeys.AuditAEAD(), srcKeys.ID)
+	}
+	if dstKeys != nil {
+		dstAudit = audit.NewCipher(dstKeys.AuditAEAD(), dstKeys.ID)
+	}
+	if _, err := audit.PrepareConvert(auditDir, srcAudit, dstAudit); err != nil {
+		cleanup()
+		return res, err
+	}
+	if err := swapMigrated(dbPath, walPath, tmpDB, tmpWAL, res.BackupSfx, o.DeleteOriginal, dstKeys != nil, &res); err != nil {
+		return res, err
+	}
+	return res, audit.InstallConverted(auditDir)
 }
 
 func copyRecordsTo(src, dst *Engine) (int, error) {
@@ -195,7 +220,7 @@ func copyRecordsTo(src, dst *Engine) (int, error) {
 // the preserved originals allow a manual restore. With deleteOrig no copy is
 // kept.
 func swapMigrated(dbPath, walPath, tmpDB, tmpWAL, sfx string, deleteOrig, dstEncrypted bool, res *MigrateResult) error {
-	originals := []string{dbPath, walPath, walPath + ".bak", crypt.KeyringPath(dbPath)}
+	originals := []string{dbPath, walPath, walPath + ".bak", crypt.KeyringPath(dbPath), filepath.Join(filepath.Dir(dbPath), audit.FileName)}
 	if !deleteOrig {
 		for _, p := range originals {
 			if _, err := os.Stat(p); err != nil {

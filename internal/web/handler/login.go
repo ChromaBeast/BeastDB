@@ -91,6 +91,18 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request, d *Deps) {
 		return
 	}
 
+	// The session cookie is issued only once every required factor has passed.
+	if user.TwoFactorEnabled() {
+		d.Sessions.IssuePendingCookie(w, r, user.Username, auth.PendingVerify)
+		writeNoStoreJSON(w, map[string]any{"twoFactor": "required"})
+		return
+	}
+	if user.Role == auth.RoleAdmin && d.require2FAForAdmins() {
+		d.Sessions.IssuePendingCookie(w, r, user.Username, auth.PendingSetup)
+		writeNoStoreJSON(w, map[string]any{"twoFactor": "setup"})
+		return
+	}
+
 	_ = d.Audit.Record(user.Username, audit.ActionLoginOK, "", "role "+string(user.Role), ip)
 	d.Sessions.IssueSessionCookieForRequest(w, r, user)
 	http.Redirect(w, r, "/", http.StatusSeeOther)

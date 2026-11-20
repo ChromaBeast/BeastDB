@@ -68,6 +68,7 @@ func (e *Engine) Search(query string, limit int, prefix uint8) ([]RecordItem, er
 
 // indexValueLocked indexes textual tokens from value for secondary search.
 func (e *Engine) indexValueLocked(key uint64, value []byte) {
+	e.indexFieldsLocked(key, value) // field indexes, ADR 0006
 	if len(value) == 0 {
 		e.secIndex.Unindex(key)
 		return
@@ -78,6 +79,7 @@ func (e *Engine) indexValueLocked(key uint64, value []byte) {
 
 // unindexValueLocked removes secondary index entries for a primary key.
 func (e *Engine) unindexValueLocked(key uint64) {
+	e.unindexFieldsLocked(key)
 	e.secIndex.Unindex(key)
 }
 

@@ -58,6 +58,7 @@ func newEngineInstance(disk *storage.DiskManager, bpm *storage.BufferPoolManager
 		wal:            w,
 		activeDataPage: meta.ActiveDataPageID,
 		secIndex:       index.NewSecondaryIndex(),
+		idx:            newIndexRegistry(),
 		opts:           opts,
 	}
 	// closeFiles releases the files without a checkpoint: after a failure part
@@ -84,8 +85,12 @@ func newEngineInstance(disk *storage.DiskManager, bpm *storage.BufferPoolManager
 		}
 	}
 
+	if err := engine.openIndexes(); err != nil {
+		return closeFiles(err)
+	}
 	if err := engine.recoverFromWAL(meta.LastCheckpointLSN); err != nil {
 		return closeFiles(err)
 	}
+	engine.startIndexBuilds()
 	return engine, nil
 }
