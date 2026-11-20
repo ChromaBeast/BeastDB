@@ -57,6 +57,13 @@ const (
 	ActionCollectionCreate = "collection.create"
 	ActionCollectionDrop   = "collection.drop"
 	ActionPromote          = "replication.promote"
+
+	// Two-factor sign-in. Details name the method, never a code or secret.
+	ActionLogin2FAFailed = "login.2fa.failed"
+	Action2FAEnable      = "2fa.enable"
+	Action2FADisable     = "2fa.disable"
+	Action2FARecoveryGen = "2fa.recovery.regenerate"
+	Action2FAReset       = "2fa.reset"
 )
 
 const maxField = 512

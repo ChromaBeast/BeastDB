@@ -3,6 +3,7 @@ package handler
 import (
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
@@ -15,7 +16,20 @@ type Deps struct {
 	StaticFS    fs.FS
 	RateLimiter *LoginRateLimiter
 	Audit       *audit.Log // nil disables auditing
+	// Require2FAAdmins reports whether admins must have a second factor (nil means no).
+	Require2FAAdmins func() bool
+	// Now overrides the clock for second-factor checks (tests); nil means time.Now.
+	Now func() time.Time
 }
+
+func (d *Deps) now() time.Time {
+	if d.Now != nil {
+		return d.Now()
+	}
+	return time.Now()
+}
+
+func (d *Deps) require2FAForAdmins() bool { return d.Require2FAAdmins != nil && d.Require2FAAdmins() }
 
 // AuthMiddleware rejects unauthenticated requests to protected routes.
 // On failure it redirects browsers to /login and returns 401 for API calls.

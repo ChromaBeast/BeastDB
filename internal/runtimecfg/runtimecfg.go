@@ -27,6 +27,8 @@ type Values struct {
 	BackupIntervalMinutes int `json:"backup_interval_minutes"`
 	// BackupKeep is how many scheduled backups are retained (manual ones are never pruned).
 	BackupKeep int `json:"backup_keep"`
+	// Require2FAAdmins is 1 to make admins enrol a second factor before they can sign in; 0 (default) leaves it optional.
+	Require2FAAdmins int `json:"require_2fa_admins"`
 }
 
 // Range is the inclusive bound of one setting.
@@ -43,6 +45,7 @@ var Ranges = map[string]Range{
 	// 0 = off; 1-4 are rejected in Validate so a typo cannot flood the disk.
 	"backup_interval_minutes": {0, 10080},
 	"backup_keep":             {1, 365},
+	"require_2fa_admins":      {0, 1},
 }
 
 func fields(v *Values) map[string]*int {
@@ -52,6 +55,7 @@ func fields(v *Values) map[string]*int {
 		"login_window_seconds":    &v.LoginWindowSeconds,
 		"backup_interval_minutes": &v.BackupIntervalMinutes,
 		"backup_keep":             &v.BackupKeep,
+		"require_2fa_admins":      &v.Require2FAAdmins,
 	}
 }
 

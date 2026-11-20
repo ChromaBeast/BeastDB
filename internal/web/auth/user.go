@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"time"
 
-	"golang.org/x/crypto/argon2"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"golang.org/x/crypto/argon2"
 )
 
 // Role defines the permission level of a user.
@@ -25,7 +25,12 @@ type User struct {
 	PasswordHash string    `json:"password_hash"` // argon2id encoded string
 	Role         Role      `json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
+	// TOTP is the optional second factor; nil for accounts that never enrolled.
+	TOTP *TOTPState `json:"totp,omitempty"`
 }
+
+// TwoFactorEnabled reports whether sign-in needs a second factor.
+func (u *User) TwoFactorEnabled() bool { return u.TOTP != nil && u.TOTP.Enabled }
 
 // argon2Params are the cost parameters — tuned for ~300ms on commodity hardware.
 var argon2Params = struct {

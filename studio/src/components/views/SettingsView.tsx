@@ -6,6 +6,8 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { useTheme } from "../../hooks/useTheme";
 import { RuntimeSettingsCard } from "../settings/RuntimeSettings";
+import { TwoFactorAdminCard } from "../settings/TwoFactorAdminCard";
+import { TwoFactorCard } from "../settings/TwoFactorCard";
 import { SettingsCard, settingsCards, type Settings, type SettingsSection } from "../settings/SettingsCards";
 import { cn } from "@/lib/utils";
 import type { ViewProps } from "./types";
@@ -114,6 +116,8 @@ export function SettingsView({ user, onNotice }: ViewProps) {
               ]}
             />
           )}
+          {section === "security" && <TwoFactorCard onNotice={onNotice} />}
+          {isAdmin && section === "security" && <TwoFactorAdminCard onNotice={onNotice} />}
           {state === "ok" && settings && (
             <>
               <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{settings.note}</p>

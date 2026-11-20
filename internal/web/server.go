@@ -94,6 +94,9 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 		RateLimiter: rateLimiter,
 		Audit:       opts.Audit,
 	}
+	if opts.Runtime != nil {
+		deps.Require2FAAdmins = func() bool { return opts.Runtime.Get().Require2FAAdmins == 1 }
+	}
 
 	mux := http.NewServeMux()
 
@@ -117,6 +120,10 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 	// Public auth routes
 	mux.HandleFunc("/login", handler.LoginHandler(deps))
 	mux.HandleFunc("/logout", handler.LogoutHandler(deps))
+	// Second sign-in step: public routes, but each needs the short-lived pending cookie from a correct password.
+	mux.HandleFunc("/login/2fa", handler.TwoFactorLoginHandler(deps))
+	mux.HandleFunc("/login/2fa/setup", handler.TwoFactorLoginSetupHandler(deps))
+	mux.HandleFunc("/login/2fa/enable", handler.TwoFactorLoginEnableHandler(deps))
 
 	// Protected dashboard — serves index.html
 	dashboardFS := http.FileServer(http.FS(staticFS))
@@ -145,6 +152,12 @@ func NewServerWithOptions(addr string, engine EngineBackend, secret []byte, role
 
 	// Search route — authenticated users only
 	mux.Handle("/api/search", handler.AuthMiddleware(sessions, http.HandlerFunc(apiH.SearchRecords)))
+
+	// Own second-factor management (any signed-in user) and admin reset of another user's
+	twoFactorH := handler.AuthMiddleware(sessions, handler.TwoFactorAccountHandler(deps))
+	mux.Handle("/api/account/2fa", twoFactorH)
+	mux.Handle("/api/account/2fa/", twoFactorH)
+	mux.Handle("/api/users/2fa-reset", handler.AdminMiddleware(sessions, handler.TwoFactorResetHandler(deps)))
 
 	// User bulk-delete route — admin only
 	mux.Handle("/api/user", handler.AdminMiddleware(sessions, http.HandlerFunc(apiH.DeleteUser)))
