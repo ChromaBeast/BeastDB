@@ -76,6 +76,9 @@ beastctl restore --bundle backup.tar.gz --target-dir ./data    # Clean-host disa
 beastctl export  --out export.json --partition 0x01            # Logical snapshot export
 beastctl import  --file export.json                            # Bulk load records
 beastctl seed    --file examples/fixtures/seed.json            # Load fixtures with partition stats
+beastctl collections create --name users                       # Named collection (key prefix)
+beastctl index create --name by-age --collection users --field age --type int
+beastctl scan --index by-age --gte 21 --lte 30 --limit 50    # Filtered scan through the index
 beastctl get     --key 72057594037927936                       # Point read by 64-bit key
 beastctl put     --key 72057594037927936 --value '{"name":"x"}' # Write a record
 ```

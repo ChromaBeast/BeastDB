@@ -91,6 +91,7 @@ gRPC (additive; old clients unaffected): `CreateIndex`, `ListIndexes`, `DropInde
 - Index unavailable after restart until rebuilt; a leader promoted by ADR 0004 rebuilds from its own data.
 - Filtered Scan is key-ordered and materialises the match set per call.
 - No query statistics, so no slow-query index suggestions.
+- Creating an index and dropping its collection are two records, so they are not atomic with each other. `DropCollection` checks for indexes, but a create that races a drop can leave a definition whose prefix has no name; `ListIndexes` then reports an empty collection name, and the index can be dropped normally.
 
 ## Consequences
 
