@@ -11,7 +11,7 @@ import (
 
 // Secondary indexes: the definition is one ordinary record (so it is
 // WAL-logged, replicated and backed up); the entries are derived, in-memory
-// and rebuilt from the records. See docs/adr/0005-secondary-indexes.md.
+// and rebuilt from the records. See docs/adr/0006-secondary-indexes.md.
 
 const (
 	// IndexCatalogKey is the reserved record holding the index definitions.

@@ -19,7 +19,7 @@ type Engine struct {
 	activeDataPage uint64
 	observer       CommitObserver
 	secIndex       *index.SecondaryIndex
-	idx            *indexRegistry // field indexes (ADR 0005); guarded by mu
+	idx            *indexRegistry // field indexes (ADR 0006); guarded by mu
 	readOnly       bool
 	failed         error          // set by halt; blocks writes until restart
 	reclaim        map[uint64]int // data page -> free bytes after compaction, or unknownFree

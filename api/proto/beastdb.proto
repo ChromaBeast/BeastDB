@@ -16,7 +16,7 @@ service BeastDBService {
   rpc CreateCollection (CreateCollectionRequest) returns (CreateCollectionResponse);
   rpc ListCollections (ListCollectionsRequest) returns (ListCollectionsResponse);
   rpc DropCollection (DropCollectionRequest) returns (DropCollectionResponse);
-  // Single-field secondary indexes over JSON records (docs/adr/0005-secondary-indexes.md).
+  // Single-field secondary indexes over JSON records (docs/adr/0006-secondary-indexes.md).
   rpc CreateIndex (CreateIndexRequest) returns (CreateIndexResponse);
   rpc ListIndexes (ListIndexesRequest) returns (ListIndexesResponse);
   rpc DropIndex (DropIndexRequest) returns (DropIndexResponse);
@@ -71,7 +71,7 @@ message ScanRequest {
   // pass last returned key + 1 as start_key.
   uint32 limit = 3;
   // Optional: return only records matching an index, in ascending key order
-  // within [start_key, end_key] (ADR 0005). Fails with FAILED_PRECONDITION
+  // within [start_key, end_key] (ADR 0006). Fails with FAILED_PRECONDITION
   // while the index is building; it never falls back to a full scan. With a
   // filter, end_key 0 means no upper bound.
   IndexFilter filter = 4;

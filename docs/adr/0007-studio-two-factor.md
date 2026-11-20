@@ -1,4 +1,4 @@
-# ADR 0005: TOTP two-factor sign-in for Studio accounts
+# ADR 0007: TOTP two-factor sign-in for Studio accounts
 
 **Status:** accepted and implemented, 20 November 2026.
 

@@ -8,7 +8,7 @@ import (
 
 // ValueIndex is an in-memory ordered index of (field value, primary key)
 // for one field of one collection. It is derived data: it is rebuilt from the
-// records and never written to a data page (docs/adr/0005-secondary-indexes.md).
+// records and never written to a data page (docs/adr/0006-secondary-indexes.md).
 // Entries are kept in a chunked sorted list so inserts move at most one chunk.
 type ValueIndex struct {
 	kind int

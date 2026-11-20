@@ -19,7 +19,7 @@ interface Props {
   onCount?: (n: number) => void;
 }
 
-/** Secondary indexes (ADR 0005): shows only what /api/indexes reports. */
+/** Secondary indexes (ADR 0006): shows only what /api/indexes reports. */
 export function FieldIndexes({ canWrite, onNotice, onCount }: Props) {
   const [indexes, setIndexes] = useState<IndexEntry[] | null>(null);
   const [collections, setCollections] = useState<CollectionConfig[]>([]);

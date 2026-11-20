@@ -1,4 +1,4 @@
-# ADR 0005: Single-field secondary indexes over JSON records
+# ADR 0006: Single-field secondary indexes over JSON records
 
 **Status:** accepted, 20 November 2026. Builds on [ADR 0002](0002-collections.md) (collections) and follows [ADR 0003](0003-encryption-at-rest.md) (encryption) and [ADR 0004](0004-replication-membership-and-manual-promotion.md) (replication).
 

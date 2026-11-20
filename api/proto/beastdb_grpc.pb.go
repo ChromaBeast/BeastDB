@@ -48,7 +48,7 @@ type BeastDBServiceClient interface {
 	CreateCollection(ctx context.Context, in *CreateCollectionRequest, opts ...grpc.CallOption) (*CreateCollectionResponse, error)
 	ListCollections(ctx context.Context, in *ListCollectionsRequest, opts ...grpc.CallOption) (*ListCollectionsResponse, error)
 	DropCollection(ctx context.Context, in *DropCollectionRequest, opts ...grpc.CallOption) (*DropCollectionResponse, error)
-	// Single-field secondary indexes over JSON records (docs/adr/0005-secondary-indexes.md).
+	// Single-field secondary indexes over JSON records (docs/adr/0006-secondary-indexes.md).
 	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error)
 	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error)
 	DropIndex(ctx context.Context, in *DropIndexRequest, opts ...grpc.CallOption) (*DropIndexResponse, error)
@@ -197,7 +197,7 @@ type BeastDBServiceServer interface {
 	CreateCollection(context.Context, *CreateCollectionRequest) (*CreateCollectionResponse, error)
 	ListCollections(context.Context, *ListCollectionsRequest) (*ListCollectionsResponse, error)
 	DropCollection(context.Context, *DropCollectionRequest) (*DropCollectionResponse, error)
-	// Single-field secondary indexes over JSON records (docs/adr/0005-secondary-indexes.md).
+	// Single-field secondary indexes over JSON records (docs/adr/0006-secondary-indexes.md).
 	CreateIndex(context.Context, *CreateIndexRequest) (*CreateIndexResponse, error)
 	ListIndexes(context.Context, *ListIndexesRequest) (*ListIndexesResponse, error)
 	DropIndex(context.Context, *DropIndexRequest) (*DropIndexResponse, error)

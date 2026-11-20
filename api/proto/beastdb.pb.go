@@ -486,7 +486,7 @@ type ScanRequest struct {
 	// pass last returned key + 1 as start_key.
 	Limit uint32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
 	// Optional: return only records matching an index, in ascending key order
-	// within [start_key, end_key] (ADR 0005). Fails with FAILED_PRECONDITION
+	// within [start_key, end_key] (ADR 0006). Fails with FAILED_PRECONDITION
 	// while the index is building; it never falls back to a full scan. With a
 	// filter, end_key 0 means no upper bound.
 	Filter        *IndexFilter `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`

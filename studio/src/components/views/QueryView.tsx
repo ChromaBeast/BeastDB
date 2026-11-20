@@ -16,7 +16,7 @@ import type { ViewProps } from "./types";
 const MODES: { id: QueryMode; label: string; hint: string }[] = [
   { id: "get", label: "Get key", hint: "Exact lookup in the primary B+ tree by 64-bit key." },
   { id: "scan", label: "Scan range", hint: "Ordered range scan over the primary index; leave bounds empty for the full key space." },
-  { id: "filter", label: "Filter by index", hint: "Look records up through a secondary index (ADR 0005). Equality or an inclusive range on one indexed field; results come back in key order." },
+  { id: "filter", label: "Filter by index", hint: "Look records up through a secondary index (ADR 0006). Equality or an inclusive range on one indexed field; results come back in key order." },
   { id: "search", label: "Search text", hint: "Match value text. Uses the secondary index when it can, otherwise scans up to Max scan records." },
 ];
 

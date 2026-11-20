@@ -11,7 +11,7 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/index"
 )
 
-// IndexStore is the engine surface the indexes endpoint needs (ADR 0005).
+// IndexStore is the engine surface the indexes endpoint needs (ADR 0006).
 // *api.Engine satisfies it; engines without it get 501.
 type IndexStore interface {
 	ListIndexes() ([]api.IndexInfo, error)

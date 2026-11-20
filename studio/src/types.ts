@@ -154,7 +154,7 @@ export interface SearchResponse {
 
 
 
-/** One secondary index exactly as /api/indexes reports it (ADR 0005). */
+/** One secondary index exactly as /api/indexes reports it (ADR 0006). */
 export interface IndexEntry {
   name: string;
   collection: string;

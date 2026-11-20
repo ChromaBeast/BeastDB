@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-// IndexDef declares one single-field secondary index (ADR 0005).
+// IndexDef declares one single-field secondary index (ADR 0006).
 type IndexDef struct {
 	Name      string
 	Prefix    uint8  // collection prefix (ADR 0002)
