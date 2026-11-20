@@ -62,6 +62,9 @@ func (s *GRPCServer) Get(ctx context.Context, req *beastv1.GetRequest) (*beastv1
 
 // Put handles unary key insertion/update requests.
 func (s *GRPCServer) Put(ctx context.Context, req *beastv1.PutRequest) (*beastv1.PutResponse, error) {
+	if IsCatalogKey(req.Key) {
+		return nil, status.Error(codes.InvalidArgument, ErrCatalogKey.Error())
+	}
 	if s.engine.IsReadOnly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
@@ -80,6 +83,9 @@ func (s *GRPCServer) Put(ctx context.Context, req *beastv1.PutRequest) (*beastv1
 
 // Delete handles unary key deletion requests.
 func (s *GRPCServer) Delete(ctx context.Context, req *beastv1.DeleteRequest) (*beastv1.DeleteResponse, error) {
+	if IsCatalogKey(req.Key) {
+		return nil, status.Error(codes.InvalidArgument, ErrCatalogKey.Error())
+	}
 	if s.engine.IsReadOnly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
@@ -152,6 +158,9 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 			return nil, status.Errorf(codes.InvalidArgument, "unsupported operation type: %v", op.OpType)
 		}
 
+		if IsCatalogKey(op.Key) {
+			return nil, status.Error(codes.InvalidArgument, ErrCatalogKey.Error())
+		}
 		ops[i] = BatchOperation{Type: opType, Key: op.Key, Value: op.Value}
 	}
 

@@ -544,9 +544,12 @@ func (x *KeyValueResponse) GetValue() []byte {
 }
 
 type StreamWALRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ReplicaId     string                 `protobuf:"bytes,1,opt,name=replica_id,json=replicaId,proto3" json:"replica_id,omitempty"`
-	FromLsn       uint64                 `protobuf:"varint,2,opt,name=from_lsn,json=fromLsn,proto3" json:"from_lsn,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ReplicaId string                 `protobuf:"bytes,1,opt,name=replica_id,json=replicaId,proto3" json:"replica_id,omitempty"`
+	FromLsn   uint64                 `protobuf:"varint,2,opt,name=from_lsn,json=fromLsn,proto3" json:"from_lsn,omitempty"`
+	// Highest leader epoch the follower has seen. A leader that sees a higher
+	// epoch than its own steps down instead of serving.
+	Epoch         uint64 `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -595,12 +598,22 @@ func (x *StreamWALRequest) GetFromLsn() uint64 {
 	return 0
 }
 
+func (x *StreamWALRequest) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
 type WALRecordMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Lsn           uint64                 `protobuf:"varint,1,opt,name=lsn,proto3" json:"lsn,omitempty"`
-	OpType        uint32                 `protobuf:"varint,2,opt,name=op_type,json=opType,proto3" json:"op_type,omitempty"`
-	Key           []byte                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
-	Value         []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Lsn    uint64                 `protobuf:"varint,1,opt,name=lsn,proto3" json:"lsn,omitempty"`
+	OpType uint32                 `protobuf:"varint,2,opt,name=op_type,json=opType,proto3" json:"op_type,omitempty"`
+	Key    []byte                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
+	Value  []byte                 `protobuf:"bytes,4,opt,name=value,proto3" json:"value,omitempty"`
+	// Epoch of the leader that produced this record; followers reject lower
+	// epochs than their own.
+	Epoch         uint64 `protobuf:"varint,5,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -663,10 +676,18 @@ func (x *WALRecordMessage) GetValue() []byte {
 	return nil
 }
 
+func (x *WALRecordMessage) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
 type ReplicationAck struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ReplicaId       string                 `protobuf:"bytes,1,opt,name=replica_id,json=replicaId,proto3" json:"replica_id,omitempty"`
 	AcknowledgedLsn uint64                 `protobuf:"varint,2,opt,name=acknowledged_lsn,json=acknowledgedLsn,proto3" json:"acknowledged_lsn,omitempty"`
+	Epoch           uint64                 `protobuf:"varint,3,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -715,9 +736,19 @@ func (x *ReplicationAck) GetAcknowledgedLsn() uint64 {
 	return 0
 }
 
+func (x *ReplicationAck) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
 type AckResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Success bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	// The leader's epoch and current LSN, so an idle follower can tell whether it is caught up.
+	Epoch         uint64 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	LeaderLsn     uint64 `protobuf:"varint,3,opt,name=leader_lsn,json=leaderLsn,proto3" json:"leader_lsn,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -759,6 +790,127 @@ func (x *AckResponse) GetSuccess() bool {
 	return false
 }
 
+func (x *AckResponse) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
+func (x *AckResponse) GetLeaderLsn() uint64 {
+	if x != nil {
+		return x.LeaderLsn
+	}
+	return 0
+}
+
+type FenceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// New epoch the candidate will lead at; must exceed the leader's epoch.
+	Epoch uint64 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	// Replica asking to be promoted. Only one candidate can fence a given epoch.
+	CandidateId   string `protobuf:"bytes,2,opt,name=candidate_id,json=candidateId,proto3" json:"candidate_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FenceRequest) Reset() {
+	*x = FenceRequest{}
+	mi := &file_beastdb_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FenceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FenceRequest) ProtoMessage() {}
+
+func (x *FenceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FenceRequest.ProtoReflect.Descriptor instead.
+func (*FenceRequest) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *FenceRequest) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
+func (x *FenceRequest) GetCandidateId() string {
+	if x != nil {
+		return x.CandidateId
+	}
+	return ""
+}
+
+type FenceResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Final LSN of the fenced leader: it accepts no writes beyond this.
+	FinalLsn      uint64 `protobuf:"varint,1,opt,name=final_lsn,json=finalLsn,proto3" json:"final_lsn,omitempty"`
+	Epoch         uint64 `protobuf:"varint,2,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FenceResponse) Reset() {
+	*x = FenceResponse{}
+	mi := &file_beastdb_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FenceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FenceResponse) ProtoMessage() {}
+
+func (x *FenceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FenceResponse.ProtoReflect.Descriptor instead.
+func (*FenceResponse) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *FenceResponse) GetFinalLsn() uint64 {
+	if x != nil {
+		return x.FinalLsn
+	}
+	return 0
+}
+
+func (x *FenceResponse) GetEpoch() uint64 {
+	if x != nil {
+		return x.Epoch
+	}
+	return 0
+}
+
 type BatchOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OpType        BatchOpType            `protobuf:"varint,1,opt,name=op_type,json=opType,proto3,enum=beastdb.v1.BatchOpType" json:"op_type,omitempty"`
@@ -770,7 +922,7 @@ type BatchOperation struct {
 
 func (x *BatchOperation) Reset() {
 	*x = BatchOperation{}
-	mi := &file_beastdb_proto_msgTypes[12]
+	mi := &file_beastdb_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -782,7 +934,7 @@ func (x *BatchOperation) String() string {
 func (*BatchOperation) ProtoMessage() {}
 
 func (x *BatchOperation) ProtoReflect() protoreflect.Message {
-	mi := &file_beastdb_proto_msgTypes[12]
+	mi := &file_beastdb_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -795,7 +947,7 @@ func (x *BatchOperation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchOperation.ProtoReflect.Descriptor instead.
 func (*BatchOperation) Descriptor() ([]byte, []int) {
-	return file_beastdb_proto_rawDescGZIP(), []int{12}
+	return file_beastdb_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *BatchOperation) GetOpType() BatchOpType {
@@ -831,7 +983,7 @@ type BatchWriteRequest struct {
 
 func (x *BatchWriteRequest) Reset() {
 	*x = BatchWriteRequest{}
-	mi := &file_beastdb_proto_msgTypes[13]
+	mi := &file_beastdb_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -843,7 +995,7 @@ func (x *BatchWriteRequest) String() string {
 func (*BatchWriteRequest) ProtoMessage() {}
 
 func (x *BatchWriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_beastdb_proto_msgTypes[13]
+	mi := &file_beastdb_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -856,7 +1008,7 @@ func (x *BatchWriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchWriteRequest.ProtoReflect.Descriptor instead.
 func (*BatchWriteRequest) Descriptor() ([]byte, []int) {
-	return file_beastdb_proto_rawDescGZIP(), []int{13}
+	return file_beastdb_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *BatchWriteRequest) GetOperations() []*BatchOperation {
@@ -883,7 +1035,7 @@ type BatchWriteResponse struct {
 
 func (x *BatchWriteResponse) Reset() {
 	*x = BatchWriteResponse{}
-	mi := &file_beastdb_proto_msgTypes[14]
+	mi := &file_beastdb_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -895,7 +1047,7 @@ func (x *BatchWriteResponse) String() string {
 func (*BatchWriteResponse) ProtoMessage() {}
 
 func (x *BatchWriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_beastdb_proto_msgTypes[14]
+	mi := &file_beastdb_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -908,7 +1060,7 @@ func (x *BatchWriteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BatchWriteResponse.ProtoReflect.Descriptor instead.
 func (*BatchWriteResponse) Descriptor() ([]byte, []int) {
-	return file_beastdb_proto_rawDescGZIP(), []int{14}
+	return file_beastdb_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *BatchWriteResponse) GetSuccess() bool {
@@ -935,7 +1087,7 @@ type Condition struct {
 
 func (x *Condition) Reset() {
 	*x = Condition{}
-	mi := &file_beastdb_proto_msgTypes[15]
+	mi := &file_beastdb_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -947,7 +1099,7 @@ func (x *Condition) String() string {
 func (*Condition) ProtoMessage() {}
 
 func (x *Condition) ProtoReflect() protoreflect.Message {
-	mi := &file_beastdb_proto_msgTypes[15]
+	mi := &file_beastdb_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -960,7 +1112,7 @@ func (x *Condition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Condition.ProtoReflect.Descriptor instead.
 func (*Condition) Descriptor() ([]byte, []int) {
-	return file_beastdb_proto_rawDescGZIP(), []int{15}
+	return file_beastdb_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Condition) GetKind() ConditionKind {
@@ -987,7 +1139,7 @@ type KeyCondition struct {
 
 func (x *KeyCondition) Reset() {
 	*x = KeyCondition{}
-	mi := &file_beastdb_proto_msgTypes[16]
+	mi := &file_beastdb_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -999,7 +1151,7 @@ func (x *KeyCondition) String() string {
 func (*KeyCondition) ProtoMessage() {}
 
 func (x *KeyCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_beastdb_proto_msgTypes[16]
+	mi := &file_beastdb_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1012,7 +1164,7 @@ func (x *KeyCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyCondition.ProtoReflect.Descriptor instead.
 func (*KeyCondition) Descriptor() ([]byte, []int) {
-	return file_beastdb_proto_rawDescGZIP(), []int{16}
+	return file_beastdb_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *KeyCondition) GetKey() uint64 {
@@ -1027,6 +1179,332 @@ func (x *KeyCondition) GetCondition() *Condition {
 		return x.Condition
 	}
 	return nil
+}
+
+type Collection struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Prefix        uint32                 `protobuf:"varint,2,opt,name=prefix,proto3" json:"prefix,omitempty"`                        // 0-255; the top 8 bits of every key in the collection
+	CreatedAt     int64                  `protobuf:"varint,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"` // unix seconds
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Collection) Reset() {
+	*x = Collection{}
+	mi := &file_beastdb_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Collection) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Collection) ProtoMessage() {}
+
+func (x *Collection) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Collection.ProtoReflect.Descriptor instead.
+func (*Collection) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *Collection) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Collection) GetPrefix() uint32 {
+	if x != nil {
+		return x.Prefix
+	}
+	return 0
+}
+
+func (x *Collection) GetCreatedAt() int64 {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return 0
+}
+
+type CreateCollectionRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // 1-64 chars of [a-z0-9_-], starting with a letter or digit
+	// Explicit prefix (adopts existing records under it). Leave unset to
+	// auto-allocate the lowest empty prefix in 0x10-0xFE.
+	Prefix        *uint32 `protobuf:"varint,2,opt,name=prefix,proto3,oneof" json:"prefix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCollectionRequest) Reset() {
+	*x = CreateCollectionRequest{}
+	mi := &file_beastdb_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCollectionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCollectionRequest) ProtoMessage() {}
+
+func (x *CreateCollectionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCollectionRequest.ProtoReflect.Descriptor instead.
+func (*CreateCollectionRequest) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *CreateCollectionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateCollectionRequest) GetPrefix() uint32 {
+	if x != nil && x.Prefix != nil {
+		return *x.Prefix
+	}
+	return 0
+}
+
+type CreateCollectionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collection    *Collection            `protobuf:"bytes,1,opt,name=collection,proto3" json:"collection,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCollectionResponse) Reset() {
+	*x = CreateCollectionResponse{}
+	mi := &file_beastdb_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCollectionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCollectionResponse) ProtoMessage() {}
+
+func (x *CreateCollectionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCollectionResponse.ProtoReflect.Descriptor instead.
+func (*CreateCollectionResponse) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *CreateCollectionResponse) GetCollection() *Collection {
+	if x != nil {
+		return x.Collection
+	}
+	return nil
+}
+
+type ListCollectionsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCollectionsRequest) Reset() {
+	*x = ListCollectionsRequest{}
+	mi := &file_beastdb_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCollectionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCollectionsRequest) ProtoMessage() {}
+
+func (x *ListCollectionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCollectionsRequest.ProtoReflect.Descriptor instead.
+func (*ListCollectionsRequest) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{22}
+}
+
+type ListCollectionsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Collections   []*Collection          `protobuf:"bytes,1,rep,name=collections,proto3" json:"collections,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCollectionsResponse) Reset() {
+	*x = ListCollectionsResponse{}
+	mi := &file_beastdb_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCollectionsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCollectionsResponse) ProtoMessage() {}
+
+func (x *ListCollectionsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCollectionsResponse.ProtoReflect.Descriptor instead.
+func (*ListCollectionsResponse) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListCollectionsResponse) GetCollections() []*Collection {
+	if x != nil {
+		return x.Collections
+	}
+	return nil
+}
+
+type DropCollectionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // refused with FAILED_PRECONDITION while the prefix holds records
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DropCollectionRequest) Reset() {
+	*x = DropCollectionRequest{}
+	mi := &file_beastdb_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DropCollectionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DropCollectionRequest) ProtoMessage() {}
+
+func (x *DropCollectionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DropCollectionRequest.ProtoReflect.Descriptor instead.
+func (*DropCollectionRequest) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *DropCollectionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type DropCollectionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DropCollectionResponse) Reset() {
+	*x = DropCollectionResponse{}
+	mi := &file_beastdb_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DropCollectionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DropCollectionResponse) ProtoMessage() {}
+
+func (x *DropCollectionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_beastdb_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DropCollectionResponse.ProtoReflect.Descriptor instead.
+func (*DropCollectionResponse) Descriptor() ([]byte, []int) {
+	return file_beastdb_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DropCollectionResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
 }
 
 var File_beastdb_proto protoreflect.FileDescriptor
@@ -1060,22 +1538,34 @@ const file_beastdb_proto_rawDesc = "" +
 	"\x05limit\x18\x03 \x01(\rR\x05limit\":\n" +
 	"\x10KeyValueResponse\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\fR\x05value\"L\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"b\n" +
 	"\x10StreamWALRequest\x12\x1d\n" +
 	"\n" +
 	"replica_id\x18\x01 \x01(\tR\treplicaId\x12\x19\n" +
-	"\bfrom_lsn\x18\x02 \x01(\x04R\afromLsn\"e\n" +
+	"\bfrom_lsn\x18\x02 \x01(\x04R\afromLsn\x12\x14\n" +
+	"\x05epoch\x18\x03 \x01(\x04R\x05epoch\"{\n" +
 	"\x10WALRecordMessage\x12\x10\n" +
 	"\x03lsn\x18\x01 \x01(\x04R\x03lsn\x12\x17\n" +
 	"\aop_type\x18\x02 \x01(\rR\x06opType\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\fR\x03key\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05value\"Z\n" +
+	"\x05value\x18\x04 \x01(\fR\x05value\x12\x14\n" +
+	"\x05epoch\x18\x05 \x01(\x04R\x05epoch\"p\n" +
 	"\x0eReplicationAck\x12\x1d\n" +
 	"\n" +
 	"replica_id\x18\x01 \x01(\tR\treplicaId\x12)\n" +
-	"\x10acknowledged_lsn\x18\x02 \x01(\x04R\x0facknowledgedLsn\"'\n" +
+	"\x10acknowledged_lsn\x18\x02 \x01(\x04R\x0facknowledgedLsn\x12\x14\n" +
+	"\x05epoch\x18\x03 \x01(\x04R\x05epoch\"\\\n" +
 	"\vAckResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"j\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05epoch\x18\x02 \x01(\x04R\x05epoch\x12\x1d\n" +
+	"\n" +
+	"leader_lsn\x18\x03 \x01(\x04R\tleaderLsn\"G\n" +
+	"\fFenceRequest\x12\x14\n" +
+	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\x12!\n" +
+	"\fcandidate_id\x18\x02 \x01(\tR\vcandidateId\"B\n" +
+	"\rFenceResponse\x12\x1b\n" +
+	"\tfinal_lsn\x18\x01 \x01(\x04R\bfinalLsn\x12\x14\n" +
+	"\x05epoch\x18\x02 \x01(\x04R\x05epoch\"j\n" +
 	"\x0eBatchOperation\x120\n" +
 	"\aop_type\x18\x01 \x01(\x0e2\x17.beastdb.v1.BatchOpTypeR\x06opType\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\x04R\x03key\x12\x14\n" +
@@ -1095,7 +1585,28 @@ const file_beastdb_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\fR\x05value\"U\n" +
 	"\fKeyCondition\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x04R\x03key\x123\n" +
-	"\tcondition\x18\x02 \x01(\v2\x15.beastdb.v1.ConditionR\tcondition*]\n" +
+	"\tcondition\x18\x02 \x01(\v2\x15.beastdb.v1.ConditionR\tcondition\"W\n" +
+	"\n" +
+	"Collection\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06prefix\x18\x02 \x01(\rR\x06prefix\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\x03R\tcreatedAt\"U\n" +
+	"\x17CreateCollectionRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
+	"\x06prefix\x18\x02 \x01(\rH\x00R\x06prefix\x88\x01\x01B\t\n" +
+	"\a_prefix\"R\n" +
+	"\x18CreateCollectionResponse\x126\n" +
+	"\n" +
+	"collection\x18\x01 \x01(\v2\x16.beastdb.v1.CollectionR\n" +
+	"collection\"\x18\n" +
+	"\x16ListCollectionsRequest\"S\n" +
+	"\x17ListCollectionsResponse\x128\n" +
+	"\vcollections\x18\x01 \x03(\v2\x16.beastdb.v1.CollectionR\vcollections\"+\n" +
+	"\x15DropCollectionRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"2\n" +
+	"\x16DropCollectionResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess*]\n" +
 	"\vBatchOpType\x12\x1d\n" +
 	"\x19BATCH_OP_TYPE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11BATCH_OP_TYPE_PUT\x10\x01\x12\x18\n" +
@@ -1104,17 +1615,21 @@ const file_beastdb_proto_rawDesc = "" +
 	"\x13CONDITION_KIND_NONE\x10\x00\x12\x19\n" +
 	"\x15CONDITION_KIND_ABSENT\x10\x01\x12\x1a\n" +
 	"\x16CONDITION_KIND_PRESENT\x10\x02\x12\x1f\n" +
-	"\x1bCONDITION_KIND_VALUE_EQUALS\x10\x032\xcf\x02\n" +
+	"\x1bCONDITION_KIND_VALUE_EQUALS\x10\x032\xe3\x04\n" +
 	"\x0eBeastDBService\x126\n" +
 	"\x03Get\x12\x16.beastdb.v1.GetRequest\x1a\x17.beastdb.v1.GetResponse\x126\n" +
 	"\x03Put\x12\x16.beastdb.v1.PutRequest\x1a\x17.beastdb.v1.PutResponse\x12?\n" +
 	"\x06Delete\x12\x19.beastdb.v1.DeleteRequest\x1a\x1a.beastdb.v1.DeleteResponse\x12?\n" +
 	"\x04Scan\x12\x17.beastdb.v1.ScanRequest\x1a\x1c.beastdb.v1.KeyValueResponse0\x01\x12K\n" +
 	"\n" +
-	"BatchWrite\x12\x1d.beastdb.v1.BatchWriteRequest\x1a\x1e.beastdb.v1.BatchWriteResponse2\x9b\x01\n" +
+	"BatchWrite\x12\x1d.beastdb.v1.BatchWriteRequest\x1a\x1e.beastdb.v1.BatchWriteResponse\x12]\n" +
+	"\x10CreateCollection\x12#.beastdb.v1.CreateCollectionRequest\x1a$.beastdb.v1.CreateCollectionResponse\x12Z\n" +
+	"\x0fListCollections\x12\".beastdb.v1.ListCollectionsRequest\x1a#.beastdb.v1.ListCollectionsResponse\x12W\n" +
+	"\x0eDropCollection\x12!.beastdb.v1.DropCollectionRequest\x1a\".beastdb.v1.DropCollectionResponse2\xd9\x01\n" +
 	"\x12ReplicationService\x12I\n" +
 	"\tStreamWAL\x12\x1c.beastdb.v1.StreamWALRequest\x1a\x1c.beastdb.v1.WALRecordMessage0\x01\x12:\n" +
-	"\x03Ack\x12\x1a.beastdb.v1.ReplicationAck\x1a\x17.beastdb.v1.AckResponseB2Z0github.com/ChromaBeast/beastdb/api/proto;beastv1b\x06proto3"
+	"\x03Ack\x12\x1a.beastdb.v1.ReplicationAck\x1a\x17.beastdb.v1.AckResponse\x12<\n" +
+	"\x05Fence\x12\x18.beastdb.v1.FenceRequest\x1a\x19.beastdb.v1.FenceResponseB2Z0github.com/ChromaBeast/beastdb/api/proto;beastv1b\x06proto3"
 
 var (
 	file_beastdb_proto_rawDescOnce sync.Once
@@ -1129,55 +1644,74 @@ func file_beastdb_proto_rawDescGZIP() []byte {
 }
 
 var file_beastdb_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_beastdb_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_beastdb_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_beastdb_proto_goTypes = []any{
-	(BatchOpType)(0),           // 0: beastdb.v1.BatchOpType
-	(ConditionKind)(0),         // 1: beastdb.v1.ConditionKind
-	(*GetRequest)(nil),         // 2: beastdb.v1.GetRequest
-	(*GetResponse)(nil),        // 3: beastdb.v1.GetResponse
-	(*PutRequest)(nil),         // 4: beastdb.v1.PutRequest
-	(*PutResponse)(nil),        // 5: beastdb.v1.PutResponse
-	(*DeleteRequest)(nil),      // 6: beastdb.v1.DeleteRequest
-	(*DeleteResponse)(nil),     // 7: beastdb.v1.DeleteResponse
-	(*ScanRequest)(nil),        // 8: beastdb.v1.ScanRequest
-	(*KeyValueResponse)(nil),   // 9: beastdb.v1.KeyValueResponse
-	(*StreamWALRequest)(nil),   // 10: beastdb.v1.StreamWALRequest
-	(*WALRecordMessage)(nil),   // 11: beastdb.v1.WALRecordMessage
-	(*ReplicationAck)(nil),     // 12: beastdb.v1.ReplicationAck
-	(*AckResponse)(nil),        // 13: beastdb.v1.AckResponse
-	(*BatchOperation)(nil),     // 14: beastdb.v1.BatchOperation
-	(*BatchWriteRequest)(nil),  // 15: beastdb.v1.BatchWriteRequest
-	(*BatchWriteResponse)(nil), // 16: beastdb.v1.BatchWriteResponse
-	(*Condition)(nil),          // 17: beastdb.v1.Condition
-	(*KeyCondition)(nil),       // 18: beastdb.v1.KeyCondition
+	(BatchOpType)(0),                 // 0: beastdb.v1.BatchOpType
+	(ConditionKind)(0),               // 1: beastdb.v1.ConditionKind
+	(*GetRequest)(nil),               // 2: beastdb.v1.GetRequest
+	(*GetResponse)(nil),              // 3: beastdb.v1.GetResponse
+	(*PutRequest)(nil),               // 4: beastdb.v1.PutRequest
+	(*PutResponse)(nil),              // 5: beastdb.v1.PutResponse
+	(*DeleteRequest)(nil),            // 6: beastdb.v1.DeleteRequest
+	(*DeleteResponse)(nil),           // 7: beastdb.v1.DeleteResponse
+	(*ScanRequest)(nil),              // 8: beastdb.v1.ScanRequest
+	(*KeyValueResponse)(nil),         // 9: beastdb.v1.KeyValueResponse
+	(*StreamWALRequest)(nil),         // 10: beastdb.v1.StreamWALRequest
+	(*WALRecordMessage)(nil),         // 11: beastdb.v1.WALRecordMessage
+	(*ReplicationAck)(nil),           // 12: beastdb.v1.ReplicationAck
+	(*AckResponse)(nil),              // 13: beastdb.v1.AckResponse
+	(*FenceRequest)(nil),             // 14: beastdb.v1.FenceRequest
+	(*FenceResponse)(nil),            // 15: beastdb.v1.FenceResponse
+	(*BatchOperation)(nil),           // 16: beastdb.v1.BatchOperation
+	(*BatchWriteRequest)(nil),        // 17: beastdb.v1.BatchWriteRequest
+	(*BatchWriteResponse)(nil),       // 18: beastdb.v1.BatchWriteResponse
+	(*Condition)(nil),                // 19: beastdb.v1.Condition
+	(*KeyCondition)(nil),             // 20: beastdb.v1.KeyCondition
+	(*Collection)(nil),               // 21: beastdb.v1.Collection
+	(*CreateCollectionRequest)(nil),  // 22: beastdb.v1.CreateCollectionRequest
+	(*CreateCollectionResponse)(nil), // 23: beastdb.v1.CreateCollectionResponse
+	(*ListCollectionsRequest)(nil),   // 24: beastdb.v1.ListCollectionsRequest
+	(*ListCollectionsResponse)(nil),  // 25: beastdb.v1.ListCollectionsResponse
+	(*DropCollectionRequest)(nil),    // 26: beastdb.v1.DropCollectionRequest
+	(*DropCollectionResponse)(nil),   // 27: beastdb.v1.DropCollectionResponse
 }
 var file_beastdb_proto_depIdxs = []int32{
-	17, // 0: beastdb.v1.PutRequest.condition:type_name -> beastdb.v1.Condition
-	17, // 1: beastdb.v1.DeleteRequest.condition:type_name -> beastdb.v1.Condition
+	19, // 0: beastdb.v1.PutRequest.condition:type_name -> beastdb.v1.Condition
+	19, // 1: beastdb.v1.DeleteRequest.condition:type_name -> beastdb.v1.Condition
 	0,  // 2: beastdb.v1.BatchOperation.op_type:type_name -> beastdb.v1.BatchOpType
-	14, // 3: beastdb.v1.BatchWriteRequest.operations:type_name -> beastdb.v1.BatchOperation
-	18, // 4: beastdb.v1.BatchWriteRequest.conditions:type_name -> beastdb.v1.KeyCondition
+	16, // 3: beastdb.v1.BatchWriteRequest.operations:type_name -> beastdb.v1.BatchOperation
+	20, // 4: beastdb.v1.BatchWriteRequest.conditions:type_name -> beastdb.v1.KeyCondition
 	1,  // 5: beastdb.v1.Condition.kind:type_name -> beastdb.v1.ConditionKind
-	17, // 6: beastdb.v1.KeyCondition.condition:type_name -> beastdb.v1.Condition
-	2,  // 7: beastdb.v1.BeastDBService.Get:input_type -> beastdb.v1.GetRequest
-	4,  // 8: beastdb.v1.BeastDBService.Put:input_type -> beastdb.v1.PutRequest
-	6,  // 9: beastdb.v1.BeastDBService.Delete:input_type -> beastdb.v1.DeleteRequest
-	8,  // 10: beastdb.v1.BeastDBService.Scan:input_type -> beastdb.v1.ScanRequest
-	15, // 11: beastdb.v1.BeastDBService.BatchWrite:input_type -> beastdb.v1.BatchWriteRequest
-	10, // 12: beastdb.v1.ReplicationService.StreamWAL:input_type -> beastdb.v1.StreamWALRequest
-	12, // 13: beastdb.v1.ReplicationService.Ack:input_type -> beastdb.v1.ReplicationAck
-	3,  // 14: beastdb.v1.BeastDBService.Get:output_type -> beastdb.v1.GetResponse
-	5,  // 15: beastdb.v1.BeastDBService.Put:output_type -> beastdb.v1.PutResponse
-	7,  // 16: beastdb.v1.BeastDBService.Delete:output_type -> beastdb.v1.DeleteResponse
-	9,  // 17: beastdb.v1.BeastDBService.Scan:output_type -> beastdb.v1.KeyValueResponse
-	16, // 18: beastdb.v1.BeastDBService.BatchWrite:output_type -> beastdb.v1.BatchWriteResponse
-	11, // 19: beastdb.v1.ReplicationService.StreamWAL:output_type -> beastdb.v1.WALRecordMessage
-	13, // 20: beastdb.v1.ReplicationService.Ack:output_type -> beastdb.v1.AckResponse
-	14, // [14:21] is the sub-list for method output_type
-	7,  // [7:14] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	19, // 6: beastdb.v1.KeyCondition.condition:type_name -> beastdb.v1.Condition
+	21, // 7: beastdb.v1.CreateCollectionResponse.collection:type_name -> beastdb.v1.Collection
+	21, // 8: beastdb.v1.ListCollectionsResponse.collections:type_name -> beastdb.v1.Collection
+	2,  // 9: beastdb.v1.BeastDBService.Get:input_type -> beastdb.v1.GetRequest
+	4,  // 10: beastdb.v1.BeastDBService.Put:input_type -> beastdb.v1.PutRequest
+	6,  // 11: beastdb.v1.BeastDBService.Delete:input_type -> beastdb.v1.DeleteRequest
+	8,  // 12: beastdb.v1.BeastDBService.Scan:input_type -> beastdb.v1.ScanRequest
+	17, // 13: beastdb.v1.BeastDBService.BatchWrite:input_type -> beastdb.v1.BatchWriteRequest
+	22, // 14: beastdb.v1.BeastDBService.CreateCollection:input_type -> beastdb.v1.CreateCollectionRequest
+	24, // 15: beastdb.v1.BeastDBService.ListCollections:input_type -> beastdb.v1.ListCollectionsRequest
+	26, // 16: beastdb.v1.BeastDBService.DropCollection:input_type -> beastdb.v1.DropCollectionRequest
+	10, // 17: beastdb.v1.ReplicationService.StreamWAL:input_type -> beastdb.v1.StreamWALRequest
+	12, // 18: beastdb.v1.ReplicationService.Ack:input_type -> beastdb.v1.ReplicationAck
+	14, // 19: beastdb.v1.ReplicationService.Fence:input_type -> beastdb.v1.FenceRequest
+	3,  // 20: beastdb.v1.BeastDBService.Get:output_type -> beastdb.v1.GetResponse
+	5,  // 21: beastdb.v1.BeastDBService.Put:output_type -> beastdb.v1.PutResponse
+	7,  // 22: beastdb.v1.BeastDBService.Delete:output_type -> beastdb.v1.DeleteResponse
+	9,  // 23: beastdb.v1.BeastDBService.Scan:output_type -> beastdb.v1.KeyValueResponse
+	18, // 24: beastdb.v1.BeastDBService.BatchWrite:output_type -> beastdb.v1.BatchWriteResponse
+	23, // 25: beastdb.v1.BeastDBService.CreateCollection:output_type -> beastdb.v1.CreateCollectionResponse
+	25, // 26: beastdb.v1.BeastDBService.ListCollections:output_type -> beastdb.v1.ListCollectionsResponse
+	27, // 27: beastdb.v1.BeastDBService.DropCollection:output_type -> beastdb.v1.DropCollectionResponse
+	11, // 28: beastdb.v1.ReplicationService.StreamWAL:output_type -> beastdb.v1.WALRecordMessage
+	13, // 29: beastdb.v1.ReplicationService.Ack:output_type -> beastdb.v1.AckResponse
+	15, // 30: beastdb.v1.ReplicationService.Fence:output_type -> beastdb.v1.FenceResponse
+	20, // [20:31] is the sub-list for method output_type
+	9,  // [9:20] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_beastdb_proto_init() }
@@ -1185,13 +1719,14 @@ func file_beastdb_proto_init() {
 	if File_beastdb_proto != nil {
 		return
 	}
+	file_beastdb_proto_msgTypes[20].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_beastdb_proto_rawDesc), len(file_beastdb_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   17,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

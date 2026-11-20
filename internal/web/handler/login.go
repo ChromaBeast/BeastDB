@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -40,6 +41,9 @@ func LogoutHandler(d *Deps) http.HandlerFunc {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 			return
+		}
+		if user, _, err := d.Sessions.ValidateSession(r); err == nil {
+			_ = d.Audit.Record(user, audit.ActionLogout, "", "", ClientIP(r))
 		}
 		auth.ClearSessionCookie(w)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -81,11 +85,13 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request, d *Deps) {
 		if d.RateLimiter != nil {
 			d.RateLimiter.RecordFailure(ip)
 		}
+		_ = d.Audit.Record(req.Username, audit.ActionLoginFailed, "", "", ip)
 		// Return 401 without revealing whether the user exists
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
+	_ = d.Audit.Record(user.Username, audit.ActionLoginOK, "", "role "+string(user.Role), ip)
 	d.Sessions.IssueSessionCookieForRequest(w, r, user)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

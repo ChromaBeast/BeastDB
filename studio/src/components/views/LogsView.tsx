@@ -6,11 +6,15 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { AuditPanel } from "./AuditPanel";
 import { cn } from "@/lib/utils";
 import {
   filterEntries,
+  LOG_RANGES,
+  LOG_SOURCES,
   formatLogTime,
   mergeEntries,
+  toLogCsv,
   toLogText,
   type LogEntry,
   type LogLevel,
@@ -26,6 +30,26 @@ const LEVEL_STYLE: Record<LogLevel, string> = {
   debug: "text-muted-foreground/60",
 };
 
+const SELECT = "h-8 rounded-md border border-border bg-card px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function LogTabs({ tab, setTab }: { tab: "server" | "audit"; setTab: (t: "server" | "audit") => void }) {
+  return (
+    <div role="tablist" aria-label="Log type" className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+      {([["server", "Server log"], ["audit", "Audit"]] as const).map(([id, label]) => (
+        <button
+          key={id}
+          role="tab"
+          aria-selected={tab === id}
+          onClick={() => setTab(id)}
+          className={cn("rounded-md px-3 py-1 text-xs transition-colors", tab === id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type Status = "loading" | "ok" | "forbidden" | "error";
 
 export function LogsView({ user }: ViewProps) {
@@ -35,6 +59,9 @@ export function LogsView({ user }: ViewProps) {
   const [paused, setPaused] = useState(false);
   const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set(LEVELS));
   const [text, setText] = useState("");
+  const [tab, setTab] = useState<"server" | "audit">("server");
+  const [source, setSource] = useState("");
+  const [rangeMs, setRangeMs] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
   const latest = useRef(0);
   const scroller = useRef<HTMLDivElement>(null);
@@ -66,7 +93,11 @@ export function LogsView({ user }: ViewProps) {
     return () => clearInterval(id);
   }, [isAdmin, paused, status === "forbidden", poll]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visible = useMemo(() => filterEntries(entries, levels, text), [entries, levels, text]);
+  const visible = useMemo(
+    () => filterEntries(entries, { levels, text, source, rangeMs }),
+    // `entries` changes every poll, which also re-evaluates the time range.
+    [entries, levels, text, source, rangeMs],
+  );
   const counts = useMemo(() => {
     const c: Record<LogLevel, number> = { error: 0, warn: 0, info: 0, debug: 0 };
     for (const e of entries) c[e.level] += 1;
@@ -94,11 +125,12 @@ export function LogsView({ user }: ViewProps) {
       else next.add(l);
       return next;
     });
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([toLogText(visible)], { type: "text/plain" }));
+  const download = (csv: boolean) => {
+    const text = csv ? toLogCsv(visible) : toLogText(visible);
+    const url = URL.createObjectURL(new Blob([text], { type: csv ? "text/csv" : "text/plain" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `beastdb-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`;
+    a.download = `beastdb-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.${csv ? "csv" : "txt"}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -116,6 +148,8 @@ export function LogsView({ user }: ViewProps) {
     );
   }
 
+  if (tab === "audit") return <AuditPanel tabs={<LogTabs tab={tab} setTab={setTab} />} />;
+
   return (
     <section aria-labelledby="logs-title" className="space-y-4">
       <PageHeader
@@ -129,15 +163,19 @@ export function LogsView({ user }: ViewProps) {
               {paused ? <Play className="h-3.5 w-3.5" aria-hidden /> : <Pause className="h-3.5 w-3.5" aria-hidden />}
               {paused ? "Resume" : "Pause"}
             </Button>
-            <Button variant="outline" size="sm" onClick={download} disabled={visible.length === 0}>
+            <Button variant="outline" size="sm" onClick={() => download(false)} disabled={visible.length === 0}>
               <Download className="h-3.5 w-3.5" aria-hidden />
               Download
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => download(true)} disabled={visible.length === 0}>
+              Export CSV
             </Button>
           </>
         }
       />
 
       <div className="flex flex-wrap items-center gap-2">
+        <LogTabs tab={tab} setTab={setTab} />
         {LEVELS.map((l) => {
           const on = levels.has(l);
           return (
@@ -155,12 +193,19 @@ export function LogsView({ user }: ViewProps) {
             </button>
           );
         })}
+        <select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Filter by source" className={SELECT}>
+          <option value="">All sources</option>
+          {LOG_SOURCES.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+        <select value={rangeMs} onChange={(e) => setRangeMs(Number(e.target.value))} aria-label="Filter by time range" className={SELECT}>
+          {LOG_RANGES.map((r) => <option key={r.ms} value={r.ms}>{r.label}</option>)}
+        </select>
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Filter messages"
           aria-label="Filter log messages"
-          className="ml-auto h-8 w-full max-w-xs"
+          className="h-8 w-full max-w-xs flex-1"
         />
       </div>
 
@@ -181,10 +226,19 @@ export function LogsView({ user }: ViewProps) {
               {entries.length === 0 ? "No log lines yet." : "No lines match the current filters."}
             </p>
           )}
+          {visible.length > 0 && (
+            <div aria-hidden className="sticky top-0 z-10 flex gap-3 border-b border-border bg-card px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="w-[4.5rem] shrink-0">Time</span>
+              <span className="w-14 shrink-0">Level</span>
+              <span className="w-24 shrink-0">Source</span>
+              <span>Event</span>
+            </div>
+          )}
           {visible.map((e) => (
-            <div key={e.seq} className="flex gap-3 rounded px-2 hover:bg-muted/50">
-              <span className="shrink-0 text-muted-foreground/70">{formatLogTime(e.time)}</span>
-              <span className={cn("w-11 shrink-0 uppercase", LEVEL_STYLE[e.level])}>{e.level}</span>
+            <div key={e.seq} className="flex gap-3 rounded px-2 py-0.5 hover:bg-muted/50">
+              <span className="w-[4.5rem] shrink-0 text-muted-foreground/70">{formatLogTime(e.time)}</span>
+              <span className={cn("w-14 shrink-0 uppercase", LEVEL_STYLE[e.level])}>{e.level}</span>
+              <span className="w-24 shrink-0 text-muted-foreground">{e.source ?? ""}</span>
               <span className="min-w-0 whitespace-pre-wrap break-words text-foreground">{e.message}</span>
             </div>
           ))}

@@ -9,8 +9,8 @@ import (
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
-// LogsHandler serves GET /api/logs?since=<seq>&limit=&level=&q= (admin only).
-// The response is {"entries":[{seq,time,level,message}],"latest":<seq>}.
+// LogsHandler serves GET /api/logs?since=<seq>&limit=&level=&source=&q= (admin only).
+// The response is {"entries":[{seq,time,level,source,message}],"latest":<seq>}.
 func LogsHandler(sessions *auth.SessionManager, buf *logbuf.Buffer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -40,6 +40,17 @@ func LogsHandler(sessions *auth.SessionManager, buf *logbuf.Buffer) http.Handler
 		default:
 			http.Error(w, "invalid level", http.StatusBadRequest)
 			return
+		}
+		if src := strings.ToLower(qs.Get("source")); src != "" {
+			valid := false
+			for _, k := range logbuf.Sources {
+				valid = valid || k == src
+			}
+			if !valid {
+				http.Error(w, "invalid source", http.StatusBadRequest)
+				return
+			}
+			q.Source = src
 		}
 		res := buf.Snapshot(q)
 		if res.Entries == nil {

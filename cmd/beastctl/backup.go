@@ -24,9 +24,16 @@ type BackupManifest struct {
 	ActiveDataPageID   uint64 `json:"active_data_page_id"`
 	LastCheckpointLSN  uint64 `json:"last_checkpoint_lsn"`
 	FileSize           int64  `json:"file_size"`
+	Encrypted          bool   `json:"encrypted,omitempty"`
+	KeyID              uint16 `json:"key_id,omitempty"`
 }
 
+// runBackup backs up a plaintext database.
 func runBackup(dbPath, walPath, outDir string) error {
+	return runBackupKey(dbPath, walPath, outDir, "")
+}
+
+func runBackupKey(dbPath, walPath, outDir, keyFile string) error {
 	if dbPath == "" {
 		return errors.New("db path is required (--db)")
 	}
@@ -37,12 +44,13 @@ func runBackup(dbPath, walPath, outDir string) error {
 		return fmt.Errorf("failed to create backup dir: %w", err)
 	}
 
-	engine, err := api.NewEngine(dbPath, walPath, 20)
+	engine, err := api.NewEngineWithOptions(dbPath, walPath, 20, api.Options{KeyFile: keyFile})
 	if err != nil {
 		return fmt.Errorf("failed to open database for backup: %w", err)
 	}
 
 	snapshotPath, err := engine.CreateSnapshot(outDir)
+	krPath, pc := engine.KeyringPath(), engine.VerifyCipher()
 	_ = engine.Close()
 	if err != nil {
 		return fmt.Errorf("create snapshot failed: %w", err)
@@ -68,9 +76,23 @@ func runBackup(dbPath, walPath, outDir string) error {
 	checksum := hex.EncodeToString(hasher.Sum(nil))
 
 	var meta storage.MetaData
-	page0 := make([]byte, storage.PageSize)
-	if _, err := f.ReadAt(page0, 0); err == nil {
-		meta, _ = storage.DecodeMeta(page0)
+	if pc != nil {
+		var aerr error
+		if meta, _, aerr = storage.AuthenticateFile(targetData, pc); aerr != nil {
+			return fmt.Errorf("authenticate backup pages: %w", aerr)
+		}
+		kr, rerr := os.ReadFile(krPath)
+		if rerr != nil {
+			return fmt.Errorf("copy keyring: %w", rerr)
+		}
+		if werr := os.WriteFile(filepath.Join(outDir, "keyring.json"), kr, 0o600); werr != nil {
+			return werr
+		}
+	} else {
+		page0 := make([]byte, storage.PageSize)
+		if _, err := f.ReadAt(page0, 0); err == nil {
+			meta, _ = storage.DecodeMeta(page0)
+		}
 	}
 
 	manifest := BackupManifest{
@@ -81,6 +103,9 @@ func runBackup(dbPath, walPath, outDir string) error {
 		ActiveDataPageID:   meta.ActiveDataPageID,
 		LastCheckpointLSN:  meta.LastCheckpointLSN,
 		FileSize:           size,
+	}
+	if pc != nil {
+		manifest.Encrypted, manifest.KeyID = true, pc.KeyID()
 	}
 
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")

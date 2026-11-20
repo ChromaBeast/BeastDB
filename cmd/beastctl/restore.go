@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 )
 
@@ -21,6 +23,10 @@ type RestoreResult struct {
 }
 
 func runRestore(backupDir, destDir string, force bool) (*RestoreResult, error) {
+	return runRestoreKey(backupDir, destDir, force, "")
+}
+
+func runRestoreKey(backupDir, destDir string, force bool, keyFile string) (*RestoreResult, error) {
 	if backupDir == "" {
 		return nil, errors.New("backup directory is required (--backup)")
 	}
@@ -31,8 +37,19 @@ func runRestore(backupDir, destDir string, force bool) (*RestoreResult, error) {
 	startTime := time.Now()
 
 	// 1. Verify backup integrity before touching destination
-	if err := runVerify(backupDir); err != nil {
+	if err := runVerifyKey(backupDir, keyFile); err != nil {
 		return nil, fmt.Errorf("backup verification failed before restore: %w", err)
+	}
+
+	manifest, err := readManifest(backupDir)
+	if err != nil {
+		return nil, err
+	}
+	if manifest.Encrypted && keyFile == "" {
+		return nil, errors.New("backup is encrypted: --key-file is required to restore it")
+	}
+	if !manifest.Encrypted && keyFile != "" {
+		return nil, errors.New("backup is not encrypted but --key-file was given")
 	}
 
 	destDB := filepath.Join(destDir, "beast.bin")
@@ -77,8 +94,24 @@ func runRestore(backupDir, destDir string, force bool) (*RestoreResult, error) {
 		return nil, fmt.Errorf("remove stale journal: %w", err)
 	}
 
+	// The keyring belongs to the data file: install the bundle's, or drop a
+	// stale one left by the database this replaces.
+	destKeyring := crypt.KeyringPath(destDB)
+	if err := os.Remove(destKeyring); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	if manifest.Encrypted {
+		kr, err := os.ReadFile(filepath.Join(backupDir, "keyring.json"))
+		if err != nil {
+			return nil, fmt.Errorf("encrypted backup has no keyring.json: %w", err)
+		}
+		if err := os.WriteFile(destKeyring, kr, 0o600); err != nil {
+			return nil, err
+		}
+	}
+
 	// 4. Verify that restored database can be opened cleanly by engine
-	engine, err := api.NewEngine(destDB, destWAL, 20)
+	engine, err := api.NewEngineWithOptions(destDB, destWAL, 20, api.Options{KeyFile: keyFile})
 	if err != nil {
 		return nil, fmt.Errorf("failed opening restored database with engine: %w", err)
 	}
@@ -106,4 +139,16 @@ func runRestore(backupDir, destDir string, force bool) (*RestoreResult, error) {
 		DestWAL:     destWAL,
 		RecordCount: recordCount,
 	}, nil
+}
+
+func readManifest(dir string) (BackupManifest, error) {
+	var m BackupManifest
+	b, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		return m, fmt.Errorf("missing or unreadable manifest.json: %w", err)
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return m, fmt.Errorf("invalid manifest JSON: %w", err)
+	}
+	return m, nil
 }

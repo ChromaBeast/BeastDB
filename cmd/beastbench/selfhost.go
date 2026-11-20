@@ -7,16 +7,25 @@ import (
 	"path/filepath"
 
 	"github.com/ChromaBeast/beastdb/internal/api"
+	"github.com/ChromaBeast/beastdb/internal/crypt"
 )
 
 // StartSelfHosted runs an in-process engine and gRPC server on a temp dir
 // listening on loopback. The returned stop func removes everything.
-func StartSelfHosted(poolSize int) (addr string, stop func(), err error) {
+func StartSelfHosted(poolSize int, encrypt bool) (addr string, stop func(), err error) {
 	dir, err := os.MkdirTemp("", "beastbench-*")
 	if err != nil {
 		return "", nil, err
 	}
-	eng, err := api.NewEngine(filepath.Join(dir, "beast.bin"), filepath.Join(dir, "beast.wal"), poolSize)
+	var opts api.Options
+	if encrypt { // temporary master key, removed with the directory
+		opts.KeyFile = filepath.Join(dir, "master.key")
+		if err := crypt.GenerateKeyFile(opts.KeyFile); err != nil {
+			os.RemoveAll(dir)
+			return "", nil, err
+		}
+	}
+	eng, err := api.NewEngineWithOptions(filepath.Join(dir, "beast.bin"), filepath.Join(dir, "beast.wal"), poolSize, opts)
 	if err != nil {
 		os.RemoveAll(dir)
 		return "", nil, fmt.Errorf("start engine: %w", err)

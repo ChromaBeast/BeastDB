@@ -16,7 +16,7 @@ func (h *APIHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{
 		"lsn":     h.engine.CurrentLSN(),
-		"role":    h.role,
+		"role":    h.currentRole(),
 		"mode":    "B+ Tree (4KB)",
 		"version": h.version,
 		"storage": h.engine.StorageMetrics(),

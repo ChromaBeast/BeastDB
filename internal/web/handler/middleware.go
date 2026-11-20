@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"net/http"
 
+	"github.com/ChromaBeast/beastdb/internal/audit"
 	"github.com/ChromaBeast/beastdb/internal/web/auth"
 )
 
@@ -13,6 +14,7 @@ type Deps struct {
 	Sessions    *auth.SessionManager
 	StaticFS    fs.FS
 	RateLimiter *LoginRateLimiter
+	Audit       *audit.Log // nil disables auditing
 }
 
 // AuthMiddleware rejects unauthenticated requests to protected routes.

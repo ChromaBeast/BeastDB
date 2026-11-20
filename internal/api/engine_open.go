@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ChromaBeast/beastdb/internal/crypt"
 	"github.com/ChromaBeast/beastdb/internal/index"
 	"github.com/ChromaBeast/beastdb/internal/storage"
 	"github.com/ChromaBeast/beastdb/internal/wal"
@@ -18,6 +19,12 @@ type Options struct {
 	// were acknowledged may be lost. Without it such a WAL fails the open
 	// with wal.ErrCorruptLog.
 	TruncateCorruptWAL bool
+
+	// KeyFile enables encryption at rest (ADR 0003): the path of the master key
+	// file. Empty means a plaintext database; opening an encrypted one then fails.
+	KeyFile string
+
+	walCipher *wal.Cipher // set by openEngineKeys from the unwrapped keys
 }
 
 // ErrMetaPageDamaged is returned when page 0 is blank but the database holds
@@ -31,11 +38,14 @@ func NewEngine(dbPath, walPath string, poolSize int) (*Engine, error) {
 
 // NewEngineWithOptions is NewEngine with open-time options.
 func NewEngineWithOptions(dbPath, walPath string, poolSize int, opts Options) (*Engine, error) {
-	disk, err := storage.OpenDiskManager(dbPath)
-	if err != nil {
-		return nil, err
+	var keys *crypt.Keys
+	if opts.KeyFile != "" {
+		var err error
+		if keys, err = loadKeys(dbPath, opts.KeyFile, 1); err != nil {
+			return nil, err
+		}
 	}
-	return openEngine(disk, dbPath, walPath, poolSize, true, opts)
+	return openEngineKeys(dbPath, walPath, poolSize, keys, opts)
 }
 
 // openEngine builds the engine on an open data file. dbPath is used only to
@@ -44,7 +54,7 @@ func NewEngineWithOptions(dbPath, walPath string, poolSize int, opts Options) (*
 // off so they do not fsync on every commit.
 func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int, syncWAL bool, opts Options) (*Engine, error) {
 	bpm := storage.NewBufferPoolManager(disk, poolSize)
-	w, err := wal.OpenWALWithOptions(walPath, syncWAL, wal.Options{TruncateCorrupt: opts.TruncateCorruptWAL})
+	w, err := wal.OpenWALWithOptions(walPath, syncWAL, wal.Options{TruncateCorrupt: opts.TruncateCorruptWAL, Cipher: opts.walCipher})
 	if err != nil {
 		_ = disk.Close()
 		return nil, err
@@ -92,6 +102,18 @@ func openEngine(disk *storage.DiskManager, dbPath, walPath string, poolSize int,
 
 	meta, err := storage.DecodeMeta(data)
 	_ = bpm.UnpinPage(storage.MetaPageID, false)
+	if err == nil && (meta.Flags&storage.MetaFlagEncrypted != 0) != disk.Encrypted() {
+		err = ErrEncryptionFlagMismatch
+	}
+	if err != nil && disk.Encrypted() {
+		// An encrypted file is never migrated automatically. One whose meta page
+		// is not format version 2 was written by a pre-release build (ADR 0003).
+		closeAll()
+		if errors.Is(err, storage.ErrInvalidMetaVersion) {
+			return nil, fmt.Errorf("%w: encrypted database in a pre-release layout; decrypt it with the build that wrote it (beastctl decrypt)", err)
+		}
+		return nil, err
+	}
 	if err != nil {
 		legacyV0 := isLegacyV0Page(data)
 		v, hasMagic := storage.MetaVersionOf(data)

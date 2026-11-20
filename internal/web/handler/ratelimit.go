@@ -27,6 +27,19 @@ func NewLoginRateLimiter(maxAttempts int, window time.Duration) *LoginRateLimite
 	return rl
 }
 
+// Configure changes the limit at runtime. Existing attempts are kept and are
+// judged against the new window on the next check.
+func (rl *LoginRateLimiter) Configure(maxAttempts int, window time.Duration) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	if maxAttempts > 0 {
+		rl.max = maxAttempts
+	}
+	if window > 0 {
+		rl.window = window
+	}
+}
+
 // Allow checks if the given IP is allowed to attempt a login.
 func (rl *LoginRateLimiter) Allow(ip string) bool {
 	rl.mu.Lock()

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { PageHeader } from "../PageHeader";
 import { Button } from "../ui/button";
+import { StatCard, StatGrid } from "../StatCard";
+import { formatBytes } from "../../utils/format";
 import { PartitionTable, PartitionRow } from "../PartitionTable";
 import { BufferPoolCard, PrimaryIndexCard, SecondaryIndexCard } from "../IndexCards";
 import { api } from "../../lib/api-client";
@@ -65,6 +67,12 @@ export function IndexesView({ stats, onRefresh }: ViewProps) {
           {error}
         </div>
       )}
+
+      <StatGrid cols={3}>
+        <StatCard label="Indexes" value="2" hint="primary B+ tree · text index" />
+        <StatCard label="Data file" value={storage ? formatBytes(storage.diskSizeBytes) : "—"} hint={`${storage?.totalPages ?? 0} pages × 4 KiB`} />
+        <StatCard label="Partitions in use" value={`${rows.length}`} hint={`${rows.reduce((n, r) => n + r.count, 0).toLocaleString()} records`} />
+      </StatGrid>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <PrimaryIndexCard storage={storage} />

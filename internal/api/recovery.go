@@ -11,7 +11,7 @@ func (e *Engine) recoverFromWAL(lastCheckpointLSN uint64) error {
 	replayedCount := 0
 	var highestReplayedLSN uint64
 
-	_, err := wal.Replay(e.wal.Path(), func(rec *wal.Record) error {
+	_, err := wal.ReplayWith(e.wal.Path(), e.wal.Cipher(), func(rec *wal.Record) error {
 		if rec.LSN <= lastCheckpointLSN {
 			return nil
 		}

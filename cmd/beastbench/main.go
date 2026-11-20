@@ -22,6 +22,7 @@ type Report struct {
 	GOARCH     string        `json:"goarch"`
 	NumCPU     int           `json:"num_cpu"`
 	SelfHosted bool          `json:"self_hosted"`
+	Encrypted  bool          `json:"encrypted,omitempty"`
 	Addr       string        `json:"addr"`
 	Config     Config        `json:"config"`
 	Phases     []PhaseResult `json:"phases"`
@@ -42,6 +43,7 @@ func realMain(args []string, stdout, stderr io.Writer) error {
 		co       ConnOpts
 		self     = fs.Bool("self-contained", false, "start an in-process engine+gRPC server on a temp dir (smoke runs only)")
 		poolSize = fs.Int("pool-size", 128, "buffer pool frames for --self-contained")
+		encrypt  = fs.Bool("encrypt", false, "with --self-contained: run the engine with encryption at rest (temporary key)")
 		asJSON   = fs.Bool("json", false, "emit JSON instead of text")
 		skipLoad = fs.Bool("skip-load", false, "skip the load phase (dataset already loaded with the same --records/--value-size/--seed)")
 		loadOnly = fs.Bool("load-only", false, "only run the load phase")
@@ -91,7 +93,7 @@ func realMain(args []string, stdout, stderr io.Writer) error {
 	defer stop()
 
 	if *self {
-		addr, stopSrv, err := StartSelfHosted(*poolSize)
+		addr, stopSrv, err := StartSelfHosted(*poolSize, *encrypt)
 		if err != nil {
 			return err
 		}
@@ -106,7 +108,7 @@ func realMain(args []string, stdout, stderr io.Writer) error {
 	defer closeConns()
 
 	rep := Report{Tool: "beastbench", GoVersion: runtime.Version(), GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
-		NumCPU: runtime.NumCPU(), SelfHosted: *self, Addr: co.Addr, Config: cfg}
+		NumCPU: runtime.NumCPU(), SelfHosted: *self, Encrypted: *self && *encrypt, Addr: co.Addr, Config: cfg}
 
 	if !*skipLoad {
 		res, err := Load(ctx, cl, cfg)
@@ -136,6 +138,7 @@ func printText(w io.Writer, r Report) {
 	fmt.Fprintf(w, "beastbench  workload=%s dist=%s records=%d ops=%d warmup=%d threads=%d value=%dB seed=%d\n",
 		c.Workload, c.Dist, c.Records, c.Ops, c.WarmupOps, c.Threads, c.ValueSize, c.Seed)
 	fmt.Fprintf(w, "%s/%s go=%s cpus=%d self-contained=%v addr=%s\n", r.GOOS, r.GOARCH, r.GoVersion, r.NumCPU, r.SelfHosted, r.Addr)
+	fmt.Fprintf(w, "encryption-at-rest=%v\n", r.Encrypted)
 	if r.SelfHosted {
 		fmt.Fprintln(w, "NOTE: self-contained loopback smoke run; not a competitive benchmark.")
 	}

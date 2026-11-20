@@ -60,12 +60,28 @@ export interface ReplicaStatus {
   lagLSN: number;
 }
 
+/** This node's epoch and promotion state (absent when the node does not track epochs). */
+export interface ClusterStatus {
+  nodeID: string;
+  role: "leader" | "follower" | "fenced";
+  epoch: number;
+  fencedFor?: string;
+  appliedLSN: number;
+  leaderLSN: number;
+  /** Milliseconds since a current leader last answered; -1 if never. */
+  leaderContactMS: number;
+  lagLSN: number;
+  promotable: boolean;
+  promoteBlockedReason?: string;
+}
+
 export interface ReplicationStatus {
   role: string;
   lsn: number;
   /** True only on a leader; followers cannot see other replicas. */
   tracked: boolean;
   replicas: ReplicaStatus[];
+  cluster?: ClusterStatus;
 }
 
 export interface TelemetryStats {
@@ -97,6 +113,12 @@ export interface PartitionConfig {
   color: string;
   description?: string;
   icon?: string;
+}
+
+export interface CollectionConfig {
+  name: string;
+  prefix: number;
+  createdAt: number;
 }
 
 export interface APITokenItem {

@@ -36,6 +36,9 @@ func initFresh(disk *storage.DiskManager, bpm *storage.BufferPoolManager, w *wal
 		RootPageID:       tree.RootPageID(),
 		ActiveDataPageID: dataID,
 	}
+	if disk.Encrypted() {
+		meta.Flags |= storage.MetaFlagEncrypted
+	}
 	storage.EncodeMeta(metaPage.Data(), meta)
 	_ = bpm.UnpinPage(metaID, true)
 	_ = bpm.UnpinPage(dataID, true)

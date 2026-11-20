@@ -11,12 +11,19 @@ service BeastDBService {
   rpc Delete (DeleteRequest) returns (DeleteResponse);
   rpc Scan (ScanRequest) returns (stream KeyValueResponse);
   rpc BatchWrite (BatchWriteRequest) returns (BatchWriteResponse);
+  // Collections bind a name to an 8-bit key prefix (docs/adr/0002-collections.md).
+  // Keys stay uint64: a collection's keys are prefix<<56 | local (local < 2^56).
+  rpc CreateCollection (CreateCollectionRequest) returns (CreateCollectionResponse);
+  rpc ListCollections (ListCollectionsRequest) returns (ListCollectionsResponse);
+  rpc DropCollection (DropCollectionRequest) returns (DropCollectionResponse);
 }
 
 // ReplicationService handles physical WAL streaming from Leader to Followers.
 service ReplicationService {
   rpc StreamWAL (StreamWALRequest) returns (stream WALRecordMessage);
   rpc Ack (ReplicationAck) returns (AckResponse);
+  // Fence freezes a leader's writes at a new epoch and reports its final LSN.
+  rpc Fence (FenceRequest) returns (FenceResponse);
 }
 
 message GetRequest {
@@ -66,6 +73,9 @@ message KeyValueResponse {
 message StreamWALRequest {
   string replica_id = 1;
   uint64 from_lsn = 2;
+  // Highest leader epoch the follower has seen. A leader that sees a higher
+  // epoch than its own steps down instead of serving.
+  uint64 epoch = 3;
 }
 
 message WALRecordMessage {
@@ -73,15 +83,35 @@ message WALRecordMessage {
   uint32 op_type = 2;
   bytes key = 3;
   bytes value = 4;
+  // Epoch of the leader that produced this record; followers reject lower
+  // epochs than their own.
+  uint64 epoch = 5;
 }
 
 message ReplicationAck {
   string replica_id = 1;
   uint64 acknowledged_lsn = 2;
+  uint64 epoch = 3;
 }
 
 message AckResponse {
   bool success = 1;
+  // The leader's epoch and current LSN, so an idle follower can tell whether it is caught up.
+  uint64 epoch = 2;
+  uint64 leader_lsn = 3;
+}
+
+message FenceRequest {
+  // New epoch the candidate will lead at; must exceed the leader's epoch.
+  uint64 epoch = 1;
+  // Replica asking to be promoted. Only one candidate can fence a given epoch.
+  string candidate_id = 2;
+}
+
+message FenceResponse {
+  // Final LSN of the fenced leader: it accepts no writes beyond this.
+  uint64 final_lsn = 1;
+  uint64 epoch = 2;
 }
 
 enum BatchOpType {
@@ -124,4 +154,35 @@ message Condition {
 message KeyCondition {
   uint64 key = 1;
   Condition condition = 2;
+}
+
+message Collection {
+  string name = 1;
+  uint32 prefix = 2;       // 0-255; the top 8 bits of every key in the collection
+  int64 created_at = 3;    // unix seconds
+}
+
+message CreateCollectionRequest {
+  string name = 1;         // 1-64 chars of [a-z0-9_-], starting with a letter or digit
+  // Explicit prefix (adopts existing records under it). Leave unset to
+  // auto-allocate the lowest empty prefix in 0x10-0xFE.
+  optional uint32 prefix = 2;
+}
+
+message CreateCollectionResponse {
+  Collection collection = 1;
+}
+
+message ListCollectionsRequest {}
+
+message ListCollectionsResponse {
+  repeated Collection collections = 1;
+}
+
+message DropCollectionRequest {
+  string name = 1;         // refused with FAILED_PRECONDITION while the prefix holds records
+}
+
+message DropCollectionResponse {
+  bool success = 1;
 }

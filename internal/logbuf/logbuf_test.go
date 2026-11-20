@@ -117,3 +117,28 @@ func TestConcurrent(t *testing.T) {
 		t.Fatalf("%d %d", len(r.Entries), r.Latest)
 	}
 }
+
+func TestSourceDetectionAndFilter(t *testing.T) {
+	cases := map[string]string{
+		"Starting BeastDB v0.1.0 [Role: leader] on 127.0.0.1:50051...": "server",
+		"Replica replica-1 caught up":                                  "replication",
+		"BeastDB gRPC server listening on 127.0.0.1:50051":             "grpc",
+		"BeastDB web console listening on http://127.0.0.1:8080":       "studio",
+		"SECURITY WARNING: Using default password":                     "auth",
+		"Checkpoint complete, WAL rotated":                             "engine",
+		"something unrelated happened":                                 "server",
+	}
+	b := New(20)
+	for msg := range cases {
+		fmt.Fprintln(b, msg)
+	}
+	for _, e := range b.Snapshot(Query{}).Entries {
+		if want := cases[e.Message]; e.Source != want {
+			t.Errorf("%q: source %q, want %q", e.Message, e.Source, want)
+		}
+	}
+	got := b.Snapshot(Query{Source: "grpc"}).Entries
+	if len(got) != 1 || got[0].Source != "grpc" {
+		t.Fatalf("source filter: %+v", got)
+	}
+}

@@ -32,6 +32,8 @@ interface Props {
   onEdit?: (record: UniversalRecord) => void;
   onNotice: (message: string, error?: boolean) => void;
   onScanRange?: (startKey: string, endKey: string) => Promise<UniversalRecord[]>;
+  onCreateCollection?: (name: string) => Promise<void>;
+  onDropCollection?: (name: string) => Promise<void>;
 }
 
 export function ExplorerContent(p: Props) {
@@ -54,6 +56,10 @@ export function ExplorerContent(p: Props) {
           hasMore={p.hasMore}
           hasFullCounts={Boolean(p.partitionCounts)}
           onSelect={p.onChoosePartition}
+          canWrite={p.canWrite}
+          onCreateCollection={p.onCreateCollection}
+          onDropCollection={p.onDropCollection}
+          onNotice={p.onNotice}
         />
       </div>
 

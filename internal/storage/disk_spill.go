@@ -18,7 +18,12 @@ func (d *DiskManager) SpillPage(pageID uint64, pageData []byte) error {
 		d.spillNext++
 		d.spillSlots[pageID] = slot
 	}
-	if d.checksums {
+	if d.pc != nil {
+		if err := d.pc.Seal(d.scratch, pageData, pageID); err != nil {
+			return err
+		}
+		pageData = d.scratch
+	} else if d.checksums {
 		// Stamp a copy: the caller's buffer belongs to the buffer pool.
 		buf := make([]byte, PageSize)
 		copy(buf, pageData[:PageSize])

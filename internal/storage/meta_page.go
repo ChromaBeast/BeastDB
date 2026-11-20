@@ -27,7 +27,7 @@ const (
 	MetaVersion uint32 = 2
 
 	// metaSize is the number of meta page bytes in use.
-	metaSize = 64
+	metaSize = 68
 )
 
 // MetaData holds persistent database-level metadata stored at Page 0.
@@ -43,9 +43,15 @@ type MetaData struct {
 	SpaceMapHead  uint64 // first page of the saved free-space map, 0 if none
 	IndexSnapHead uint64 // first page of the saved search index, 0 if none
 	IndexSnapLSN  uint64 // checkpoint LSN the saved search index matches
+
+	// Flags holds MetaFlag* bits (version 2; zero before encryption existed).
+	Flags uint32
 }
 
-// EncodeMeta serializes MetaData into the first 64 bytes of Page 0.
+// MetaFlagEncrypted marks a database whose pages are encrypted (ADR 0003).
+const MetaFlagEncrypted uint32 = 1 << 0
+
+// EncodeMeta serializes MetaData into the first 68 bytes of Page 0.
 func EncodeMeta(page []byte, m MetaData) {
 	binary.LittleEndian.PutUint32(page[0:4], m.Magic)
 	binary.LittleEndian.PutUint32(page[4:8], m.Version)
@@ -56,6 +62,7 @@ func EncodeMeta(page []byte, m MetaData) {
 	binary.LittleEndian.PutUint64(page[40:48], m.SpaceMapHead)
 	binary.LittleEndian.PutUint64(page[48:56], m.IndexSnapHead)
 	binary.LittleEndian.PutUint64(page[56:64], m.IndexSnapLSN)
+	binary.LittleEndian.PutUint32(page[64:68], m.Flags)
 }
 
 // metaVersionOf returns the format version page 0 claims, if it carries the magic.
@@ -93,6 +100,7 @@ func DecodeMeta(page []byte) (MetaData, error) {
 		SpaceMapHead:      binary.LittleEndian.Uint64(page[40:48]),
 		IndexSnapHead:     binary.LittleEndian.Uint64(page[48:56]),
 		IndexSnapLSN:      binary.LittleEndian.Uint64(page[56:64]),
+		Flags:             binary.LittleEndian.Uint32(page[64:68]),
 	}, nil
 }
 

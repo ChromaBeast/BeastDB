@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { Activity, Lock, WifiOff } from "lucide-react";
 import { PageHeader } from "../PageHeader";
 import { Card } from "../ui/card";
@@ -6,6 +7,7 @@ import { MetricTile } from "../metrics/MetricTile";
 import { RawMetrics } from "../metrics/RawMetrics";
 import { Sparkline } from "../metrics/Sparkline";
 import { MAX_POINTS, POLL_MS, useMetricsHistory, type MetricsPoint, type SeriesKey } from "../../hooks/useMetricsHistory";
+import { useServerHistory } from "../../hooks/useServerHistory";
 import { gauge, type Snapshot } from "../../utils/prometheus";
 import { formatBytes } from "../../utils/format";
 import type { ViewProps } from "./types";
@@ -40,17 +42,60 @@ function Notice({ icon, title, body }: { icon: React.ReactNode; title: string; b
 
 function ChartCard({ title, value, history, k, tone, zeroBased }: { title: string; value: string; history: MetricsPoint[]; k: SeriesKey; tone?: string; zeroBased?: boolean }) {
   return (
+    <SeriesCard
+      title={title}
+      value={value}
+      values={col(history, k)}
+      tone={tone}
+      zeroBased={zeroBased}
+      start={`-${Math.round((MAX_POINTS * POLL_MS) / 60000)} min`}
+    />
+  );
+}
+
+function SeriesCard({ title, value, values, tone, zeroBased, start }: { title: string; value: string; values: (number | undefined)[]; tone?: string; zeroBased?: boolean; start: string }) {
+  return (
     <Card className="p-5">
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm font-semibold">{title}</h2>
         <span className="font-mono text-xs text-muted-foreground">{value}</span>
       </div>
-      <Sparkline values={col(history, k)} label={title} tone={tone} height={96} zeroBased={zeroBased} className="mt-3" />
+      <Sparkline values={values} label={title} tone={tone} height={96} zeroBased={zeroBased} className="mt-3" />
       <p className="mt-2 flex justify-between font-mono text-[10px] text-muted-foreground">
-        <span>-{Math.round((MAX_POINTS * POLL_MS) / 60000)} min</span>
+        <span>{start}</span>
         <span>now</span>
       </p>
     </Card>
+  );
+}
+
+const RANGES = [
+  { id: "live", label: "Live (5 min)", seconds: 0 },
+  { id: "1h", label: "Last hour", seconds: 3600 },
+  { id: "24h", label: "Last 24 hours", seconds: 86400 },
+] as const;
+type RangeId = (typeof RANGES)[number]["id"];
+
+/** Charts from the server's own in-memory history: they survive page reloads but not a server restart. */
+function HistoryCharts({ seconds }: { seconds: number }) {
+  const { data, error } = useServerHistory(seconds, true);
+  const pts = data?.points ?? [];
+  const last = pts[pts.length - 1];
+  const reach = pts.length > 1 ? Math.max(1, Math.round((pts[pts.length - 1].t - pts[0].t) / 60)) : 0;
+  const start = reach > 0 && reach * 60 < seconds ? `-${reach} min (since server start)` : seconds >= 86400 ? "-24 h" : "-1 h";
+  return (
+    <>
+      {error && <p role="alert" className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">Could not load history ({error}).</p>}
+      <p className="text-xs text-muted-foreground">
+        Sampled by the server every {data?.intervalSeconds ?? 10} s and kept in memory only, so it starts empty after a restart.
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SeriesCard title="Requests / s" value={last ? fmtRate(last.reqPerSec) : NA} values={pts.map((p) => p.reqPerSec)} start={start} />
+        <SeriesCard title="WAL size" value={last ? formatBytes(last.walBytes) : NA} values={pts.map((p) => p.walBytes)} tone="text-warning" start={start} />
+        <SeriesCard title="Dirty pages" value={last ? fmtInt(last.dirtyPages) : NA} values={pts.map((p) => p.dirtyPages)} tone="text-info" start={start} />
+        <SeriesCard title="Replica lag (max, LSNs)" value={last ? fmtInt(last.replicaLag) : NA} values={pts.map((p) => p.replicaLag)} tone="text-success" start={start} />
+      </div>
+    </>
   );
 }
 
@@ -96,6 +141,8 @@ function gaugeTiles(snap: Snapshot) {
 export function MetricsView({ user }: ViewProps) {
   const admin = user?.role === "admin";
   const { status, snapshot, history, lastUpdated, error } = useMetricsHistory(admin);
+  const [range, setRange] = useState<RangeId>("live");
+  const rangeSeconds = RANGES.find((r) => r.id === range)?.seconds ?? 0;
 
   const header = (
     <PageHeader
@@ -103,12 +150,24 @@ export function MetricsView({ user }: ViewProps) {
       title="Metrics"
       subtitle="Live engine telemetry from /metrics, polled every 5 seconds."
       actions={
-        status === "ok" && lastUpdated ? (
-          <span className="inline-flex items-center gap-2 font-mono text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
-            live · {new Date(lastUpdated).toLocaleTimeString()}
-          </span>
-        ) : undefined
+        <>
+          {status === "ok" && lastUpdated && (
+            <span className="inline-flex items-center gap-2 font-mono text-xs text-muted-foreground">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
+              live · {new Date(lastUpdated).toLocaleTimeString()}
+            </span>
+          )}
+          {admin && status !== "forbidden" && (
+            <select
+              value={range}
+              onChange={(e) => setRange(e.target.value as RangeId)}
+              aria-label="Chart time range"
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {RANGES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          )}
+        </>
       }
     />
   );
@@ -139,6 +198,7 @@ export function MetricsView({ user }: ViewProps) {
           {has(history, "inFlight") && <MetricTile label="gRPC in flight" value={fmtInt(latest(history, "inFlight"))} />}
           {tiles.map((t) => <MetricTile key={t.label} {...t} />)}
         </div>
+        {rangeSeconds > 0 ? <HistoryCharts seconds={rangeSeconds} /> : (
         <div className="grid gap-4 lg:grid-cols-2">
           {has(history, "reqPerSec") && <ChartCard title="Requests / s" value={fmtRate(reqRate)} history={history} k="reqPerSec" />}
           {has(history, "errPerSec") && <ChartCard title="Errors / s" value={fmtRate(latest(history, "errPerSec"))} history={history} k="errPerSec" tone="text-destructive" />}
@@ -146,6 +206,7 @@ export function MetricsView({ user }: ViewProps) {
           {has(history, "walBytes") && <ChartCard title="WAL size" value={formatBytes(latest(history, "walBytes") ?? 0)} history={history} k="walBytes" tone="text-warning" />}
           {has(history, "dirtyPages") && <ChartCard title="Dirty pages" value={fmtInt(latest(history, "dirtyPages"))} history={history} k="dirtyPages" tone="text-info" />}
         </div>
+        )}
         <RawMetrics snapshot={snapshot} />
       </>
     );

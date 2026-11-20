@@ -101,7 +101,7 @@ func (bpm *BufferPoolManager) popFreeLocked() (*SlottedPage, uint64, bool) {
 	if next >= bpm.disk.NumPages() {
 		next = 0 // drop the rest of a damaged list
 	}
-	page := InitSlottedPage(data, id)
+	page := InitSlottedPageEnd(data, id, bpm.disk.PageEnd())
 	frame.Page = page
 	frame.IsDirty = true
 	bpm.freeHead = next

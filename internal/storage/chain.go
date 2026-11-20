@@ -13,10 +13,11 @@ import (
 //	magic "BDBCHN01" | kind (1) | next page (8) | used bytes (2) | payload
 var chainMagic = []byte("BDBCHN01")
 
-const (
-	chainHeader   = 8 + 1 + 8 + 2
-	chainCapacity = PageDataEnd - chainHeader
-)
+const chainHeader = 8 + 1 + 8 + 2
+
+// chainCapacity is the payload one chain page holds; it depends on how much
+// of the page the file reserves (checksum trailer or encryption tag).
+func chainCapacity(bpm *BufferPoolManager) int { return bpm.disk.PageEnd() - chainHeader }
 
 // ErrBadChain reports a chain page that is missing, of the wrong kind or
 // malformed.
@@ -29,7 +30,9 @@ func WriteChain(bpm *BufferPoolManager, kind byte, data []byte) (uint64, []uint6
 	if len(data) == 0 {
 		return 0, nil, nil
 	}
-	n := (len(data) + chainCapacity - 1) / chainCapacity
+	capacity := chainCapacity(bpm)
+	end := bpm.disk.PageEnd()
+	n := (len(data) + capacity - 1) / capacity
 	ids := make([]uint64, 0, n)
 	page, id, err := bpm.NewPage()
 	if err != nil {
@@ -48,8 +51,8 @@ func WriteChain(bpm *BufferPoolManager, kind byte, data []byte) (uint64, []uint6
 			ids = append(ids, next)
 		}
 		buf := page.Data()
-		clear(buf[:PageDataEnd])
-		chunk := data[i*chainCapacity : min((i+1)*chainCapacity, len(data))]
+		clear(buf[:end])
+		chunk := data[i*capacity : min((i+1)*capacity, len(data))]
 		copy(buf[:8], chainMagic)
 		buf[8] = kind
 		binary.LittleEndian.PutUint64(buf[9:17], next)
@@ -77,7 +80,7 @@ func ReadChain(bpm *BufferPoolManager, kind byte, head uint64) ([]byte, []uint64
 		}
 		buf := p.Data()
 		used := int(binary.LittleEndian.Uint16(buf[17:19]))
-		ok := bytes.Equal(buf[:8], chainMagic) && buf[8] == kind && used <= chainCapacity
+		ok := bytes.Equal(buf[:8], chainMagic) && buf[8] == kind && used <= chainCapacity(bpm)
 		var next uint64
 		if ok {
 			out = append(out, buf[chainHeader:chainHeader+used]...)

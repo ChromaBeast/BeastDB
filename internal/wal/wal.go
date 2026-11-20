@@ -17,6 +17,7 @@ type WAL struct {
 	path        string
 	currentLSN  uint64
 	syncOnWrite bool
+	cipher      *Cipher // nil for a plaintext log (ADR 0003)
 
 	syncMu    sync.Mutex // serializes fsyncs; guards syncedLSN
 	syncedLSN uint64     // highest LSN known to be fsynced
@@ -30,7 +31,23 @@ type Options struct {
 	// at the damage (the cut bytes are saved to <path>.discarded). Without it
 	// such a log fails to open with ErrCorruptLog.
 	TruncateCorrupt bool
+
+	// Cipher seals every record (encryption at rest). A log in the other
+	// format fails to open with ErrWALFormat.
+	Cipher *Cipher
 }
+
+// OpenWALCipher opens a log whose records are sealed with c (nil: plaintext).
+func OpenWALCipher(path string, syncOnWrite bool, c *Cipher) (*WAL, error) {
+	return OpenWALWithOptions(path, syncOnWrite, Options{Cipher: c})
+}
+
+// Encrypted reports whether this log seals its records.
+func (w *WAL) Encrypted() bool { return w.cipher != nil }
+
+// Cipher returns the log's cipher (nil when plaintext) so readers of the file,
+// such as replication catch-up, can open the same frames.
+func (w *WAL) Cipher() *Cipher { return w.cipher }
 
 // OpenWAL opens an existing WAL file or creates a new one at the specified path.
 func OpenWAL(path string, syncOnWrite bool) (*WAL, error) {
@@ -48,12 +65,18 @@ func OpenWALWithOptions(path string, syncOnWrite bool, opts Options) (*WAL, erro
 		file:        file,
 		path:        path,
 		syncOnWrite: syncOnWrite,
+		cipher:      opts.Cipher,
+	}
+
+	if err := w.prepareFormat(path); err != nil {
+		_ = file.Close()
+		return nil, err
 	}
 
 	// Scan the existing file for the highest LSN and cut off anything after
 	// the last valid record. Without the cut, new records would be appended
 	// behind a torn tail and never be reached by a later replay.
-	lastLSN, err := scanAndTrim(file, path, opts.TruncateCorrupt)
+	lastLSN, err := w.scanAndTrim(file, path, opts.TruncateCorrupt)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -64,7 +87,7 @@ func OpenWALWithOptions(path string, syncOnWrite bool, opts Options) (*WAL, erro
 	if lastLSN == 0 {
 		archivePath := path + ".bak"
 		if archFile, err := os.Open(archivePath); err == nil {
-			if archLSN, _, err := scanLog(archFile); err == nil && archLSN > lastLSN {
+			if archLSN, _, err := w.scanLog(archFile); err == nil && archLSN > lastLSN {
 				lastLSN = archLSN
 			}
 			_ = archFile.Close()
@@ -93,9 +116,20 @@ func (w *WAL) Append(opType byte, key, value []byte) (uint64, error) {
 		Value: value,
 	}
 
-	encoded := EncodeRecord(rec)
-	if len(encoded) > MaxFrameSize {
-		return 0, ErrFrameTooLarge
+	var encoded []byte
+	if w.cipher != nil {
+		if len(key)+len(value)+HeaderSize > MaxFrameSize {
+			return 0, ErrFrameTooLarge
+		}
+		var err error
+		if encoded, err = w.cipher.encode(rec); err != nil {
+			return 0, err
+		}
+	} else {
+		encoded = EncodeRecord(rec)
+		if len(encoded) > MaxFrameSize {
+			return 0, ErrFrameTooLarge
+		}
 	}
 	if _, err := w.file.Write(encoded); err != nil {
 		return 0, err

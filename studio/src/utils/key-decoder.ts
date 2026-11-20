@@ -1,4 +1,4 @@
-import type { PartitionConfig, UniversalRecord } from "../types";
+import type { CollectionConfig, PartitionConfig, UniversalRecord } from "../types";
 import {
   type PartitionMeta,
   getDeterministicColor,
@@ -20,6 +20,18 @@ export interface KeyDecoded {
 
 let prefixRegistry: Record<number, PartitionMeta> = {};
 let inferredRegistry: Record<number, PartitionMeta> = {};
+// Named collections from the server catalog (ADR 0002). They win over partitions.json.
+let collectionRegistry: Record<number, string> = {};
+
+export function setCollectionRegistry(entries: CollectionConfig[]): void {
+  const next: Record<number, string> = {};
+  for (const e of entries ?? []) next[e.prefix] = e.name;
+  collectionRegistry = next;
+}
+
+export function getCollectionName(prefix: number): string | undefined {
+  return collectionRegistry[prefix];
+}
 
 export function setPartitionRegistry(entries: PartitionConfig[]): void {
   const next: Record<number, PartitionMeta> = {};
@@ -34,6 +46,11 @@ export function setInferredPartitionRegistry(entries: Record<number, PartitionMe
 }
 
 export function getPartitionMeta(prefix: number): PartitionMeta {
+  const name = collectionRegistry[prefix];
+  if (name) {
+    const base = prefixRegistry[prefix] ?? inferredRegistry[prefix];
+    return { label: name, color: base?.color ?? getDeterministicColor(prefix), description: base?.description };
+  }
   return prefixRegistry[prefix] ?? inferredRegistry[prefix] ?? {
     label: `Collection ${prefix.toString(16).padStart(2, "0").toUpperCase()}`,
     color: getDeterministicColor(prefix),
@@ -41,13 +58,12 @@ export function getPartitionMeta(prefix: number): PartitionMeta {
 }
 
 export function getRegisteredPartitions(): Array<{ prefix: number; label: string; color: string; description?: string }> {
-  return Object.entries(prefixRegistry)
-    .map(([prefix, meta]) => ({
-      prefix: Number(prefix),
-      label: meta.label,
-      color: meta.color,
-      description: meta.description,
-    }))
+  const prefixes = new Set<number>([
+    ...Object.keys(prefixRegistry).map(Number),
+    ...Object.keys(collectionRegistry).map(Number),
+  ]);
+  return [...prefixes]
+    .map((prefix) => ({ prefix, ...getPartitionMeta(prefix) }))
     .sort((a, b) => a.prefix - b.prefix);
 }
 
@@ -104,7 +120,7 @@ export function buildPartitionList(records: UniversalRecord[], partitionCounts?:
   }
 
   const resolveMeta = (prefix: number): PartitionMeta => {
-    if (prefixRegistry[prefix] || inferredRegistry[prefix]) return getPartitionMeta(prefix);
+    if (collectionRegistry[prefix] || prefixRegistry[prefix] || inferredRegistry[prefix]) return getPartitionMeta(prefix);
     const recs = recordsByPrefix.get(prefix);
     return recs?.length ? inferPartitionMeta(recs, prefix) : getPartitionMeta(prefix);
   };
