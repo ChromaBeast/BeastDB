@@ -78,6 +78,11 @@ func runRestoreNew(backupDir, newDir, keyFile string) error {
 }
 
 func requireEmptyOrMissing(dir string) error {
+	// Stat first: on Windows, reading a regular file as a directory reports
+	// "not exist", which would let a file at the target be treated as missing.
+	if fi, err := os.Stat(dir); err == nil && !fi.IsDir() {
+		return fmt.Errorf("%s exists and is not a directory (it must be a directory that does not exist yet)", dir)
+	}
 	ents, err := os.ReadDir(dir)
 	switch {
 	case errors.Is(err, os.ErrNotExist):

@@ -250,7 +250,9 @@ func TestAuditLogAndUserStoreFollowEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 	state(false, "", 4)
-	if _, err := audit.Open(dir); err != nil {
+	last, err := audit.Open(dir)
+	if err != nil {
 		t.Fatal(err)
 	}
+	_ = last.Close() // Windows cannot remove an open file during TempDir cleanup
 }
