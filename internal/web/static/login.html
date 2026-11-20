@@ -13,14 +13,37 @@
     <div class="login-top"><button id="theme" type="button" class="theme-button" aria-label="Toggle color theme">◐</button></div>
     <div class="login-brand" role="img" aria-label="BeastDB"><img class="brand-logo-light" src="/brand/beastdb-stacked-light.svg" alt=""><img class="brand-logo-dark" src="/brand/beastdb-stacked-dark.svg" alt=""></div>
     <section class="login-card" aria-labelledby="login-title">
-      <h1 id="login-title">Welcome back</h1>
-      <p class="intro">Sign in to explore records and manage your database.</p>
       <form id="login-form" method="post" action="/login">
+        <h1 id="login-title">Welcome back</h1>
+        <p class="intro">Sign in to explore records and manage your database.</p>
         <label for="username">Username</label><input id="username" name="username" autocomplete="username" required autofocus placeholder="Enter your username">
         <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Enter your password">
         <p id="error" role="alert" class="error" hidden>Sign in failed. Check your credentials and try again.</p>
         <button id="submit" class="submit" type="submit">Sign in</button>
       </form>
+      <form id="code-form" hidden>
+        <h1 id="code-title">Two-factor code</h1>
+        <p class="intro">Enter the 6-digit code from your authenticator app, or one of your recovery codes.</p>
+        <label for="code">Code</label><input id="code" name="code" inputmode="text" autocomplete="one-time-code" required placeholder="123456 or recovery code" spellcheck="false">
+        <p id="code-error" role="alert" class="error" hidden></p>
+        <button id="code-submit" class="submit" type="submit">Verify</button>
+        <button id="code-back" class="secondary" type="button">Back to sign in</button>
+      </form>
+      <form id="setup-form" hidden>
+        <h1 id="setup-title">Set up two-factor</h1>
+        <p class="intro">Administrators must use two-factor sign-in. Add this account to an authenticator app (RFC 6238 TOTP, SHA-1, 6 digits, 30 seconds), then enter the code it shows.</p>
+        <label>Setup key</label><div id="setup-key" class="mono-box"></div>
+        <label>Setup link</label><div id="setup-uri" class="mono-box"></div>
+        <label for="setup-code">Code from the app</label><input id="setup-code" name="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" spellcheck="false">
+        <p id="setup-error" role="alert" class="error" hidden></p>
+        <button id="setup-submit" class="submit" type="submit">Turn on and sign in</button>
+      </form>
+      <div id="recovery" hidden>
+        <h1>Save your recovery codes</h1>
+        <p class="intro">Each code works once if you lose your authenticator. They are shown only now; store them somewhere safe.</p>
+        <ul id="recovery-list" class="recovery-list"></ul>
+        <button id="recovery-done" class="submit" type="button">I saved them, continue</button>
+      </div>
     </section>
     <p class="footer">BeastDB Studio · B+ tree · ARIES WAL · 4 KiB pages</p>
   </main>
@@ -30,24 +53,70 @@
       document.documentElement.classList.toggle('dark', dark);
       localStorage.setItem('beastdb-theme', dark ? 'dark' : 'light');
     });
-    document.getElementById('login-form').addEventListener('submit', async function (event) {
+    var $ = function (id) { return document.getElementById(id); };
+    var steps = ['login-form', 'code-form', 'setup-form', 'recovery'];
+    function show(id) { steps.forEach(function (s) { $(s).hidden = s !== id; }); var f = $(id).querySelector('input'); if (f) f.focus(); }
+    function post(path, body) {
+      return fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), credentials: 'same-origin' });
+    }
+    function fail(id, response, fallback) {
+      var el = $(id); el.hidden = false;
+      el.textContent = response && response.status === 429 ? 'Too many attempts. Wait a moment and try again.'
+        : response && response.status === 401 && fallback ? fallback : 'That did not work. Try again.';
+    }
+    $('login-form').addEventListener('submit', async function (event) {
       event.preventDefault();
-      var button = document.getElementById('submit');
-      var error = document.getElementById('error');
+      var button = $('submit');
+      var error = $('error');
       button.disabled = true; button.textContent = 'Signing in…'; error.hidden = true;
       try {
         var form = event.currentTarget;
-        var data = { username: form.username.value, password: form.password.value };
-        var response = await fetch('/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-          credentials: 'same-origin'
-        });
+        var response = await post('/login', { username: form.username.value, password: form.password.value });
         if (!response.ok) throw new Error('Sign in failed');
-        window.location.assign('/');
-      } catch (e) { error.hidden = false; button.disabled = false; button.textContent = 'Sign in'; }
+        if ((response.headers.get('Content-Type') || '').indexOf('application/json') === 0) {
+          var next = await response.json();
+          if (next.twoFactor === 'required') { $('code').value = ''; show('code-form'); }
+          else if (next.twoFactor === 'setup') {
+            var setup = await post('/login/2fa/setup');
+            if (!setup.ok) throw new Error('Setup failed');
+            var info = await setup.json();
+            $('setup-key').textContent = info.secret; $('setup-uri').textContent = info.uri; $('setup-code').value = '';
+            show('setup-form');
+          } else throw new Error('Unexpected response');
+          form.password.value = '';
+        } else {
+          window.location.assign('/');
+        }
+      } catch (e) { error.hidden = false; }
+      button.disabled = false; button.textContent = 'Sign in';
     });
+    $('code-form').addEventListener('submit', async function (event) {
+      event.preventDefault();
+      $('code-error').hidden = true; $('code-submit').disabled = true;
+      try {
+        var response = await post('/login/2fa', { code: $('code').value });
+        if (response.ok) { window.location.assign('/'); return; }
+        fail('code-error', response, 'That code was not accepted. Check the time on your device, or use a recovery code.');
+        if (response.status === 401 && !(await response.clone().text()).match(/code/i)) show('login-form');
+      } catch (e) { fail('code-error'); }
+      $('code-submit').disabled = false;
+    });
+    $('code-back').addEventListener('click', function () { show('login-form'); });
+    $('setup-form').addEventListener('submit', async function (event) {
+      event.preventDefault();
+      $('setup-error').hidden = true; $('setup-submit').disabled = true;
+      try {
+        var response = await post('/login/2fa/enable', { code: $('setup-code').value });
+        if (response.ok) {
+          var out = await response.json(); var list = $('recovery-list'); list.textContent = '';
+          (out.recoveryCodes || []).forEach(function (c) { var li = document.createElement('li'); li.textContent = c; list.appendChild(li); });
+          show('recovery'); return;
+        }
+        fail('setup-error', response, 'That code was not accepted. Try the next code the app shows.');
+      } catch (e) { fail('setup-error'); }
+      $('setup-submit').disabled = false;
+    });
+    $('recovery-done').addEventListener('click', function () { window.location.assign('/'); });
   </script>
 </body>
 </html>

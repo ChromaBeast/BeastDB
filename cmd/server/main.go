@@ -36,6 +36,7 @@ func main() {
 	replicaID := flag.String("replica-id", getEnv("BEASTDB_REPLICA_ID", "replica-1"), "Unique identifier for this replica node")
 	webAddr := flag.String("web-addr", getEnv("BEASTDB_WEB_ADDR", "127.0.0.1:8080"), "Address for the web admin console (empty to disable)")
 	adminPassword := flag.String("admin-password", getEnv("BEASTDB_ADMIN_PASSWORD", "admin"), "Initial admin user password (or BEASTDB_ADMIN_PASSWORD)")
+	resetAdmin2FA := flag.Bool("reset-admin-2fa", false, "Remove the admin account's two-factor sign-in at startup (lost device and recovery codes)")
 	partitionConfig := flag.String("partition-config", getEnv("BEASTDB_PARTITION_CONFIG", ""), "Path to partitions.json defining Studio partition labels (optional)")
 	apiToken := flag.String("api-token", getEnv("BEASTDB_API_TOKEN", ""), "Bearer token for gRPC authentication (or BEASTDB_API_TOKEN)")
 	leaderToken := flag.String("leader-token", getEnv("BEASTDB_LEADER_TOKEN", ""), "Bearer token this node presents to a leader for replication and rejoin (admin or replication-role token; or BEASTDB_LEADER_TOKEN). Defaults to -api-token, so nodes that share one token need not set it")
@@ -225,6 +226,7 @@ func main() {
 		},
 	}
 	webOpts.Cluster = clusterControl
+	resetAdminTwoFactor = *resetAdmin2FA
 	stopWeb := startWebServer(*webAddr, *dataDir, *role, *adminPassword, engine, partitions, tokenStore, webOpts, *apiToken, os.Getenv("BEASTDB_METRICS_TOKEN"))
 	defer stopWeb()
 

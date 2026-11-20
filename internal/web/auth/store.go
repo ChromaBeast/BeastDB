@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
+	"sync"
 	"time"
 )
 
@@ -11,6 +12,9 @@ import (
 // It wraps the Engine interface to avoid importing the api package directly.
 type UserStore struct {
 	engine EngineWriter
+	// mu serialises second-factor read-modify-write cycles so a time step or a
+	// recovery code cannot be consumed twice by concurrent requests.
+	mu sync.Mutex
 }
 
 // EngineWriter is the minimal Engine interface required by the user store.
@@ -66,8 +70,11 @@ func (s *UserStore) CreateUser(username, password string, role Role) error {
 }
 
 // SetUserPassword updates the password for a user or creates the user if not existing.
+// An existing second factor and creation time are kept.
 func (s *UserStore) SetUserPassword(username, password string, role Role) error {
 	key := sysUserKey(username)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	hash, err := HashPassword(password)
 	if err != nil {
 		return fmt.Errorf("hashing password: %w", err)
@@ -78,6 +85,14 @@ func (s *UserStore) SetUserPassword(username, password string, role Role) error 
 		PasswordHash: hash,
 		Role:         role,
 		CreatedAt:    time.Now().UTC(),
+	}
+	if old, exists, err := s.engine.Get(key); err == nil && exists {
+		if prev, err := UnmarshalUser(old); err == nil {
+			u.TOTP = prev.TOTP
+			if !prev.CreatedAt.IsZero() {
+				u.CreatedAt = prev.CreatedAt
+			}
+		}
 	}
 
 	data, err := u.Marshal()
