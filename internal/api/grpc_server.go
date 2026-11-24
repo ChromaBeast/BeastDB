@@ -49,6 +49,9 @@ func (s *GRPCServer) RawServer() *grpc.Server {
 
 // Get handles unary key lookup requests.
 func (s *GRPCServer) Get(ctx context.Context, req *beastv1.GetRequest) (*beastv1.GetResponse, error) {
+	if IsSystemKey(req.Key) {
+		return nil, systemKeyStatus()
+	}
 	val, found, err := s.engine.Get(req.Key)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "get error: %v", err)
@@ -67,6 +70,9 @@ func (s *GRPCServer) Put(ctx context.Context, req *beastv1.PutRequest) (*beastv1
 	}
 	if s.engine.IsReadOnly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
+	}
+	if IsSystemKey(req.Key) {
+		return nil, systemKeyStatus()
 	}
 	if len(req.Value) > MaxValueSize {
 		return nil, status.Errorf(codes.InvalidArgument, "record value exceeds max %d bytes: %d bytes provided", MaxValueSize, len(req.Value))
@@ -89,6 +95,9 @@ func (s *GRPCServer) Delete(ctx context.Context, req *beastv1.DeleteRequest) (*b
 	if s.engine.IsReadOnly() {
 		return nil, status.Errorf(codes.FailedPrecondition, "writes are not permitted on read replica")
 	}
+	if IsSystemKey(req.Key) {
+		return nil, systemKeyStatus()
+	}
 	cond, err := conditionFromProto(req.GetCondition())
 	if err != nil {
 		return nil, err
@@ -108,7 +117,8 @@ const (
 
 // Scan handles server-streaming range scan requests. Records are read in
 // chunks and the engine lock is released between chunks, so writes committed
-// during a long scan may or may not appear in it.
+// during a long scan may or may not appear in it. Keys in the reserved system
+// partition are skipped.
 func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingServer[beastv1.KeyValueResponse]) error {
 	if req.Filter != nil {
 		return s.scanFiltered(req, stream)
@@ -128,6 +138,9 @@ func (s *GRPCServer) Scan(req *beastv1.ScanRequest, stream grpc.ServerStreamingS
 			return status.Errorf(codes.Internal, "scan error: %v", err)
 		}
 		for _, it := range items {
+			if IsSystemKey(it.Key) {
+				continue
+			}
 			if err := stream.Send(&beastv1.KeyValueResponse{Key: it.Key, Value: it.Value}); err != nil {
 				return err
 			}
@@ -164,6 +177,9 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 		if IsCatalogKey(op.Key) {
 			return nil, status.Error(codes.InvalidArgument, ErrCatalogKey.Error())
 		}
+		if IsSystemKey(op.Key) {
+			return nil, systemKeyStatus()
+		}
 		ops[i] = BatchOperation{Type: opType, Key: op.Key, Value: op.Value}
 	}
 
@@ -173,6 +189,9 @@ func (s *GRPCServer) BatchWrite(ctx context.Context, req *beastv1.BatchWriteRequ
 
 	conds := make([]KeyCondition, 0, len(req.Conditions))
 	for _, kc := range req.Conditions {
+		if IsSystemKey(kc.GetKey()) {
+			return nil, systemKeyStatus()
+		}
 		cond, err := conditionFromProto(kc.GetCondition())
 		if err != nil {
 			return nil, err

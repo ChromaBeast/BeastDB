@@ -54,6 +54,11 @@ func startWebServer(webAddr, dataDir, role, adminPassword string, engine *api.En
 	}
 
 	store := auth.NewUserStore(engine)
+	if moved, err := store.MigrateLegacyUser("admin"); err != nil {
+		log.Printf("Could not move the admin account into the system partition: %v", err)
+	} else if moved {
+		log.Printf("Moved the admin account into the reserved system partition.")
+	}
 	if adminPassword != "admin" {
 		if err := store.SetUserPassword("admin", adminPassword, auth.RoleAdmin); err != nil {
 			log.Printf("Failed to sync admin password: %v", err)

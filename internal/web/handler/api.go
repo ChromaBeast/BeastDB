@@ -29,7 +29,8 @@ type EngineReader interface {
 
 // APIHandler handles data access routes under /api/.
 type APIHandler struct {
-	engine     EngineReader
+	engine     EngineReader // data routes: reserved system partition hidden
+	raw        EngineReader // unguarded engine: checkpoint, collections and indexes (neither can reach the system partition)
 	sessions   *auth.SessionManager
 	role       string
 	version    string
@@ -44,7 +45,7 @@ type APIHandler struct {
 
 // NewAPIHandler creates an APIHandler with engine, session, and partition registry.
 func NewAPIHandler(e EngineReader, s *auth.SessionManager, role, version string, partitions []PartitionEntry) *APIHandler {
-	return &APIHandler{engine: e, sessions: s, role: role, version: version, partitions: partitions}
+	return &APIHandler{engine: guardSystemKeys(e), raw: e, sessions: s, role: role, version: version, partitions: partitions}
 }
 
 // SetTokenStore assigns the persistent TokenStore to the APIHandler.
